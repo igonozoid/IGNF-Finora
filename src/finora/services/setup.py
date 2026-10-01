@@ -7,13 +7,9 @@ from sqlalchemy.orm import Session
 
 from finora.core.money import CURRENCIES
 from finora.models import Account, Category, Entity
+from finora.services.accounts import KINDS
 
-ACCOUNT_KINDS = {
-    "bank": "Conta no banco",
-    "cash": "Dinheiro (carteira)",
-    "card": "Cartão de crédito",
-    "investment": "Investimento",
-}
+ACCOUNT_KINDS = KINDS
 
 # (dre_group, tipo, nome do grupo, [subcategorias])
 DEFAULT_CATEGORIES = [

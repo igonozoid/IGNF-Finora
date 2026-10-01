@@ -113,7 +113,7 @@ class Totals:
         return self.receivable - self.payable
 
 
-def _query(entity_id: int):
+def query(entity_id: int):
     dest = aliased(Account)
     return (
         select(Entry, Account.name, dest.name, Category.name, Contact.name)
@@ -125,7 +125,7 @@ def _query(entity_id: int):
     )
 
 
-def _view(row) -> EntryView:
+def to_view(row) -> EntryView:
     e, acc, dest, cat, ct = row
     return EntryView(e.id, e.kind, e.description or "", Decimal(e.amount), e.due_date, e.paid_date, e.status,
                      e.account_id, acc, e.dest_account_id, dest, e.category_id, cat, ct, e.document_no,
@@ -137,7 +137,7 @@ def list_entries(s: Session, entity_id: int, *, year: int, month: int, filter: s
     """Lançamentos do mês (pelo vencimento). 'Atrasados' ignora o mês; 'Pagos' usa a data do pagamento."""
     today = today or date.today()
     first, last = month_range(year, month)
-    q = _query(entity_id)
+    q = query(entity_id)
     if filter == "late":
         q = q.where(Entry.status == "pending", Entry.due_date < today)
     elif filter == "paid":
@@ -153,11 +153,11 @@ def list_entries(s: Session, entity_id: int, *, year: int, month: int, filter: s
         q = q.where(or_(func.lower(Entry.description).like(like), func.lower(Contact.name).like(like),
                         func.lower(Category.name).like(like), func.lower(Entry.document_no).like(like)))
     q = q.order_by(Entry.due_date, Entry.id)
-    return [_view(r) for r in s.execute(q)]
+    return [to_view(r) for r in s.execute(q)]
 
 
 def get(s: Session, entry_id: int) -> EntryView:
-    return _view(s.execute(_query(s.get(Entry, entry_id).entity_id).where(Entry.id == entry_id)).one())
+    return to_view(s.execute(query(s.get(Entry, entry_id).entity_id).where(Entry.id == entry_id)).one())
 
 
 def month_totals(s: Session, entity_id: int, year: int, month: int) -> Totals:

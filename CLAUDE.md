@@ -5,7 +5,7 @@ Referência visual: mockup "App Financeiro" (exportado em `docs/mockup/`). Siga-
 
 ## Regras
 - Textos da UI em PT-BR, linguagem simples; termos técnicos ganham ícone "?" com tooltip.
-- Ícones: qtawesome, prefixo `fa6s.`/`fa6r.`.
+- Ícones: qtawesome, prefixo `fa6s.` (sólido) / `fa6.` (regular — o qtawesome não tem `fa6r.`).
 - Tema: `ui/theme.py` (LIGHT/DARK). Gere o QSS a partir desses tokens; nada de cor fixa nos widgets.
 - Densidade alta: linhas de tabela 26px, fonte 9pt, espaçamentos 4/8/12.
 - Valores monetários: `Decimal`, nunca float. Fonte monoespaçada em colunas de valor.

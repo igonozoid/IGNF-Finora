@@ -103,7 +103,7 @@ IGNF-Finora/
 ## Roadmap
 
 - [x] Estrutura do projeto e banco local
-- [ ] Janela principal: menu lateral, tema claro/escuro
+- [x] Janela principal: menu lateral, tema claro/escuro
 - [ ] Cadastros: contas, categorias (com padrão), contatos
 - [ ] Lançamentos com recorrência e parcelamento
 - [ ] Dashboard

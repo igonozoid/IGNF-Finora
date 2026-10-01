@@ -11,5 +11,9 @@ FEATURES = {
     Edition.PRO:  {"accounts_max": None, "ofx": True, "attachments": True, "budget": True, "multi_currency": True, "entities_max": None},
 }
 
+def current_edition() -> Edition:
+    # Até a etapa 8 (chave de licença) o app roda sempre na Free.
+    return Edition.FREE
+
 def allowed(edition: Edition, feature: str):
     return FEATURES[edition].get(feature)

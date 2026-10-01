@@ -1,8 +1,14 @@
 """Tokens visuais (cores, fontes, medidas) e geração do QSS.
 
-Nenhum widget usa cor fixa: tudo sai daqui. Para trocar o tema, gere o QSS
-de novo com `build_qss(tokens(nome))` e aplique na QApplication.
+Nenhum widget usa cor fixa: tudo sai daqui. Para trocar o tema, chame
+`apply(app, nome)`: aplica a paleta e o QSS gerados dos tokens.
 """
+import tempfile
+from pathlib import Path
+
+from PySide6.QtCore import QSize
+from PySide6.QtGui import QColor, QFont, QPalette
+import qtawesome as qta
 
 LIGHT = dict(bg="#fbfaf8", panel="#f3f2ef", fg="#1d1e20", mut="#6c6e72", line="#e2e0db", acc="#e09a0a", pos="#2f8a4f", neg="#c24a3a",
              on_acc="#1a1200", acc_hover="#c98a08")
@@ -26,7 +32,49 @@ def tokens(name: str) -> dict:
     return THEMES.get(name, THEMES[DEFAULT_THEME])
 
 
-def build_qss(t: dict) -> str:
+def mono_font() -> QFont:
+    f = QFont()
+    f.setFamilies(FONT_MONO)
+    f.setPointSize(FONT_PT)
+    return f
+
+
+def build_palette(t: dict) -> QPalette:
+    """Paleta para as partes que o Qt desenha sozinho (setas, listas, seleção)."""
+    p = QPalette()
+    c = lambda k: QColor(t[k])
+    for role, key in [
+        (QPalette.Window, "bg"), (QPalette.Base, "bg"), (QPalette.AlternateBase, "panel"),
+        (QPalette.Button, "panel"), (QPalette.WindowText, "fg"), (QPalette.Text, "fg"),
+        (QPalette.ButtonText, "fg"), (QPalette.BrightText, "fg"), (QPalette.PlaceholderText, "mut"),
+        (QPalette.ToolTipBase, "panel"), (QPalette.ToolTipText, "fg"),
+        (QPalette.Highlight, "acc"), (QPalette.HighlightedText, "on_acc"),
+        (QPalette.Mid, "line"), (QPalette.Dark, "line"), (QPalette.Light, "panel"), (QPalette.Link, "acc"),
+    ]:
+        p.setColor(role, c(key))
+    for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText):
+        p.setColor(QPalette.Disabled, role, c("mut"))
+    return p
+
+
+def _icon_file(name: str, color: str, px: int = 10) -> str:
+    """O QSS só aceita imagem por arquivo: renderiza o ícone num PNG temporário."""
+    d = Path(tempfile.gettempdir()) / "finora_icons"
+    d.mkdir(exist_ok=True)
+    f = d / f"{name.replace('.', '_')}_{color.lstrip('#')}_{px}.png"
+    if not f.exists():
+        qta.icon(name, color=color).pixmap(QSize(px, px)).save(str(f))
+    return f.as_posix()
+
+
+def apply(app, name: str) -> dict:
+    t = tokens(name)
+    app.setPalette(build_palette(t))
+    app.setStyleSheet(build_qss(t, arrow=_icon_file("fa6s.chevron-down", t["mut"])))
+    return t
+
+
+def build_qss(t: dict, arrow: str = "") -> str:
     return f"""
 QMainWindow, QStackedWidget, QWidget#content {{ background: {t['bg']}; }}
 QWidget {{ color: {t['fg']}; }}
@@ -34,6 +82,7 @@ QToolTip {{ background: {t['panel']}; color: {t['fg']}; border: 1px solid {t['li
 
 /* Barra lateral */
 QWidget#sidebar {{ background: {t['panel']}; border-right: 1px solid {t['line']}; }}
+QScrollArea#navScroll, QWidget#navList {{ background: transparent; }}
 QFrame#brand {{ background: {t['bg']}; border: 1px solid {t['line']}; border-radius: 4px; }}
 QLabel#brandName {{ font-weight: 600; }}
 QLabel#brandSub {{ color: {t['mut']}; font-size: 8pt; }}
@@ -64,6 +113,41 @@ QPushButton[variant="primary"] {{
     padding: 5px 10px; font-weight: 600;
 }}
 QPushButton[variant="primary"]:hover {{ background: {t['acc_hover']}; }}
+
+QPushButton[variant="secondary"] {{
+    background: transparent; color: {t['fg']}; border: 1px solid {t['line']}; border-radius: 4px;
+    padding: 5px 12px;
+}}
+QPushButton[variant="secondary"]:hover {{ border-color: {t['mut']}; }}
+QPushButton:disabled {{ color: {t['mut']}; }}
+
+/* Formulários */
+QLabel[role="field"] {{ color: {t['mut']}; font-size: 8pt; }}
+QLabel[role="error"] {{ color: {t['neg']}; }}
+QLabel[role="muted"] {{ color: {t['mut']}; }}
+QLineEdit, QComboBox {{
+    background: {t['bg']}; border: 1px solid {t['line']}; border-radius: 3px;
+    padding: 3px 8px; min-height: 18px; selection-background-color: {t['acc']}; selection-color: {t['on_acc']};
+}}
+QComboBox::drop-down {{ border: none; width: 20px; }}
+QComboBox::down-arrow {{ image: url("{arrow}"); width: 10px; height: 10px; }}
+QLineEdit:focus, QComboBox:focus {{ border-color: {t['acc']}; }}
+QLineEdit[invalid="true"] {{ border-color: {t['neg']}; }}
+QComboBox QAbstractItemView {{
+    background: {t['panel']}; border: 1px solid {t['line']}; outline: 0;
+    selection-background-color: {t['acc']}; selection-color: {t['on_acc']};
+}}
+QCheckBox {{ spacing: {SP_M}px; }}
+QTreeWidget {{ background: {t['bg']}; border: 1px solid {t['line']}; border-radius: 4px; outline: 0; }}
+QTreeWidget::item {{ height: {ROW_H}px; }}
+
+/* Assistente de primeiro uso */
+QDialog#wizard {{ background: {t['bg']}; }}
+QFrame#wizardFooter {{ background: {t['panel']}; border-top: 1px solid {t['line']}; }}
+QLabel#wizardStep {{ color: {t['mut']}; font-size: 8pt; }}
+QLabel#wizardTitle {{ font-size: 12pt; font-weight: 600; }}
+QFrame[step="on"] {{ background: {t['acc']}; border-radius: 1px; }}
+QFrame[step="off"] {{ background: {t['line']}; border-radius: 1px; }}
 
 /* Tela vazia */
 QFrame#emptyCard {{ background: {t['panel']}; border: 1px dashed {t['line']}; border-radius: 4px; }}

@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QButtonGroup,
-    QStackedWidget, QHBoxLayout, QVBoxLayout,
+    QStackedWidget, QScrollArea, QHBoxLayout, QVBoxLayout,
 )
 import qtawesome as qta
 
@@ -10,6 +10,8 @@ from finora import __version__
 from finora.core import settings
 from finora.core.db import DATA_DIR
 from finora.core.licensing import current_edition
+from finora.core.money import CURRENCIES
+from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.pages import PlaceholderPage
 
@@ -33,7 +35,7 @@ NAV = [
 
 
 class Sidebar(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, profile: Profile, parent=None):
         super().__init__(parent)
         self.setObjectName("sidebar")
         self.setAttribute(Qt.WA_StyledBackground)
@@ -50,12 +52,26 @@ class Sidebar(QWidget):
         self._brand_icon = QLabel()
         names = QVBoxLayout()
         names.setSpacing(0)
-        names.addWidget(QLabel("IGNF Finora", objectName="brandName"))
-        names.addWidget(QLabel("Finanças pessoais", objectName="brandSub"))
+        name = QLabel(profile.name, objectName="brandName")
+        name.setMinimumWidth(1)  # nome longo é cortado, não alarga o menu
+        name.setToolTip(profile.name)
+        names.addWidget(name)
+        sub = QLabel(f"Pessoal · {profile.currency}", objectName="brandSub")
+        sub.setToolTip(f"Moeda principal: {CURRENCIES[profile.currency][1]}")
+        names.addWidget(sub)
         bl.addWidget(self._brand_icon)
         bl.addLayout(names, 1)
         lay.addWidget(brand)
         lay.addSpacing(10)
+
+        # Em janelas baixas o menu rola em vez de cortar itens.
+        nav = QWidget(objectName="navList")
+        nl = QVBoxLayout(nav)
+        nl.setContentsMargins(0, 0, 0, 0)
+        nl.setSpacing(2)
+        scroll = QScrollArea(objectName="navScroll", widgetResizable=True, frameShape=QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(nav)
 
         self.group = QButtonGroup(self, exclusive=True)
         self.buttons = []
@@ -66,9 +82,10 @@ class Sidebar(QWidget):
             b.setToolTip(f"{label} (Ctrl+{i + 1})")
             self.group.addButton(b, i)
             self.buttons.append((b, icon))
-            lay.addWidget(b)
+            nl.addWidget(b)
+        nl.addStretch(1)
+        lay.addWidget(scroll, 1)
 
-        lay.addStretch(1)
         self.theme_btn = QPushButton(objectName="themeToggle")
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.setIconSize(QSize(14, 14))
@@ -108,16 +125,16 @@ class Header(QFrame):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, profile: Profile):
         super().__init__()
+        self.profile = profile
         self.setWindowTitle("IGNF Finora — Finanças pessoais")
-        self.resize(1366, 800)
-        self.setMinimumSize(1024, 640)
+        self.setMinimumSize(800, 480)
         geo = settings.get_geometry()
-        if geo is not None:
-            self.restoreGeometry(geo)
+        if geo is None or not self.restoreGeometry(geo):
+            self._fit_to_screen()
 
-        self.sidebar = Sidebar()
+        self.sidebar = Sidebar(profile)
         self.header = Header()
         self.stack = QStackedWidget()
         self.pages = [PlaceholderPage(icon, label, text) for icon, label, _sub, text in NAV]
@@ -153,6 +170,16 @@ class MainWindow(QMainWindow):
         self.apply_theme(self.theme_name)
         self.go_to(0)
 
+    def _fit_to_screen(self):
+        """Tamanho do mockup (1366x800), limitado à área livre da tela, centralizado."""
+        area = self.screen().availableGeometry()
+        w = min(1366, area.width() - 2 * theme.SP_L)
+        h = min(800, area.height() - 2 * theme.SP_L)
+        self.resize(w, h)
+        self.move(area.x() + (area.width() - w) // 2, area.y() + (area.height() - h) // 2)
+        if area.height() < 700:
+            self.setWindowState(Qt.WindowMaximized)
+
     def _build_statusbar(self):
         sb = self.statusBar()
         sb.setSizeGripEnabled(False)
@@ -172,8 +199,7 @@ class MainWindow(QMainWindow):
 
     def apply_theme(self, name: str):
         self.theme_name = name
-        t = theme.tokens(name)
-        QApplication.instance().setStyleSheet(theme.build_qss(t))
+        t = theme.apply(QApplication.instance(), name)
         self.setWindowIcon(qta.icon("fa6s.coins", color=t["acc"]))
         self.sidebar.apply_theme(name, t)
         self.header.apply_theme(t)

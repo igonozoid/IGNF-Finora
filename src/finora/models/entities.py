@@ -1,0 +1,70 @@
+from datetime import date
+from decimal import Decimal
+from sqlalchemy import ForeignKey, String, Numeric, Boolean
+from sqlalchemy.orm import Mapped, mapped_column
+from .base import Base
+
+class Entity(Base):
+    __tablename__ = "entities"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    currency: Mapped[str] = mapped_column(String(3), default="BRL")
+
+class Account(Base):
+    __tablename__ = "accounts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
+    name: Mapped[str] = mapped_column(String(80))
+    kind: Mapped[str] = mapped_column(String(20), default="bank")  # cash|bank|card|investment
+    currency: Mapped[str] = mapped_column(String(3), default="BRL")
+    opening_balance: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class Category(Base):
+    __tablename__ = "categories"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
+    code: Mapped[str] = mapped_column(String(10))
+    name: Mapped[str] = mapped_column(String(80))
+    kind: Mapped[str] = mapped_column(String(10))  # income|expense
+    dre_group: Mapped[str | None] = mapped_column(String(40))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class CostCenter(Base):
+    __tablename__ = "cost_centers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
+    name: Mapped[str] = mapped_column(String(80))
+    budget: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class Contact(Base):
+    __tablename__ = "contacts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
+    person_type: Mapped[str] = mapped_column(String(2))  # PF|PJ
+    document: Mapped[str | None] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(String(150))
+    is_customer: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_supplier: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_employee: Mapped[bool] = mapped_column(Boolean, default=False)
+
+class Entry(Base):
+    __tablename__ = "entries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
+    kind: Mapped[str] = mapped_column(String(10))  # income|expense|transfer
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
+    dest_account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"))
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id"))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
+    cost_center_id: Mapped[int | None] = mapped_column(ForeignKey("cost_centers.id"))
+    amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+    description: Mapped[str | None] = mapped_column(String(200))
+    document_no: Mapped[str | None] = mapped_column(String(40))
+    competence_date: Mapped[date]
+    due_date: Mapped[date]
+    paid_date: Mapped[date | None]
+    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending|paid|canceled
+    installment: Mapped[str | None] = mapped_column(String(10))  # ex.: 4/12

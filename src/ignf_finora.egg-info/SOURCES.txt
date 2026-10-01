@@ -1,0 +1,17 @@
+README.md
+pyproject.toml
+src/finora/__init__.py
+src/finora/__main__.py
+src/finora/core/db.py
+src/finora/core/licensing.py
+src/finora/models/__init__.py
+src/finora/models/base.py
+src/finora/models/entities.py
+src/finora/ui/main_window.py
+src/finora/ui/theme.py
+src/ignf_finora.egg-info/PKG-INFO
+src/ignf_finora.egg-info/SOURCES.txt
+src/ignf_finora.egg-info/dependency_links.txt
+src/ignf_finora.egg-info/entry_points.txt
+src/ignf_finora.egg-info/requires.txt
+src/ignf_finora.egg-info/top_level.txt

@@ -52,6 +52,20 @@ def tree(s: Session, entity_id: int, include_inactive: bool = False) -> list[Cat
     return roots
 
 
+def choices(s: Session, entity_id: int, kind: str) -> list[tuple[int, str]]:
+    """Categorias que podem ir num lançamento do tipo `kind`: subcategorias ativas, ou o próprio
+    grupo quando ele não tem subcategorias. Rótulo no formato "Grupo › Subcategoria"."""
+    out = []
+    for g in tree(s, entity_id):
+        if g.kind != kind:
+            continue
+        if g.children:
+            out += [(c.id, f"{g.name} › {c.name}") for c in g.children]
+        else:
+            out.append((g.id, g.name))
+    return out
+
+
 def groups(s: Session, entity_id: int) -> list[CategoryView]:
     """Categorias principais ativas (possíveis 'pais')."""
     return [r for r in tree(s, entity_id) if r.parent_id is None]

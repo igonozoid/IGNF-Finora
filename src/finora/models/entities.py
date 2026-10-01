@@ -68,3 +68,5 @@ class Entry(Base):
     paid_date: Mapped[date | None]
     status: Mapped[str] = mapped_column(String(10), default="pending")  # pending|paid|canceled
     installment: Mapped[str | None] = mapped_column(String(10))  # ex.: 4/12
+    # Liga lançamentos de uma mesma recorrência/parcelamento (para "editar este e os próximos").
+    series_id: Mapped[str | None] = mapped_column(String(32), index=True)

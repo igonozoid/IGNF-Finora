@@ -70,11 +70,12 @@ def _icon_file(name: str, color: str, px: int = 10) -> str:
 def apply(app, name: str) -> dict:
     t = tokens(name)
     app.setPalette(build_palette(t))
-    app.setStyleSheet(build_qss(t, arrow=_icon_file("fa6s.chevron-down", t["mut"])))
+    app.setStyleSheet(build_qss(t, arrow=_icon_file("fa6s.chevron-down", t["mut"]),
+                                check=_icon_file("fa6s.check", t["on_acc"])))
     return t
 
 
-def build_qss(t: dict, arrow: str = "") -> str:
+def build_qss(t: dict, arrow: str = "", check: str = "") -> str:
     return f"""
 QMainWindow, QStackedWidget, QWidget#content {{ background: {t['bg']}; }}
 QWidget {{ color: {t['fg']}; }}
@@ -137,9 +138,29 @@ QComboBox QAbstractItemView {{
     background: {t['panel']}; border: 1px solid {t['line']}; outline: 0;
     selection-background-color: {t['acc']}; selection-color: {t['on_acc']};
 }}
-QCheckBox {{ spacing: {SP_M}px; }}
+QCheckBox {{ spacing: 6px; }}
+QCheckBox::indicator {{ width: 12px; height: 12px; border: 1px solid {t['mut']}; border-radius: 3px; background: {t['bg']}; }}
+QCheckBox::indicator:checked {{ background: {t['acc']}; border-color: {t['acc']}; image: url("{check}"); }}
+QCheckBox::indicator:disabled {{ border-color: {t['line']}; }}
 QTreeWidget {{ background: {t['bg']}; border: 1px solid {t['line']}; border-radius: 4px; outline: 0; }}
 QTreeWidget::item {{ height: {ROW_H}px; }}
+
+/* Cartões, selos e listas */
+QScrollArea#pageScroll, QWidget#pageBody {{ background: transparent; }}
+QFrame#card {{ background: {t['panel']}; border: 1px solid {t['line']}; border-radius: 4px; }}
+QFrame#card[inactive="true"] QLabel {{ color: {t['mut']}; }}
+QLabel#cardTitle, QLabel#sectionTitle {{ font-weight: 600; }}
+QLabel[role="badge"] {{ border: 1px solid {t['line']}; border-radius: 3px; padding: 0 5px; color: {t['mut']}; font-size: 8pt; }}
+QLabel[role="total"] {{ font-weight: 600; }}
+QPushButton[variant="link"] {{ border: none; background: transparent; color: {t['mut']}; padding: 2px 0; font-size: 8pt; }}
+QPushButton[variant="link"]:hover {{ color: {t['fg']}; }}
+QFrame#lockBox {{ background: {t['bg']}; border: 1px solid {t['acc']}; border-radius: 4px; }}
+QHeaderView::section {{
+    background: {t['panel']}; color: {t['mut']}; border: none; border-bottom: 1px solid {t['line']};
+    padding: 4px {SP_M}px; font-size: 8pt;
+}}
+QTreeView::item:selected, QTreeView::branch:selected {{ background: {t['line']}; color: {t['fg']}; }}
+QTreeView::item:hover {{ background: {t['panel']}; }}
 
 /* Assistente de primeiro uso */
 QDialog#wizard {{ background: {t['bg']}; }}

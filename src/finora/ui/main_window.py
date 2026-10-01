@@ -13,7 +13,10 @@ from finora.core.licensing import current_edition
 from finora.core.money import CURRENCIES
 from finora.services.setup import Profile
 from finora.ui import theme
+from finora.ui.accounts_page import AccountsPage
+from finora.ui.categories_page import CategoriesPage
 from finora.ui.pages import PlaceholderPage
+from finora.ui.widgets import retheme
 
 # (ícone, rótulo, subtítulo do cabeçalho, texto da tela vazia)
 NAV = [
@@ -137,9 +140,14 @@ class MainWindow(QMainWindow):
         self.sidebar = Sidebar(profile)
         self.header = Header()
         self.stack = QStackedWidget()
+        t = theme.tokens(settings.get_theme(theme.DEFAULT_THEME))
         self.pages = [PlaceholderPage(icon, label, text) for icon, label, _sub, text in NAV]
+        self.pages[2] = AccountsPage(profile, t)
+        self.pages[3] = CategoriesPage(profile, t)
         for p in self.pages:
             self.stack.addWidget(p)
+            if hasattr(p, "message"):
+                p.message.connect(lambda msg: self.statusBar().showMessage(msg, 5000))
 
         right = QWidget()
         rl = QVBoxLayout(right)
@@ -192,6 +200,9 @@ class MainWindow(QMainWindow):
 
     def go_to(self, index: int):
         _icon, label, subtitle, _text = NAV[index]
+        page = self.pages[index]
+        if hasattr(page, "refresh"):
+            page.refresh()
         self.stack.setCurrentIndex(index)
         self.sidebar.group.button(index).setChecked(True)
         self.header.title.setText(label)
@@ -205,6 +216,7 @@ class MainWindow(QMainWindow):
         self.header.apply_theme(t)
         for p in self.pages:
             p.apply_theme(t)
+        retheme(self, t)
 
     def toggle_theme(self):
         name = "light" if self.theme_name == "dark" else "dark"

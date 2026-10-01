@@ -40,6 +40,13 @@ def icon_label(name: str, t: dict, key: str = "mut", px: int = 12) -> QLabel:
     return themed_icon(QLabel(), name, t, key, px)
 
 
+def set_tone(w: QWidget, tone: str | None) -> None:
+    """Cor semântica de um texto ('pos', 'neg', 'mut' ou None), resolvida pelo QSS do tema."""
+    w.setProperty("tone", tone or "")
+    w.style().unpolish(w)
+    w.style().polish(w)
+
+
 def help_icon(text: str, t: dict) -> QLabel:
     """Ícone "?" com explicação no tooltip, para termos técnicos."""
     lbl = icon_label("fa6.circle-question", t)

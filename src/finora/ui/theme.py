@@ -166,6 +166,15 @@ QHeaderView::section {{
 QTreeView::item:selected, QTreeView::branch:selected {{ background: {t['line']}; color: {t['fg']}; }}
 QTreeView::item:hover {{ background: {t['panel']}; }}
 
+QLabel[tone="pos"] {{ color: {t['pos']}; }}
+QLabel[tone="neg"] {{ color: {t['neg']}; }}
+QLabel[tone="mut"] {{ color: {t['mut']}; }}
+QFrame#listRow, QFrame#row {{ border: none; border-bottom: 1px solid {t['line']}; }}
+QFrame#row:hover {{ background: {t['bg']}; }}
+QChartView {{ background: transparent; border: none; }}
+QProgressBar {{ background: {t['line']}; border: none; border-radius: 2px; }}
+QProgressBar::chunk {{ background: {t['acc']}; border-radius: 2px; }}
+
 /* Assistente de primeiro uso */
 QDialog#wizard {{ background: {t['bg']}; }}
 QFrame#wizardFooter {{ background: {t['panel']}; border-top: 1px solid {t['line']}; }}

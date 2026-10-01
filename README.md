@@ -106,7 +106,7 @@ IGNF-Finora/
 - [x] Janela principal: menu lateral, tema claro/escuro
 - [ ] Cadastros: contas, categorias (com padrão), contatos
 - [x] Lançamentos com recorrência e parcelamento
-- [ ] Dashboard
+- [x] Dashboard
 - [ ] Relatórios: DRE pessoal e fluxo de caixa
 - [ ] Backup e restauração
 - [ ] Licenciamento Free / Plus / Pro

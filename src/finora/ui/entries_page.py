@@ -747,6 +747,19 @@ class EntriesPage(QWidget):
         self.form.open_new(self._default_due())
         self._show_form(True)
 
+    def open_by_id(self, entry_id: int):
+        """Vai para o mês do lançamento e abre-o no formulário (usado pelo Dashboard)."""
+        with Session() as s:
+            e = entries.get(s, entry_id)
+        self.year, self.month = e.due_date.year, e.due_date.month
+        self.filter_group.button(0).setChecked(True)
+        self.filter = "all"
+        self.search.blockSignals(True)
+        self.search.clear()
+        self.search.blockSignals(False)
+        self.refresh(select_id=e.id)
+        self.edit_entry(e)
+
     def edit_entry(self, e: EntryView | None):
         if e is None:
             return

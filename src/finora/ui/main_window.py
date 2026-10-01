@@ -1,3 +1,5 @@
+from datetime import date
+
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -15,7 +17,8 @@ from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.accounts_page import AccountsPage
 from finora.ui.categories_page import CategoriesPage
-from finora.ui.entries_page import EntriesPage
+from finora.ui.dashboard_page import DashboardPage
+from finora.ui.entries_page import MONTHS, EntriesPage
 from finora.ui.pages import PlaceholderPage
 from finora.ui.widgets import retheme
 
@@ -143,6 +146,7 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         t = theme.tokens(settings.get_theme(theme.DEFAULT_THEME))
         self.pages = [PlaceholderPage(icon, label, text) for icon, label, _sub, text in NAV]
+        self.pages[0] = DashboardPage(profile, t)
         self.pages[1] = EntriesPage(profile, t)
         self.pages[2] = AccountsPage(profile, t)
         self.pages[3] = CategoriesPage(profile, t)
@@ -169,6 +173,7 @@ class MainWindow(QMainWindow):
         self._build_statusbar()
 
         self.sidebar.group.idClicked.connect(self.go_to)
+        self.pages[0].open_entry.connect(self.open_entry)
         self.sidebar.theme_btn.clicked.connect(self.toggle_theme)
         self.header.new_btn.clicked.connect(self.new_entry)
         for i in range(len(NAV)):
@@ -208,7 +213,13 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(index)
         self.sidebar.group.button(index).setChecked(True)
         self.header.title.setText(label)
+        if index == 0:
+            subtitle = f"Visão geral de {MONTHS[date.today().month - 1]}"
         self.header.subtitle.setText(subtitle)
+
+    def open_entry(self, entry_id: int):
+        self.go_to(1)
+        self.pages[1].open_by_id(entry_id)
 
     def new_entry(self):
         self.go_to(1)

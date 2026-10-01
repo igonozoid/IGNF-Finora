@@ -105,7 +105,7 @@ IGNF-Finora/
 - [x] Estrutura do projeto e banco local
 - [x] Janela principal: menu lateral, tema claro/escuro
 - [ ] Cadastros: contas, categorias (com padrão), contatos
-- [ ] Lançamentos com recorrência e parcelamento
+- [x] Lançamentos com recorrência e parcelamento
 - [ ] Dashboard
 - [ ] Relatórios: DRE pessoal e fluxo de caixa
 - [ ] Backup e restauração

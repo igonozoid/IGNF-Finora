@@ -126,13 +126,17 @@ QPushButton:disabled {{ color: {t['mut']}; }}
 QLabel[role="field"] {{ color: {t['mut']}; font-size: 8pt; }}
 QLabel[role="error"] {{ color: {t['neg']}; }}
 QLabel[role="muted"] {{ color: {t['mut']}; }}
-QLineEdit, QComboBox {{
+QLineEdit, QComboBox, QDateEdit, QSpinBox {{
     background: {t['bg']}; border: 1px solid {t['line']}; border-radius: 3px;
     padding: 3px 8px; min-height: 18px; selection-background-color: {t['acc']}; selection-color: {t['on_acc']};
 }}
 QComboBox::drop-down {{ border: none; width: 20px; }}
 QComboBox::down-arrow {{ image: url("{arrow}"); width: 10px; height: 10px; }}
-QLineEdit:focus, QComboBox:focus {{ border-color: {t['acc']}; }}
+QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QSpinBox:focus {{ border-color: {t['acc']}; }}
+QLineEdit:disabled, QComboBox:disabled, QDateEdit:disabled, QSpinBox:disabled {{ color: {t['mut']}; background: {t['panel']}; }}
+QDateEdit::drop-down {{ border: none; width: 20px; }}
+QDateEdit::down-arrow {{ image: url("{arrow}"); width: 10px; height: 10px; }}
+QSpinBox::up-button, QSpinBox::down-button {{ width: 0; border: none; }}
 QLineEdit[invalid="true"] {{ border-color: {t['neg']}; }}
 QComboBox QAbstractItemView {{
     background: {t['panel']}; border: 1px solid {t['line']}; outline: 0;
@@ -169,6 +173,41 @@ QLabel#wizardStep {{ color: {t['mut']}; font-size: 8pt; }}
 QLabel#wizardTitle {{ font-size: 12pt; font-weight: 600; }}
 QFrame[step="on"] {{ background: {t['acc']}; border-radius: 1px; }}
 QFrame[step="off"] {{ background: {t['line']}; border-radius: 1px; }}
+
+/* Filtros (pílulas) e seletor segmentado */
+QPushButton[variant="pill"] {{
+    border: 1px solid {t['line']}; border-radius: 4px; padding: 4px 10px; background: transparent; color: {t['fg']};
+}}
+QPushButton[variant="pill"]:hover {{ border-color: {t['mut']}; }}
+QPushButton[variant="pill"]:checked {{ background: {t['fg']}; color: {t['bg']}; border-color: {t['fg']}; }}
+QPushButton[variant="seg"] {{
+    border: 1px solid {t['line']}; border-radius: 0; padding: 4px 2px; background: {t['bg']}; color: {t['fg']};
+}}
+QPushButton[variant="seg"][pos="first"] {{ border-top-left-radius: 4px; border-bottom-left-radius: 4px; }}
+QPushButton[variant="seg"][pos="last"] {{ border-top-right-radius: 4px; border-bottom-right-radius: 4px; }}
+QPushButton[variant="seg"]:checked {{ background: {t['fg']}; color: {t['bg']}; border-color: {t['fg']}; }}
+QPushButton[variant="danger"] {{ border: none; background: transparent; color: {t['neg']}; padding: 5px 4px; }}
+QPushButton[variant="danger"]:hover {{ text-decoration: underline; }}
+QPushButton[variant="icon"] {{ border: 1px solid {t['line']}; border-radius: 4px; background: transparent; padding: 4px 6px; }}
+QPushButton[variant="icon"]:hover {{ border-color: {t['mut']}; }}
+QLabel#monthLabel {{ font-weight: 600; padding: 0 4px; }}
+
+/* Tabela */
+QTableView {{
+    background: {t['bg']}; border: 1px solid {t['line']}; border-radius: 4px; outline: 0;
+    selection-background-color: {t['line']}; selection-color: {t['fg']};
+}}
+QTableView::item {{ border-bottom: 1px solid {t['line']}; padding: 0 4px; }}
+QTableView::item:selected {{ background: {t['line']}; color: {t['fg']}; }}
+QFrame#totalsBar QLabel {{ color: {t['mut']}; }}
+QFrame#totalsBar QLabel[role="total"] {{ color: {t['fg']}; }}
+QFrame#totalsBar QLabel[role="accent"] {{ color: {t['acc']}; font-weight: 600; }}
+
+/* Menu de contexto */
+QMenu {{ background: {t['panel']}; border: 1px solid {t['line']}; padding: 4px 0; }}
+QMenu::item {{ padding: 5px 18px 5px 10px; }}
+QMenu::item:selected {{ background: {t['line']}; color: {t['fg']}; }}
+QMenu::separator {{ height: 1px; background: {t['line']}; margin: 4px 0; }}
 
 /* Tela vazia */
 QFrame#emptyCard {{ background: {t['panel']}; border: 1px dashed {t['line']}; border-radius: 4px; }}

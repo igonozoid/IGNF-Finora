@@ -15,6 +15,7 @@ from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.accounts_page import AccountsPage
 from finora.ui.categories_page import CategoriesPage
+from finora.ui.entries_page import EntriesPage
 from finora.ui.pages import PlaceholderPage
 from finora.ui.widgets import retheme
 
@@ -142,6 +143,7 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         t = theme.tokens(settings.get_theme(theme.DEFAULT_THEME))
         self.pages = [PlaceholderPage(icon, label, text) for icon, label, _sub, text in NAV]
+        self.pages[1] = EntriesPage(profile, t)
         self.pages[2] = AccountsPage(profile, t)
         self.pages[3] = CategoriesPage(profile, t)
         for p in self.pages:
@@ -168,11 +170,11 @@ class MainWindow(QMainWindow):
 
         self.sidebar.group.idClicked.connect(self.go_to)
         self.sidebar.theme_btn.clicked.connect(self.toggle_theme)
-        self.header.new_btn.clicked.connect(lambda: self.go_to(1))
+        self.header.new_btn.clicked.connect(self.new_entry)
         for i in range(len(NAV)):
             QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self, activated=lambda i=i: self.go_to(i))
         QShortcut(QKeySequence("Ctrl+T"), self, activated=self.toggle_theme)
-        QShortcut(QKeySequence("Ctrl+N"), self, activated=lambda: self.go_to(1))
+        QShortcut(QKeySequence("Ctrl+N"), self, activated=self.new_entry)
 
         self.theme_name = settings.get_theme(theme.DEFAULT_THEME)
         self.apply_theme(self.theme_name)
@@ -207,6 +209,10 @@ class MainWindow(QMainWindow):
         self.sidebar.group.button(index).setChecked(True)
         self.header.title.setText(label)
         self.header.subtitle.setText(subtitle)
+
+    def new_entry(self):
+        self.go_to(1)
+        self.pages[1].new_entry()
 
     def apply_theme(self, name: str):
         self.theme_name = name

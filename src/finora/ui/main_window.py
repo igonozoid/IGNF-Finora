@@ -44,6 +44,8 @@ NAV = [
      "Aqui você vai ajustar o app, fazer cópia de segurança dos seus dados e ativar sua licença."),
 ]
 
+SHOW_NEW_ENTRY = {0, 1, 2}  # Dashboard, Lançamentos, Contas
+
 
 class Sidebar(QWidget):
     def __init__(self, profile: Profile, parent=None):
@@ -225,6 +227,8 @@ class MainWindow(QMainWindow):
         if index == 0:
             subtitle = f"Visão geral de {MONTHS[date.today().month - 1]}"
         self.header.subtitle.setText(subtitle)
+        # O botão só aparece onde lançar faz parte do fluxo; o Ctrl+N vale em todas as telas.
+        self.header.new_btn.setVisible(index in SHOW_NEW_ENTRY)
 
     def open_entry(self, entry_id: int):
         self.go_to(1)

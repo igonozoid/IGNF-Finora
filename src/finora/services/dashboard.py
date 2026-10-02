@@ -3,12 +3,12 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from finora.core.money import CENT
 from finora.models import Category, Entry
-from finora.services import accounts, entries
+from finora.services import accounts, entries, reports
 from finora.services.entries import EntryView
 
 ZERO = Decimal("0.00")
@@ -45,14 +45,9 @@ def _not_investment():
 
 
 def month_result(s: Session, entity_id: int, year: int, month: int) -> Decimal:
-    """Sobra do mês (linha "= Sobra do mês" da DRE pessoal): receitas menos despesas, pagas ou não,
+    """Sobra do mês: a mesma linha "= Sobra do mês" da DRE pessoal (competência), para nunca divergir.
     sem contar o que foi para Investimentos/Reserva."""
-    first, last = entries.month_range(year, month)
-    signed = case((Entry.kind == "income", Entry.amount), else_=-Entry.amount)
-    q = (select(func.sum(signed)).select_from(Entry).outerjoin(Category, Entry.category_id == Category.id)
-         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
-                Entry.due_date.between(first, last), _not_investment()))
-    return _d(s.scalar(q))
+    return reports.dre(s, entity_id, [(year, month)]).row("sobra").total
 
 
 def kpis(s: Session, entity_id: int, today: date | None = None) -> Kpis:

@@ -76,6 +76,21 @@ python -m finora
 
 Na primeira execução o banco é criado em `data/finora.db`.
 
+## Licenças (para quem vende)
+
+O app confere a chave **offline**, com assinatura Ed25519: ele só tem a chave pública
+(`src/finora/core/licensing.py`). A chave privada, que emite licenças, fica fora do Git, em
+`%USERPROFILE%\.ignf-finora\license_private.pem` — **guarde uma cópia em lugar seguro**.
+
+```powershell
+python tools/license_tool.py issue --edition plus --name "Maria Silva" --days 365   # chave anual
+python tools/license_tool.py issue --edition pro --name "João Souza"                # sem vencimento
+python tools/license_tool.py check FNR1-XXXXX-...                                    # conferir uma chave
+```
+
+Cada chave emitida fica registrada em `%USERPROFILE%\.ignf-finora\licencas_emitidas.csv`.
+O cliente cola a chave em **Configurações › Sua edição**. Licença vencida volta para a Free sem perder dados.
+
 ## Estrutura do projeto
 
 ```
@@ -89,6 +104,7 @@ IGNF-Finora/
 │   ├── services/         # regras de negócio (saldo, DRE, recorrência)
 │   └── ui/               # janelas, telas e tema (PySide6)
 ├── tests/
+├── tools/                # license_tool.py (emissão de licenças)
 ├── CLAUDE.md             # guia para desenvolvimento assistido
 └── pyproject.toml
 ```
@@ -111,7 +127,7 @@ IGNF-Finora/
 - [x] Contatos: cadastro PF/PJ com CPF/CNPJ validado e papéis
 - [x] Relatórios: DRE pessoal e fluxo de caixa
 - [x] Backup e restauração (manual, restauração segura e automático diário)
-- [ ] Licenciamento Free / Plus / Pro
+- [x] Licenciamento Free / Plus / Pro (chave offline assinada)
 - [ ] Instalador Windows (PyInstaller + Inno Setup)
 
 ## Licença

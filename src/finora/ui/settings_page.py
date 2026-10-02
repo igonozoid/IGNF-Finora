@@ -5,11 +5,13 @@ from pathlib import Path
 from PySide6.QtCore import QStandardPaths, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QMessageBox, QScrollArea, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit, QScrollArea,
+    QVBoxLayout, QWidget,
 )
 
 from finora import __version__
-from finora.core import db, settings
+from finora.core import db, licensing, settings
+from finora.core.license_key import LicenseError
 from finora.core.licensing import allowed, current_edition
 from finora.services import backup
 from finora.services.setup import Profile
@@ -271,17 +273,105 @@ class SettingsPage(QWidget):
     # ---------- edição ----------
     def _edition_section(self) -> QFrame:
         box, lay = _section("Sua edição", "fa6s.key", self.t)
-        ed = current_edition().value.capitalize()
-        lay.addWidget(QLabel(f"Edição {ed}"))
-        lay.addWidget(_muted("Na Free você tem lançamentos, até 3 contas, Dashboard, DRE pessoal, fluxo de caixa "
-                             "e backup. A ativação de licença Plus/Pro chega numa próxima versão."))
+        lic = licensing.current_license()
+        stored = licensing.stored_license()
+        if lic:
+            title = QLabel(f"Edição {lic.edition.capitalize()} · licenciada para {lic.name}")
+            title.setObjectName("sectionTitle")
+            lay.addWidget(title)
+            lay.addWidget(_muted(f"Válida até {lic.expires:%d/%m/%Y}." if lic.expires
+                                 else "Licença sem data de vencimento."))
+        else:
+            lay.addWidget(QLabel("Edição Free"))
+            if stored is not None:   # tinha licença, mas venceu
+                gone = QLabel(f"Sua licença {stored.edition.capitalize()} venceu em {stored.expires:%d/%m/%Y}. "
+                              "Você voltou para a Free; seus dados continuam todos aqui.", wordWrap=True)
+                set_tone(gone, "neg")
+                lay.addWidget(gone)
+            lay.addWidget(_muted("Na Free você tem lançamentos, até 3 contas, Dashboard, DRE pessoal, fluxo de "
+                                 "caixa e backup. Comprou o Plus ou o Pro? Cole abaixo a chave que recebeu."))
+
+        # Ativar / trocar chave
+        self.key_box = QWidget()
+        kl = QVBoxLayout(self.key_box)
+        kl.setContentsMargins(0, 0, 0, 0)
+        kl.setSpacing(6)
+        self.key_edit = QPlainTextEdit(placeholderText="Cole aqui sua chave de licença (começa com FNR1-)")
+        self.key_edit.setFont(theme.mono_font())
+        self.key_edit.setFixedHeight(58)
+        kl.addWidget(self.key_edit)
+        self.key_error = QLabel(wordWrap=True)
+        self.key_error.setProperty("role", "error")
+        self.key_error.hide()
+        kl.addWidget(self.key_error)
+        krow = QHBoxLayout()
+        activate = button("Ativar licença", "primary")
+        from_file = button("Abrir arquivo da chave…", "link", self.t, "fa6s.file-import")
+        krow.addWidget(activate)
+        krow.addWidget(from_file)
+        krow.addStretch(1)
+        kl.addLayout(krow)
+        lay.addWidget(self.key_box)
+        activate.clicked.connect(self._activate)
+        from_file.clicked.connect(self._key_from_file)
+
         row = QHBoxLayout()
-        more = button("Conhecer as edições pagas", "secondary")
-        more.clicked.connect(lambda: show_upgrade(self, "Compare o que cada edição oferece."))
-        row.addWidget(more)
-        row.addStretch(1)
+        if lic:
+            self.key_box.hide()
+            change = button("Trocar chave", "secondary")
+            change.clicked.connect(lambda: (self.key_box.show(), self.key_edit.setFocus()))
+            remove = button("Remover licença", "danger")
+            remove.clicked.connect(self._deactivate)
+            row.addWidget(change)
+            row.addStretch(1)
+            row.addWidget(remove)
+        else:
+            more = button("Conhecer as edições pagas", "secondary")
+            more.clicked.connect(lambda: show_upgrade(self, "Compare o que cada edição oferece."))
+            row.addWidget(more)
+            row.addStretch(1)
         lay.addLayout(row)
         return box
+
+    def _key_from_file(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Abrir chave de licença", self._start_folder(),
+                                              "Chave de licença (*.txt *.lic *.key);;Todos os arquivos (*)")
+        if path:
+            try:
+                self.key_edit.setPlainText(Path(path).read_text(encoding="utf-8", errors="ignore").strip())
+            except OSError as e:
+                self._key_err(f"Não foi possível ler o arquivo: {e}")
+                return
+            self._activate()
+
+    def _key_err(self, msg: str | None):
+        self.key_error.setText(msg or "")
+        self.key_error.setVisible(bool(msg))
+
+    def _activate(self):
+        key = self.key_edit.toPlainText().strip()
+        if not key:
+            self._key_err("Cole a chave que você recebeu por e-mail.")
+            return
+        try:
+            lic = licensing.activate(key)
+        except LicenseError as e:
+            self._key_err(str(e))
+            return
+        self._key_err(None)
+        QMessageBox.information(self, "Licença ativada",
+                                f"Edição {lic.edition.capitalize()} ativada para {lic.name}.\n"
+                                "O IGNF Finora vai reabrir para liberar os recursos.")
+        self.restart_requested.emit()
+
+    def _deactivate(self):
+        if QMessageBox.question(self, "Remover licença",
+                                "Remover a licença deste computador? O app volta para a edição Free "
+                                "(seus dados continuam todos aqui). Guarde a chave para ativar de novo.",
+                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        licensing.deactivate()
+        self.restart_requested.emit()
 
     # ---------- sobre ----------
     def _about_section(self) -> QFrame:

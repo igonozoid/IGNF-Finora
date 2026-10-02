@@ -59,3 +59,11 @@ def get_nav() -> str:
 
 def set_nav(mode: str) -> None:
     _s().setValue("ui/nav", mode)
+
+
+def get_license_key() -> str:
+    return str(_s().value("license/key", ""))
+
+
+def set_license_key(key: str) -> None:
+    _s().setValue("license/key", key)

@@ -232,7 +232,7 @@ def create(s: Session, entity_id: int, d: EntryData) -> list[int]:
     inactive = [a for a in (d.account_id, d.dest_account_id) if a and not s.get(Account, a).is_active]
     if inactive:
         raise ValueError("Essa conta está inativa. Ative-a em Contas para usar em lançamentos novos.")
-    contact_id = None if d.kind == "transfer" else contacts.get_or_create(s, entity_id, d.contact)
+    contact_id = None if d.kind == "transfer" else contacts.get_or_create(s, entity_id, d.contact, d.kind)
     n = 1 if d.repeat == "none" else d.times
     amounts = split(d.amount, n) if d.repeat == "installments" else [d.amount] * n
     series = uuid.uuid4().hex if n > 1 else None
@@ -274,7 +274,7 @@ def update(s: Session, entry_id: int, d: EntryData, scope: str = "one") -> int:
     e = s.get(Entry, entry_id)
     d = replace(d, repeat="none")
     _validate(s, e.entity_id, d)
-    contact_id = None if d.kind == "transfer" else contacts.get_or_create(s, e.entity_id, d.contact)
+    contact_id = None if d.kind == "transfer" else contacts.get_or_create(s, e.entity_id, d.contact, d.kind)
     try:
         targets = [e] + ([x for x in _following(s, e) if x.id != e.id and x.status == "pending"]
                          if scope == "following" else [])

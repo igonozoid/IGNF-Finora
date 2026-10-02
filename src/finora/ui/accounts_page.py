@@ -18,7 +18,9 @@ KIND_ICONS = {
     "card": "fa6s.credit-card",
     "investment": "fa6s.piggy-bank",
 }
-CARD_MIN_W = 240
+CARD_MIN_W = 220
+PANEL_W = 300
+STACK_BELOW = 760   # abaixo dessa largura, o formulário ocupa o lugar dos cartões
 
 
 def _repolish(w: QWidget):
@@ -30,9 +32,10 @@ class AccountCard(QFrame):
     edit = Signal(int)
     toggle = Signal(int, bool)
 
-    def __init__(self, a: accounts.AccountView, t: dict):
+    def __init__(self, a: accounts.AccountView, t: dict, selected: bool = False):
         super().__init__(objectName="card")
         self.setProperty("inactive", not a.is_active)
+        self.setProperty("selected", selected)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(theme.SP_L, 10, theme.SP_L, 10)
@@ -112,12 +115,11 @@ class AccountsPage(QWidget):
         bar.addWidget(self.show_inactive)
         bar.addWidget(self.new_btn)
 
-        # Grade de cartões + formulário, tudo rolando junto
+        # Esquerda: cartões (rolam). Direita: formulário, como nas outras telas.
         self.grid = QGridLayout()
         self.grid.setSpacing(10)
         self.empty_lbl = QLabel("Nenhuma conta para mostrar.")
         self.empty_lbl.setProperty("role", "muted")
-        self.form_slot = QVBoxLayout()
 
         body = QWidget(objectName="pageBody")
         bl = QVBoxLayout(body)
@@ -125,34 +127,49 @@ class AccountsPage(QWidget):
         bl.setSpacing(theme.SP_L)
         bl.addLayout(self.grid)
         bl.addWidget(self.empty_lbl)
-        bl.addLayout(self.form_slot)
         bl.addStretch(1)
         self.scroll = QScrollArea(objectName="pageScroll", widgetResizable=True, frameShape=QFrame.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll.setWidget(body)
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(14, theme.SP_L, 14, theme.SP_L)
-        root.setSpacing(10)
-        root.addLayout(bar)
-        root.addWidget(self.scroll, 1)
+        self.left = QWidget()
+        ll = QVBoxLayout(self.left)
+        ll.setContentsMargins(0, 0, 0, 0)
+        ll.setSpacing(10)
+        ll.addLayout(bar)
+        ll.addWidget(self.scroll, 1)
 
+        self.panel = QWidget(objectName="pageBody")
+        self.form_slot = QVBoxLayout(self.panel)
+        self.form_slot.setContentsMargins(0, 0, 0, 0)
+        self.form_slot.setSpacing(theme.SP_L)
+        self.panel_scroll = QScrollArea(objectName="pageScroll", widgetResizable=True, frameShape=QFrame.NoFrame)
+        self.panel_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.panel_scroll.setWidget(self.panel)
+
+        root = QHBoxLayout(self)
+        root.setContentsMargins(14, theme.SP_L, 14, theme.SP_L)
+        root.setSpacing(theme.SP_L)
+        root.addWidget(self.left, 1)
+        root.addWidget(self.panel_scroll)
+
+        self._open = False   # em tela estreita: o formulário está aberto no lugar dos cartões?
         self._build_form()
         self.show_inactive.toggled.connect(self.refresh)
-        self.new_btn.clicked.connect(self._new)
+        self.new_btn.clicked.connect(lambda: self._new(open_panel=True))
+        self._new()
 
     # ---------- formulário ----------
     def _build_form(self):
         self.form = QFrame(objectName="card")
-        self.form.setMaximumWidth(560)
         fl = QVBoxLayout(self.form)
         fl.setContentsMargins(theme.SP_L, theme.SP_L, theme.SP_L, theme.SP_L)
         fl.setSpacing(theme.SP_M)
         self.form_title = QLabel(objectName="sectionTitle")
         fl.addWidget(self.form_title)
 
-        g = QGridLayout()
-        g.setHorizontalSpacing(theme.SP_M)
-        g.setVerticalSpacing(3)
+        g = QVBoxLayout()
+        g.setSpacing(3)
         self.name_edit = QLineEdit(maxLength=80, placeholderText="Ex.: Nubank, Carteira")
         self.kind_box = QComboBox()
         for code, label in accounts.KINDS.items():
@@ -164,17 +181,16 @@ class AccountsPage(QWidget):
         self.balance_edit.setFont(theme.mono_font())
         self.balance_edit.setAlignment(Qt.AlignRight)
 
-        g.addWidget(field_label("Nome", self.t), 0, 0)
-        g.addWidget(self.name_edit, 1, 0)
-        g.addWidget(field_label("Tipo", self.t), 0, 1)
-        g.addWidget(self.kind_box, 1, 1)
         self.currency_lbl = field_label("Moeda", self.t)
-        g.addWidget(self.currency_lbl, 2, 0)
-        g.addWidget(self.currency_box, 3, 0)
         self.balance_lbl = field_label("Saldo inicial", self.t, "")
-        g.addWidget(self.balance_lbl, 2, 1)
-        g.addWidget(self.balance_edit, 3, 1)
-        g.setRowMinimumHeight(2, 20)
+        for i, (lbl, w) in enumerate(((field_label("Nome", self.t), self.name_edit),
+                                      (field_label("Tipo", self.t), self.kind_box),
+                                      (self.currency_lbl, self.currency_box),
+                                      (self.balance_lbl, self.balance_edit))):
+            if i:
+                g.addSpacing(theme.SP_S + 2)
+            g.addWidget(lbl)
+            g.addWidget(w)
         fl.addLayout(g)
 
         if not accounts.multi_currency():
@@ -198,17 +214,18 @@ class AccountsPage(QWidget):
 
         self.kind_box.currentIndexChanged.connect(self._kind_changed)
         self.save_btn.clicked.connect(self._save)
-        self.cancel_btn.clicked.connect(self._new)
+        self.cancel_btn.clicked.connect(self._cancel)
         for e in (self.name_edit, self.balance_edit):
             e.returnPressed.connect(self._save)
         self.balance_edit.textChanged.connect(lambda: self._mark_invalid(False))
 
-        self.form_slot.addWidget(self.form, 0, Qt.AlignLeft)
+        self.form_slot.addWidget(self.form)
         self.lock = upgrade_box(f"Na edição Free você pode ter até {accounts.limit()} contas ativas. "
-                                "Inative uma conta ou faça upgrade para ter contas ilimitadas.", self.t, self)
-        self.lock.setMaximumWidth(560)
+                                "Inative uma conta ou faça upgrade para ter contas ilimitadas.", self.t, self,
+                                compact=True)
         self.lock.hide()
-        self.form_slot.addWidget(self.lock, 0, Qt.AlignLeft)
+        self.form_slot.addWidget(self.lock)
+        self.form_slot.addStretch(1)
 
     def _kind_changed(self):
         if self.kind_box.currentData() == "card":
@@ -232,20 +249,40 @@ class AccountsPage(QWidget):
     def _set_currency(self, code: str):
         self.currency_box.setCurrentIndex(max(0, self.currency_box.findData(code)))
 
-    def _new(self):
+    # ---------- painel: lado a lado, ou no lugar dos cartões em tela estreita ----------
+    def _narrow(self) -> bool:
+        return self.width() < STACK_BELOW
+
+    def _arrange(self):
+        narrow = self._narrow()
+        self.panel_scroll.setVisible(not narrow or self._open)
+        self.left.setVisible(not (narrow and self._open))
+        self.panel_scroll.setFixedWidth(max(PANEL_W, self.width() - 28) if narrow else PANEL_W)
+        self.cancel_btn.setVisible(narrow or self.editing is not None)
+
+    def _cancel(self):
+        self._open = False
+        was_editing = self.editing is not None
+        self._new()
+        if was_editing:
+            self._layout_cards(force=True)   # tira o destaque do cartão
+
+    def _new(self, open_panel: bool = False):
         self.editing = None
         self.form_title.setText("Nova conta")
         self.name_edit.clear()
         self.kind_box.setCurrentIndex(0)
         self._set_currency(self.profile.currency)
         self.balance_edit.setText("0,00")
-        self.cancel_btn.hide()
         self._error(None)
         self._mark_invalid(False)
         self._update_lock()
-        if self.form.isVisible():
+        if open_panel:
+            self._open = True
+            self._layout_cards(force=True)
+        self._arrange()
+        if open_panel and self.form.isVisible():
             self.name_edit.setFocus()
-            self.scroll.ensureWidgetVisible(self.form)
 
     def _edit(self, account_id: int):
         a = next((x for x in self._items if x.id == account_id), None)
@@ -258,12 +295,13 @@ class AccountsPage(QWidget):
         self._set_currency(a.currency)
         ob = abs(a.opening_balance) if a.kind == "card" else a.opening_balance
         self.balance_edit.setText(money.fmt(ob, a.currency).replace(money.symbol(a.currency) + " ", ""))
-        self.cancel_btn.show()
         self._error(None)
         self._update_lock()
+        self._open = True
+        self._arrange()
+        self._layout_cards(force=True)   # destaca o cartão em edição
         self.name_edit.setFocus()
         self.name_edit.selectAll()
-        self.scroll.ensureWidgetVisible(self.form)
 
     def _update_lock(self):
         """Na Free, com o limite atingido, o formulário de nova conta vira um convite para upgrade."""
@@ -296,8 +334,9 @@ class AccountsPage(QWidget):
             self._error(str(e))
             return
         self.message.emit(msg)
-        self.refresh()
+        self._open = False
         self._new()
+        self.refresh()
 
     # ---------- lista ----------
     def _toggle(self, account_id: int, active: bool):
@@ -314,6 +353,7 @@ class AccountsPage(QWidget):
             hint = "" if self.show_inactive.isChecked() else " Para vê-la, marque \"Mostrar inativas\"."
             self.message.emit(f"Conta \"{a.name}\" inativada.{hint}")
         if self.editing and self.editing.id == account_id:
+            self._open = False
             self._new()
         self.refresh()
 
@@ -324,14 +364,14 @@ class AccountsPage(QWidget):
         self.total_lbl.setText(f"Saldo total ({len(active)} {'conta' if len(active) == 1 else 'contas'})")
         self.total_val.setText(money.fmt(accounts.total_balance(self._items), self.profile.currency))
         self.total_lbl.setToolTip("Soma dos saldos das contas ativas. Cartões entram negativos (o que você deve).")
-        self._cols = 0
-        self._layout_cards()
+        self._layout_cards(force=True)
         if self.editing is None:
             self._update_lock()
+        self._arrange()
 
-    def _layout_cards(self):
+    def _layout_cards(self, force: bool = False):
         cols = max(1, (self.scroll.viewport().width() + 10) // (CARD_MIN_W + 10))
-        if cols == self._cols and self.grid.count() == len(self._items):
+        if not force and cols == self._cols and self.grid.count() == len(self._items):
             return
         self._cols = cols
         while self.grid.count():
@@ -341,8 +381,9 @@ class AccountsPage(QWidget):
                 w.deleteLater()
         for c in range(cols):
             self.grid.setColumnStretch(c, 1)
+        editing_id = self.editing.id if self.editing else None
         for i, a in enumerate(self._items):
-            card = AccountCard(a, self.t)
+            card = AccountCard(a, self.t, selected=a.id == editing_id)
             card.edit.connect(self._edit)
             card.toggle.connect(self._toggle)
             self.grid.addWidget(card, i // cols, i % cols)
@@ -350,6 +391,7 @@ class AccountsPage(QWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
+        self._arrange()
         self._layout_cards()
 
     def apply_theme(self, t: dict):

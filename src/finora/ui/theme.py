@@ -153,6 +153,7 @@ QTreeWidget::item {{ height: {ROW_H}px; }}
 QScrollArea#pageScroll, QWidget#pageBody {{ background: transparent; }}
 QFrame#card {{ background: {t['panel']}; border: 1px solid {t['line']}; border-radius: 4px; }}
 QFrame#card[inactive="true"] QLabel {{ color: {t['mut']}; }}
+QFrame#card[selected="true"] {{ border: 1px solid {t['acc']}; }}
 QLabel#cardTitle, QLabel#sectionTitle {{ font-weight: 600; }}
 QLabel[role="badge"] {{ border: 1px solid {t['line']}; border-radius: 3px; padding: 0 5px; color: {t['mut']}; font-size: 8pt; }}
 QLabel[role="total"] {{ font-weight: 600; }}

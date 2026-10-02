@@ -1,6 +1,8 @@
 """Pequenos widgets reutilizáveis."""
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QAbstractButton, QFrame, QLabel, QHBoxLayout, QMessageBox, QPushButton, QWidget
+from PySide6.QtWidgets import (
+    QAbstractButton, QFrame, QLabel, QHBoxLayout, QMessageBox, QPushButton, QVBoxLayout, QWidget,
+)
 import qtawesome as qta
 
 from finora.ui.theme import SP_M, SP_S
@@ -92,17 +94,27 @@ def show_upgrade(parent, reason: str) -> None:
     QMessageBox.information(parent, "Recurso das edições pagas", f"{reason}\n\n{UPGRADE_TEXT}")
 
 
-def upgrade_box(reason: str, t: dict, parent=None) -> QFrame:
-    """Aviso de limite da edição Free, com cadeado e convite para upgrade."""
+def upgrade_box(reason: str, t: dict, parent=None, compact: bool = False) -> QFrame:
+    """Aviso de limite da edição Free, com cadeado e convite para upgrade.
+    `compact`: botão embaixo do texto, para painéis estreitos."""
     box = QFrame(objectName="lockBox")
-    lay = QHBoxLayout(box)
-    lay.setContentsMargins(SP_M + 2, SP_M, SP_M + 2, SP_M)
+    outer = QVBoxLayout(box)
+    outer.setContentsMargins(SP_M + 2, SP_M, SP_M + 2, SP_M)
+    outer.setSpacing(SP_M)
+    lay = QHBoxLayout()
     lay.setSpacing(SP_M)
     icon = icon_label("fa6s.lock", t, "acc", 14)
     text = QLabel(reason, wordWrap=True)
     more = button("Conhecer o Plus", "secondary")
     more.clicked.connect(lambda: show_upgrade(parent or box, reason))
-    lay.addWidget(icon)
+    lay.addWidget(icon, 0, Qt.AlignTop if compact else Qt.AlignVCenter)
     lay.addWidget(text, 1)
-    lay.addWidget(more)
+    outer.addLayout(lay)
+    if compact:
+        row = QHBoxLayout()
+        row.addStretch(1)
+        row.addWidget(more)
+        outer.addLayout(row)
+    else:
+        lay.addWidget(more)
     return box

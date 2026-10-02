@@ -22,3 +22,28 @@ def get_geometry():
 
 def set_geometry(data) -> None:
     _s().setValue("ui/geometry", data)
+
+
+def get_auto_backup() -> bool:
+    return _s().value("backup/auto", True, type=bool)
+
+
+def set_auto_backup(on: bool) -> None:
+    _s().setValue("backup/auto", on)
+
+
+def get_backup_folder() -> str:
+    return str(_s().value("backup/folder", ""))
+
+
+def set_backup_folder(path: str) -> None:
+    _s().setValue("backup/folder", path)
+
+
+def get_last_backup() -> str:
+    """Data/hora (ISO) do último backup manual."""
+    return str(_s().value("backup/last", ""))
+
+
+def set_last_backup(iso: str) -> None:
+    _s().setValue("backup/last", iso)

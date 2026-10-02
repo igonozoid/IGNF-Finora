@@ -5,7 +5,9 @@ from finora.models.base import Base
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 DATA_DIR.mkdir(exist_ok=True)
-engine = create_engine(f"sqlite:///{DATA_DIR / 'finora.db'}", future=True)
+DB_FILE = DATA_DIR / "finora.db"
+BACKUP_DIR = DATA_DIR / "backups"   # backups automáticos e cópias de segurança antes de restaurar
+engine = create_engine(f"sqlite:///{DB_FILE}", future=True)
 Session = sessionmaker(engine)
 
 def init_db():

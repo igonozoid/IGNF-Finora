@@ -1,2 +1,0 @@
-[console_scripts]
-finora = finora.__main__:main

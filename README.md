@@ -104,9 +104,11 @@ IGNF-Finora/
 
 - [x] Estrutura do projeto e banco local
 - [x] Janela principal: menu lateral, tema claro/escuro
-- [ ] Cadastros: contas, categorias (com padrão), contatos
-- [x] Lançamentos com recorrência e parcelamento
+- [x] Primeiro uso: assistente com 1ª conta e categorias padrão
+- [x] Cadastros: contas e categorias (árvore da DRE, ativar/inativar)
+- [x] Lançamentos com recorrência, parcelamento e transferência
 - [x] Dashboard
+- [ ] Contatos (tela de cadastro; hoje são criados pelo lançamento)
 - [ ] Relatórios: DRE pessoal e fluxo de caixa
 - [ ] Backup e restauração
 - [ ] Licenciamento Free / Plus / Pro

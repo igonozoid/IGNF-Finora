@@ -55,7 +55,7 @@ def _panel(title: str, t: dict, icon: str | None = None, icon_key: str = "acc") 
     return box, lay, head
 
 
-def _nice_top(value: float, ticks: int = 4) -> float:
+def nice_top(value: float, ticks: int = 4) -> float:
     """Topo "redondo" do eixo, para as marcas ficarem 0, 2.500, 5.000… em vez de 0, 2.221, 4.441…"""
     raw = value / ticks
     mag = 10 ** math.floor(math.log10(raw))
@@ -148,7 +148,7 @@ class FlowChart(QChartView):
         ax.append([SHORT[f.month - 1] for f in flow])
         ay = QValueAxis()
         top = max([float(f.income) for f in flow] + [float(f.expense) for f in flow] + [1.0])
-        ay.setRange(0, _nice_top(top))
+        ay.setRange(0, nice_top(top))
         ay.setTickCount(5)
         ay.setLabelFormat("%.0f")
         for axis in (ax, ay):

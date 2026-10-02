@@ -20,6 +20,7 @@ from finora.ui.categories_page import CategoriesPage
 from finora.ui.dashboard_page import DashboardPage
 from finora.ui.entries_page import MONTHS, EntriesPage
 from finora.ui.pages import PlaceholderPage
+from finora.ui.reports_page import ReportsPage
 from finora.ui.widgets import retheme
 
 # (ícone, rótulo, subtítulo do cabeçalho, texto da tela vazia)
@@ -150,6 +151,7 @@ class MainWindow(QMainWindow):
         self.pages[1] = EntriesPage(profile, t)
         self.pages[2] = AccountsPage(profile, t)
         self.pages[3] = CategoriesPage(profile, t)
+        self.pages[5] = ReportsPage(profile, t)
         for p in self.pages:
             self.stack.addWidget(p)
             if hasattr(p, "message"):

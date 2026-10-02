@@ -109,7 +109,7 @@ IGNF-Finora/
 - [x] Lançamentos com recorrência, parcelamento e transferência
 - [x] Dashboard
 - [ ] Contatos (tela de cadastro; hoje são criados pelo lançamento)
-- [ ] Relatórios: DRE pessoal e fluxo de caixa
+- [x] Relatórios: DRE pessoal e fluxo de caixa
 - [ ] Backup e restauração
 - [ ] Licenciamento Free / Plus / Pro
 - [ ] Instalador Windows (PyInstaller + Inno Setup)

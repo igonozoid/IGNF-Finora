@@ -45,8 +45,7 @@ def _not_investment():
 
 
 def month_result(s: Session, entity_id: int, year: int, month: int) -> Decimal:
-    """Sobra do mês: a mesma linha "= Sobra do mês" da DRE pessoal (competência), para nunca divergir.
-    sem contar o que foi para Investimentos/Reserva."""
+    """Sobra do mês: a mesma linha "= Sobra do mês" da DRE pessoal (competência), para nunca divergir."""
     return reports.dre(s, entity_id, [(year, month)]).row("sobra").total
 
 

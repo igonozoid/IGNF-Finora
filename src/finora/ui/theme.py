@@ -201,6 +201,17 @@ QPushButton[variant="icon"] {{ border: 1px solid {t['line']}; border-radius: 4px
 QPushButton[variant="icon"]:hover {{ border-color: {t['mut']}; }}
 QLabel#monthLabel {{ font-weight: 600; padding: 0 4px; }}
 
+QPushButton[variant="chip"] {{
+    border: 1px solid {t['line']}; border-radius: 3px; padding: 2px 8px; background: transparent; color: {t['fg']};
+}}
+QPushButton[variant="chip"]:hover {{ border-color: {t['mut']}; }}
+QPushButton[variant="chip"]:checked {{ background: {t['acc']}; color: {t['on_acc']}; border-color: {t['acc']}; }}
+QLabel#avatar {{ background: {t['line']}; border-radius: 14px; font-weight: 600; font-size: 8pt; }}
+QListWidget#contactList {{ background: {t['bg']}; border: 1px solid {t['line']}; border-radius: 4px; outline: 0; }}
+QListWidget#contactList::item {{ border-bottom: 1px solid {t['line']}; }}
+QListWidget#contactList::item:selected {{ background: {t['panel']}; border-left: 2px solid {t['acc']}; }}
+QListWidget#contactList::item:hover:!selected {{ background: {t['panel']}; }}
+
 /* Tabela */
 QTableView {{
     background: {t['bg']}; border: 1px solid {t['line']}; border-radius: 4px; outline: 0;

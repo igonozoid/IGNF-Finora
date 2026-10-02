@@ -108,7 +108,7 @@ IGNF-Finora/
 - [x] Cadastros: contas e categorias (árvore da DRE, ativar/inativar)
 - [x] Lançamentos com recorrência, parcelamento e transferência
 - [x] Dashboard
-- [ ] Contatos (tela de cadastro; hoje são criados pelo lançamento)
+- [x] Contatos: cadastro PF/PJ com CPF/CNPJ validado e papéis
 - [x] Relatórios: DRE pessoal e fluxo de caixa
 - [ ] Backup e restauração
 - [ ] Licenciamento Free / Plus / Pro

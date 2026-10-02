@@ -17,6 +17,7 @@ from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.accounts_page import AccountsPage
 from finora.ui.categories_page import CategoriesPage
+from finora.ui.contacts_page import ContactsPage
 from finora.ui.dashboard_page import DashboardPage
 from finora.ui.entries_page import MONTHS, EntriesPage
 from finora.ui.pages import PlaceholderPage
@@ -151,6 +152,7 @@ class MainWindow(QMainWindow):
         self.pages[1] = EntriesPage(profile, t)
         self.pages[2] = AccountsPage(profile, t)
         self.pages[3] = CategoriesPage(profile, t)
+        self.pages[4] = ContactsPage(profile, t)
         self.pages[5] = ReportsPage(profile, t)
         for p in self.pages:
             self.stack.addWidget(p)

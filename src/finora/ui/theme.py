@@ -102,6 +102,19 @@ QPushButton#themeToggle {{
     border-radius: 0; color: {t['mut']}; background: transparent;
 }}
 QPushButton#themeToggle:hover {{ color: {t['fg']}; }}
+QWidget#sidebar[mode="rail"] QPushButton#navItem {{ text-align: center; padding: 8px 0; }}
+QWidget#sidebar[mode="rail"] QPushButton#navItem:checked {{ padding-left: 0; }}
+QWidget#sidebar[mode="rail"] QPushButton#themeToggle {{ text-align: center; padding: 8px 0; }}
+
+/* Abas no topo */
+QFrame#tabBar {{ background: {t['panel']}; border-bottom: 1px solid {t['line']}; }}
+QFrame#tabChip {{ border-right: 1px solid {t['line']}; }}
+QPushButton#tabItem {{
+    border: none; border-radius: 0; padding: 7px 9px; background: transparent; color: {t['mut']};
+}}
+QPushButton#tabItem:hover {{ color: {t['fg']}; }}
+QPushButton#tabItem:checked {{ color: {t['fg']}; font-weight: 600; border-bottom: 2px solid {t['acc']}; }}
+QPushButton#tabTool {{ border: none; background: transparent; padding: 7px; }}
 
 /* Cabeçalho da página */
 QFrame#header {{ background: {t['bg']}; border-bottom: 1px solid {t['line']}; }}

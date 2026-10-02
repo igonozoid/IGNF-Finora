@@ -50,6 +50,7 @@ def _open_folder(path: Path):
 class SettingsPage(QWidget):
     message = Signal(str)
     theme_requested = Signal(str)
+    nav_requested = Signal(str)
     restart_requested = Signal()
 
     def __init__(self, profile: Profile, t: dict, parent=None):
@@ -242,7 +243,27 @@ class SettingsPage(QWidget):
         row.addStretch(1)
         lay.addLayout(row)
         self.theme_box.activated.connect(lambda i: self.theme_requested.emit(self.theme_box.itemData(i)))
+
+        nav = QHBoxLayout()
+        lbl = QLabel("Menu")
+        lbl.setMinimumWidth(QLabel("Tema").sizeHint().width())
+        nav.addWidget(lbl)
+        self.nav_box = QComboBox()
+        for k, label in settings.NAV_MODES.items():
+            self.nav_box.addItem(label, k)
+        self.nav_box.setMinimumWidth(140)
+        nav.addWidget(self.nav_box)
+        nav.addWidget(help_icon("Como as seções do app aparecem:\n"
+                                "Barra lateral: ícone e nome à esquerda.\n"
+                                "Só ícones: barra fina à esquerda, sobra mais espaço (bom para telas pequenas).\n"
+                                "Abas no topo: as seções ficam em abas abaixo do título.", self.t))
+        nav.addStretch(1)
+        lay.addLayout(nav)
+        self.nav_box.activated.connect(lambda i: self.nav_requested.emit(self.nav_box.itemData(i)))
         return box
+
+    def set_nav_name(self, mode: str):
+        self.nav_box.setCurrentIndex(max(0, self.nav_box.findData(mode)))
 
     def set_theme_name(self, name: str):
         self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(name)))

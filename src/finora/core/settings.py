@@ -47,3 +47,15 @@ def get_last_backup() -> str:
 
 def set_last_backup(iso: str) -> None:
     _s().setValue("backup/last", iso)
+
+
+NAV_MODES = {"sidebar": "Barra lateral", "rail": "Só ícones", "tabs": "Abas no topo"}
+
+
+def get_nav() -> str:
+    mode = str(_s().value("ui/nav", "sidebar"))
+    return mode if mode in NAV_MODES else "sidebar"
+
+
+def set_nav(mode: str) -> None:
+    _s().setValue("ui/nav", mode)

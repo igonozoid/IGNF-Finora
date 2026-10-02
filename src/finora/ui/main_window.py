@@ -48,11 +48,14 @@ SHOW_NEW_ENTRY = {0, 1, 2}  # Dashboard, Lançamentos, Contas
 
 
 class Sidebar(QWidget):
+    """Menu à esquerda. Modo 'sidebar' (ícone + nome, 200px) ou 'rail' (só ícones, 52px)."""
+
     def __init__(self, profile: Profile, parent=None):
         super().__init__(parent)
         self.setObjectName("sidebar")
         self.setAttribute(Qt.WA_StyledBackground)
         self.setFixedWidth(200)
+        self.mode = "sidebar"
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(theme.SP_M, 10, theme.SP_M, 0)
@@ -63,7 +66,10 @@ class Sidebar(QWidget):
         bl.setContentsMargins(theme.SP_M, theme.SP_M, theme.SP_M, theme.SP_M)
         bl.setSpacing(theme.SP_M)
         self._brand_icon = QLabel()
-        names = QVBoxLayout()
+        self._brand_icon.setToolTip(f"{profile.name} · Pessoal · {profile.currency}")
+        self._names = QWidget()
+        names = QVBoxLayout(self._names)
+        names.setContentsMargins(0, 0, 0, 0)
         names.setSpacing(0)
         name = QLabel(profile.name, objectName="brandName")
         name.setMinimumWidth(1)  # nome longo é cortado, não alarga o menu
@@ -73,7 +79,8 @@ class Sidebar(QWidget):
         sub.setToolTip(f"Moeda principal: {CURRENCIES[profile.currency][1]}")
         names.addWidget(sub)
         bl.addWidget(self._brand_icon)
-        bl.addLayout(names, 1)
+        bl.addWidget(self._names, 1)
+        self._brand_layout = bl
         lay.addWidget(brand)
         lay.addSpacing(10)
 
@@ -94,7 +101,7 @@ class Sidebar(QWidget):
             b.setIconSize(QSize(14, 14))
             b.setToolTip(f"{label} (Ctrl+{i + 1})")
             self.group.addButton(b, i)
-            self.buttons.append((b, icon))
+            self.buttons.append((b, icon, label))
             nl.addWidget(b)
         nl.addStretch(1)
         lay.addWidget(scroll, 1)
@@ -103,15 +110,88 @@ class Sidebar(QWidget):
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.setIconSize(QSize(14, 14))
         lay.addWidget(self.theme_btn)
+        self._lay = lay
+        self._dark = False
+
+    def set_mode(self, mode: str):
+        self.mode = mode
+        rail = mode == "rail"
+        self.setProperty("mode", mode)
+        self.setFixedWidth(52 if rail else 200)
+        self._lay.setContentsMargins(*((6, 10, 6, 0) if rail else (theme.SP_M, 10, theme.SP_M, 0)))
+        self._names.setVisible(not rail)
+        self._brand_layout.setContentsMargins(*((0, 6, 0, 6) if rail else (theme.SP_M,) * 4))
+        self._brand_layout.setAlignment(self._brand_icon, Qt.AlignCenter if rail else Qt.AlignLeft)
+        for b, _icon, label in self.buttons:
+            b.setText("" if rail else label)
+        self._theme_text()
+        for w in [self] + self.findChildren(QPushButton):
+            w.style().unpolish(w)
+            w.style().polish(w)
+
+    def _theme_text(self):
+        self.theme_btn.setText("" if self.mode == "rail" else ("Tema claro" if self._dark else "Tema escuro"))
 
     def apply_theme(self, name: str, t: dict):
         self._brand_icon.setPixmap(qta.icon("fa6s.coins", color=t["acc"]).pixmap(QSize(16, 16)))
-        for b, icon in self.buttons:
+        for b, icon, _label in self.buttons:
             b.setIcon(qta.icon(icon, color=t["mut"], color_active=t["fg"], color_on=t["fg"]))
-        dark = name == "dark"
-        self.theme_btn.setText("Tema claro" if dark else "Tema escuro")
+        dark = self._dark = name == "dark"
+        self._theme_text()
         self.theme_btn.setIcon(qta.icon("fa6s.sun" if dark else "fa6s.moon", color=t["mut"], color_active=t["fg"]))
         self.theme_btn.setToolTip("Alternar entre tema claro e escuro (Ctrl+T)")
+
+
+class TopTabs(QFrame):
+    """Menu em abas abaixo do cabeçalho (modo 'tabs' do mockup)."""
+
+    def __init__(self, profile: Profile, parent=None):
+        super().__init__(parent)
+        self.setObjectName("tabBar")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(10, 0, 10, 0)
+        lay.setSpacing(0)
+        chip = QFrame(objectName="tabChip")
+        cl = QHBoxLayout(chip)
+        cl.setContentsMargins(2, 0, 10, 0)
+        cl.setSpacing(6)
+        self._chip_icon = QLabel()
+        name = QLabel(profile.name, objectName="brandName")
+        name.setToolTip(f"{profile.name} · Pessoal · {profile.currency}")
+        cl.addWidget(self._chip_icon)
+        cl.addWidget(name)
+        lay.addWidget(chip)
+        lay.addSpacing(4)
+        self.group = QButtonGroup(self, exclusive=True)
+        self.buttons = []
+        for i, (icon, label, *_rest) in enumerate(NAV):
+            b = QPushButton(label, objectName="tabItem", checkable=True)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setIconSize(QSize(11, 11))
+            b.setToolTip(f"{label} (Ctrl+{i + 1})")
+            self.group.addButton(b, i)
+            self.buttons.append((b, icon, label))
+            lay.addWidget(b)
+        lay.addStretch(1)
+        self.theme_btn = QPushButton(objectName="tabTool")
+        self.theme_btn.setCursor(Qt.PointingHandCursor)
+        self.theme_btn.setToolTip("Alternar entre tema claro e escuro (Ctrl+T)")
+        lay.addWidget(self.theme_btn)
+
+    def apply_theme(self, name: str, t: dict):
+        self._chip_icon.setPixmap(qta.icon("fa6s.coins", color=t["acc"]).pixmap(QSize(14, 14)))
+        for b, icon, _label in self.buttons:
+            b.setIcon(qta.icon(icon, color=t["mut"], color_active=t["fg"], color_on=t["fg"]))
+        self.theme_btn.setIcon(qta.icon("fa6s.sun" if name == "dark" else "fa6s.moon",
+                                        color=t["mut"], color_active=t["fg"]))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        # Se as abas não cabem com nome, ficam só com ícone (o nome continua na dica).
+        full = sum(b.fontMetrics().horizontalAdvance(label) + 40 for b, _i, label in self.buttons) + 240
+        compact = self.width() < full
+        for b, _icon, label in self.buttons:
+            b.setText("" if compact else label)
 
 
 class Header(QFrame):
@@ -149,6 +229,7 @@ class MainWindow(QMainWindow):
 
         self.sidebar = Sidebar(profile)
         self.header = Header()
+        self.tabs = TopTabs(profile)
         self.stack = QStackedWidget()
         t = theme.tokens(settings.get_theme(theme.DEFAULT_THEME))
         self.pages = [PlaceholderPage(icon, label, text) for icon, label, _sub, text in NAV]
@@ -161,6 +242,7 @@ class MainWindow(QMainWindow):
         self.pages[6] = SettingsPage(profile, t)
         self.pages[6].theme_requested.connect(self.set_theme)
         self.pages[6].restart_requested.connect(self.restart)
+        self.pages[6].nav_requested.connect(self.set_nav)
         for p in self.pages:
             self.stack.addWidget(p)
             if hasattr(p, "message"):
@@ -171,6 +253,7 @@ class MainWindow(QMainWindow):
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(0)
         rl.addWidget(self.header)
+        rl.addWidget(self.tabs)
         rl.addWidget(self.stack, 1)
 
         central = QWidget()
@@ -184,6 +267,8 @@ class MainWindow(QMainWindow):
         self._build_statusbar()
 
         self.sidebar.group.idClicked.connect(self.go_to)
+        self.tabs.group.idClicked.connect(self.go_to)
+        self.tabs.theme_btn.clicked.connect(self.toggle_theme)
         self.pages[0].open_entry.connect(self.open_entry)
         self.sidebar.theme_btn.clicked.connect(self.toggle_theme)
         self.header.new_btn.clicked.connect(self.new_entry)
@@ -194,6 +279,7 @@ class MainWindow(QMainWindow):
 
         self.theme_name = settings.get_theme(theme.DEFAULT_THEME)
         self.apply_theme(self.theme_name)
+        self.apply_nav(settings.get_nav())
         self.go_to(0)
 
     def _fit_to_screen(self):
@@ -223,6 +309,7 @@ class MainWindow(QMainWindow):
             page.refresh()
         self.stack.setCurrentIndex(index)
         self.sidebar.group.button(index).setChecked(True)
+        self.tabs.group.button(index).setChecked(True)
         self.header.title.setText(label)
         if index == 0:
             subtitle = f"Visão geral de {MONTHS[date.today().month - 1]}"
@@ -243,11 +330,25 @@ class MainWindow(QMainWindow):
         t = theme.apply(QApplication.instance(), name)
         self.setWindowIcon(qta.icon("fa6s.coins", color=t["acc"]))
         self.sidebar.apply_theme(name, t)
+        self.tabs.apply_theme(name, t)
         self.header.apply_theme(t)
         for p in self.pages:
             p.apply_theme(t)
         retheme(self, t)
         self.pages[6].set_theme_name(name)
+
+    def apply_nav(self, mode: str):
+        """Barra lateral, só ícones (trilho) ou abas no topo — as 3 opções do mockup."""
+        self.nav_mode = mode
+        self.sidebar.setVisible(mode != "tabs")
+        self.sidebar.set_mode("rail" if mode == "rail" else "sidebar")
+        self.tabs.setVisible(mode == "tabs")
+        self.pages[6].set_nav_name(mode)
+
+    def set_nav(self, mode: str):
+        self.apply_nav(mode)
+        settings.set_nav(mode)
+        self.statusBar().showMessage(f"Menu: {settings.NAV_MODES[mode]}", 2500)
 
     def toggle_theme(self):
         self.set_theme("light" if self.theme_name == "dark" else "dark")

@@ -1,6 +1,7 @@
+import sys
 from datetime import date
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import QProcess, Qt, QSize
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QButtonGroup,
@@ -22,6 +23,7 @@ from finora.ui.dashboard_page import DashboardPage
 from finora.ui.entries_page import MONTHS, EntriesPage
 from finora.ui.pages import PlaceholderPage
 from finora.ui.reports_page import ReportsPage
+from finora.ui.settings_page import SettingsPage
 from finora.ui.widgets import retheme
 
 # (ícone, rótulo, subtítulo do cabeçalho, texto da tela vazia)
@@ -154,6 +156,9 @@ class MainWindow(QMainWindow):
         self.pages[3] = CategoriesPage(profile, t)
         self.pages[4] = ContactsPage(profile, t)
         self.pages[5] = ReportsPage(profile, t)
+        self.pages[6] = SettingsPage(profile, t)
+        self.pages[6].theme_requested.connect(self.set_theme)
+        self.pages[6].restart_requested.connect(self.restart)
         for p in self.pages:
             self.stack.addWidget(p)
             if hasattr(p, "message"):
@@ -238,12 +243,24 @@ class MainWindow(QMainWindow):
         for p in self.pages:
             p.apply_theme(t)
         retheme(self, t)
+        self.pages[6].set_theme_name(name)
 
     def toggle_theme(self):
-        name = "light" if self.theme_name == "dark" else "dark"
+        self.set_theme("light" if self.theme_name == "dark" else "dark")
+
+    def set_theme(self, name: str):
         self.apply_theme(name)
         settings.set_theme(name)
         self.statusBar().showMessage("Tema claro ativado" if name == "light" else "Tema escuro ativado", 2500)
+
+    def restart(self):
+        """Reabre o app (usado depois de restaurar um backup)."""
+        if getattr(sys, "frozen", False):          # executável do instalador
+            QProcess.startDetached(sys.executable, sys.argv[1:])
+        else:
+            QProcess.startDetached(sys.executable, ["-m", "finora"])
+        self.close()
+        QApplication.instance().quit()
 
     def closeEvent(self, event):
         settings.set_geometry(self.saveGeometry())

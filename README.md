@@ -110,7 +110,7 @@ IGNF-Finora/
 - [x] Dashboard
 - [x] Contatos: cadastro PF/PJ com CPF/CNPJ validado e papéis
 - [x] Relatórios: DRE pessoal e fluxo de caixa
-- [ ] Backup e restauração
+- [x] Backup e restauração (manual, restauração segura e automático diário)
 - [ ] Licenciamento Free / Plus / Pro
 - [ ] Instalador Windows (PyInstaller + Inno Setup)
 

@@ -18,6 +18,7 @@ Referência visual: mockup "App Financeiro" (exportado em `docs/mockup/`). Siga-
 1. MainWindow: barra lateral (Dashboard, Lançamentos, Contas, Categorias, Contatos, Relatórios, Configurações), QStackedWidget, alternância de tema persistida (QSettings), barra de status.
 2. Primeiro uso: assistente (nome, moeda, 1ª conta, categorias padrão).
 3. Contas e Categorias (árvore com grupo da DRE, ativar/inativar).
+3b. Contatos: lista com busca, cadastro PF/PJ (nome, CPF/CNPJ, papéis), editar; os criados pelo lançamento aparecem aqui. Autopreencher CPF/CNPJ é Pro (cadeado).
 4. Lançamentos: tabela filtrável (Todos/A receber/A pagar/Atrasados/Pagos), formulário lateral, recorrência, parcelamento, transferência.
 5. Dashboard: 4 cards, gráfico 6 meses (QtCharts), vencimentos 7 dias, top categorias.
 6. Relatórios: DRE pessoal (Receitas, Despesas fixas, variáveis, Investimentos, Resultado), fluxo de caixa.

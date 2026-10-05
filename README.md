@@ -19,10 +19,11 @@ Desktop · Offline · Seus dados ficam no seu computador.
 
 O **IGNF Finora** é um aplicativo desktop para quem quer organizar o próprio dinheiro sem precisar entender de contabilidade. Linguagem simples, ajuda contextual em cada tela (ícone **?**) e relatórios no padrão de mercado — incluindo uma **DRE pessoal** que mostra, mês a mês, quanto entrou, quanto saiu e quanto sobrou.
 
-- 🔒 **100% local** — banco SQLite na pasta do app, sem servidor, sem cadastro online
+- 🔒 **Local por padrão** — banco SQLite na pasta do app, sem servidor, sem cadastro online
+- 🖧 **Rede local nas edições pagas** — vários PCs usando os mesmos dados, cada um com seu login
 - 🌗 **Tema claro e escuro** com acento âmbar
 - ⚡ **Interface condensada**, feita para teclado e mouse
-- 🧾 **Pronto para crescer** — de pessoa física até várias entidades (PF + MEI)
+- 🧾 **Pronto para crescer** — de uma pessoa até vários usuários e entidades (PF, MEI, empresa)
 
 ## Funcionalidades
 
@@ -43,18 +44,18 @@ O **IGNF Finora** é um aplicativo desktop para quem quer organizar o próprio d
 
 | | **Free** | **Plus** | **Pro** |
 |---|:---:|:---:|:---:|
-| Lançamentos, recorrência, parcelamento | ✅ | ✅ | ✅ |
+| Usuários | 1 | limitado | ilimitados |
+| Entidades (PF, MEI, empresa) | 1 | limitado | ilimitadas |
+| Dados neste PC ou em rede local | só neste PC | ✅ | ✅ |
+| Moedas | 1 | várias | várias |
 | Contas | até 3 | ilimitadas | ilimitadas |
-| Dashboard e DRE pessoal | ✅ | ✅ | ✅ |
-| Importação OFX e conciliação | — | ✅ | ✅ |
-| Anexos de comprovantes | — | ✅ | ✅ |
-| Orçamento (orçado × realizado) | — | ✅ | ✅ |
-| Exportar Excel / PDF | — | ✅ | ✅ |
-| Backup automático em nuvem | — | ✅ | ✅ |
-| Multimoeda | — | — | ✅ |
-| Várias entidades (ex.: PF + MEI) | — | — | ✅ |
-| Centros de custo | — | — | ✅ |
-| Autopreencher CPF/CNPJ | — | — | ✅ |
+| Lançamentos, recorrência, parcelamento | ✅ | ✅ | ✅ |
+| Dashboard, DRE pessoal e fluxo de caixa | ✅ | ✅ | ✅ |
+| Login, permissões e histórico de alterações | — | ✅ | ✅ |
+| Importação OFX, anexos, orçamento, Excel/PDF | — | ✅ | ✅ |
+| Backup em nuvem, centros de custo, autopreencher CPF/CNPJ | — | ✅ | ✅ |
+
+Plus e Pro têm os mesmos recursos; muda só a quantidade de usuários e entidades.
 
 Detalhes em [`docs/EDICOES.md`](docs/EDICOES.md).
 

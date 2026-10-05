@@ -3,10 +3,21 @@
 As 8 etapas do CLAUDE.md estão concluídas (mais a 3b). Este documento lista o que falta para o Finora ser
 considerado maduro, em fases. Cada item vira um passo pequeno, testado e com commit próprio.
 
-## Decisões de distribuição
+## Decisões
 
+### Edições (detalhes em `docs/EDICOES.md`)
+- **Free**: 1 usuário, 1 moeda, 1 entidade, banco local neste PC.
+- **Plus e Pro**: todos os recursos (multimoeda, multiusuário, multiempresa…). Plus limita a quantidade de
+  usuários e entidades (números a definir); Pro é ilimitado.
+- **Onde ficam os dados (Plus/Pro)**: o cliente escolhe — **neste PC** (banco local) ou **rede local**
+  (vários PCs, Finora instalado em cada um).
+- **Futuro (a estudar)**: versão **web** por mensalidade, com os dados do cliente num banco em nuvem
+  (hospedagem própria, ex.: HostGator — que costuma oferecer PHP/MySQL; avaliar se a base web parte do
+  IgnControl, que é Laravel).
+
+### Distribuição
 - **App portátil, sem instalador** (instalador fica para depois, se fizer sentido).
-- **Tudo numa pasta só**: programa, banco, backups, preferências e licença.
+- **Tudo numa pasta só** (modo local): programa, banco, backups, preferências e licença.
   - Windows: `C:\IGNF-Finora\` (sugestão; vale onde o usuário descompactar, desde que dê para gravar).
   - Linux: pasta portátil (`.tar.gz`), sugestão `~/IGNF-Finora/`.
   - macOS: o `.app` não pode guardar dados dentro (assinatura/somente leitura), então os dados ficam em
@@ -17,18 +28,22 @@ considerado maduro, em fases. Cada item vira um passo pequeno, testado e com com
 - **Prioridade de plataforma**: 1º Windows, 2º Linux, 3º macOS.
 - **Emissão de licenças** vai para um **app separado, em repositório privado** (chave privada + cadastro de
   clientes), reaproveitando `core/license_key.py`. Nunca é distribuído junto com o Finora.
-- Referência de origem: o mockup se inspira no [IgnControl](https://github.com/igonozoid/IgnControl). Trazemos
-  o que serve a um app pessoal e local (recibo imprimível, relatórios por contato/centro de custo, histórico de
-  alterações leve, entidades na Pro); não trazemos login/usuários/permissões, acesso em rede/PWA nem MySQL.
+
+### Do IgnControl
+O mockup se inspira no [IgnControl](https://github.com/igonozoid/IgnControl). Trazemos: login, usuários,
+permissões por módulo e auditoria (para Plus/Pro), escolha de entidade, recibo imprimível, relatórios por
+contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop (isso é assunto da versão web).
 
 ## Fase A — Fundação (antes de outras pessoas testarem)
 
 - [ ] Pasta de dados portátil (regra acima) e preferências/licença em `data/finora.ini` (sair do Registro)
 - [ ] Python 3.12 no `.venv` e `requires-python >= 3.12`
-- [ ] Alembic no lugar do ajuste provisório de colunas em `init_db`
+- [ ] Alembic no lugar do ajuste provisório de colunas em `init_db` (essencial para banco em rede)
 - [ ] Ligar chaves estrangeiras no SQLite (`PRAGMA foreign_keys=ON`)
 - [ ] Log de erros em arquivo + janela amigável de "algo deu errado"
-- [ ] Testes de tela no repositório (pytest-qt) e testes rodando no GitHub (Windows e Linux)
+- [ ] Testes de tela no repositório (pytest-qt) e testes rodando no GitHub (Windows e Linux),
+      também contra PostgreSQL/MariaDB
+- [ ] Ajustar `core/licensing.FEATURES` às edições novas (Plus com tudo; limites de usuários/entidades)
 
 ## Fase B — Completar o básico (Free)
 
@@ -37,16 +52,30 @@ considerado maduro, em fases. Cada item vira um passo pequeno, testado e com com
 - [ ] Relatórios: extrato por conta, por categoria, por contato, inadimplência
 - [ ] Lançamentos: filtro por conta/categoria, ordenar colunas, duplicar, pagar vários de uma vez
 - [ ] Recibo imprimível (do IgnControl)
-- [ ] Histórico de alterações leve (do IgnControl, simplificado)
 - [ ] Busca global (Ctrl K) e seletor de período no cabeçalho (do mockup)
 - [ ] Contatos ampliados (endereço, dados bancários)
 - [ ] Fontes IBM Plex embutidas
 
-## Fase C — Recursos pagos (hoje só com cadeado)
+## Fase C — Recursos das edições pagas (hoje só com cadeado)
 
-- [ ] Plus: exportar Excel/PDF, importar OFX + conciliação, orçado x realizado, anexos, backup em nuvem
-- [ ] Pro: multimoeda, várias entidades (PF + MEI), centros de custo, autopreencher CPF/CNPJ
+- [ ] Exportar Excel/PDF, importar OFX + conciliação, orçado x realizado, anexos, backup em nuvem
+- [ ] Multimoeda, centros de custo, autopreencher CPF/CNPJ
 - [ ] App de licenças (repositório privado)
+
+## Fase E — Multiusuário, multiempresa e rede local (Plus/Pro)
+
+- [ ] Usuários, login e troca de usuário (mockup: tela de login)
+- [ ] Várias entidades e escolha de entidade (mockup: "Escolha a entidade"); isolamento por `entity_id`
+- [ ] Permissões por módulo e entidade: nenhum / leitura / total (mockup: Administração › Permissões)
+- [ ] Histórico de alterações / auditoria: quem fez o quê e quando (mockup: Log de auditoria)
+- [ ] Limites por edição (usuários e entidades) checados em `core/licensing.allowed()`
+- [ ] **Rede local**: escolher "este PC" ou "rede" no primeiro uso/Configurações.
+  - Não usar o arquivo SQLite em pasta compartilhada (corrompe com 2 PCs gravando).
+  - 1º passo (modo A): servidor de banco PostgreSQL ou MariaDB num dos PCs; cada Finora conecta nele
+    via SQLAlchemy.
+  - Evolução possível (modo B): "Finora Servidor" — um PC roda o Finora em modo servidor e os outros falam
+    com ele; mais simples para o cliente e permissões garantidas no servidor.
+- [ ] Indicador de conexão na barra de status (mockup: "Conectado · …", "usuários online")
 
 ## Fase D — Distribuição
 
@@ -56,3 +85,7 @@ considerado maduro, em fases. Cada item vira um passo pequeno, testado e com com
 - [ ] Como o usuário recebe atualizações
 - [ ] Termos de uso e aviso de privacidade (LGPD)
 - [ ] (Depois) instalador e assinatura digital
+
+## Futuro (a estudar)
+
+- [ ] Versão web por mensalidade, dados em nuvem (ver "Edições" acima)

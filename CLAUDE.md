@@ -1,6 +1,6 @@
 # IGNF Finora — guia de desenvolvimento
 
-App desktop de finanças **pessoais** em Python 3.12 + PySide6. Usuário leigo, 1 usuário, banco SQLite local em `data/finora.db`.
+App desktop de finanças **pessoais** em Python 3.12 + PySide6. Usuário leigo. Free: 1 usuário, 1 moeda, banco SQLite local em `data/finora.db`. Plus/Pro: vários usuários e entidades, banco local ou em rede local (ver `docs/EDICOES.md`). Mantenha o código compatível com PostgreSQL/MariaDB (nada de SQL exclusivo do SQLite).
 Referência visual: mockup "App Financeiro" (exportado em `docs/mockup/`). Siga-o.
 
 ## Regras

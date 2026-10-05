@@ -61,7 +61,7 @@ def _currency(s: Session, entity_id: int, currency: str | None) -> str:
     if currency not in CURRENCIES:
         raise ValueError(f"Moeda não suportada: {currency}")
     if currency != base and not multi_currency():
-        raise LimitError("Contas em outra moeda fazem parte da edição Pro.")
+        raise LimitError("Contas em outra moeda fazem parte das edições Plus e Pro.")
     return currency
 
 

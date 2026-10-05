@@ -84,3 +84,14 @@ def test_sem_chave_publica_nao_ativa(monkeypatch):
     monkeypatch.setattr(licensing, "PUBLIC_KEY_HEX", "")
     with pytest.raises(LicenseError, match="não aceita licenças"):
         licensing.activate("FNR1-AAAAA")
+
+
+def test_recursos_por_edicao():
+    free, plus, pro = (licensing.FEATURES[e] for e in (Edition.FREE, Edition.PLUS, Edition.PRO))
+    assert set(free) == set(plus) == set(pro)                        # todas respondem às mesmas chaves
+    assert (free["users_max"], free["entities_max"], free["accounts_max"]) == (1, 1, 3)
+    assert not any(v for k, v in free.items() if not k.endswith("_max"))
+    assert (plus["users_max"], plus["entities_max"]) == (3, 10)
+    assert (pro["users_max"], pro["entities_max"]) == (None, None)
+    same = lambda f: {k: v for k, v in f.items() if k not in ("users_max", "entities_max")}
+    assert same(plus) == same(pro)                                   # Plus e Pro: mesmos recursos

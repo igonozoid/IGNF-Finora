@@ -7,13 +7,12 @@ considerado maduro, em fases. Cada item vira um passo pequeno, testado e com com
 
 ### Edições (detalhes em `docs/EDICOES.md`)
 - **Free**: 1 usuário, 1 moeda, 1 entidade, banco local neste PC.
-- **Plus e Pro**: todos os recursos (multimoeda, multiusuário, multiempresa…). Plus limita a quantidade de
-  usuários e entidades (números a definir); Pro é ilimitado.
+- **Plus e Pro**: todos os recursos (multimoeda, multiusuário, multiempresa…). Plus limita a até **3 usuários
+  e 10 entidades**; Pro é ilimitado.
 - **Onde ficam os dados (Plus/Pro)**: o cliente escolhe — **neste PC** (banco local) ou **rede local**
   (vários PCs, Finora instalado em cada um).
 - **Futuro (a estudar)**: versão **web** por mensalidade, com os dados do cliente num banco em nuvem
-  (hospedagem própria, ex.: HostGator — que costuma oferecer PHP/MySQL; avaliar se a base web parte do
-  IgnControl, que é Laravel).
+  (hospedagem própria na HostGator: **PHP + MySQL** — a base web tende a partir do IgnControl, que é Laravel).
 
 ### Distribuição
 - **App portátil, sem instalador** (instalador fica para depois, se fizer sentido).
@@ -43,7 +42,7 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 - [ ] Log de erros em arquivo + janela amigável de "algo deu errado"
 - [ ] Testes de tela no repositório (pytest-qt) e testes rodando no GitHub (Windows e Linux),
       também contra PostgreSQL/MariaDB
-- [ ] Ajustar `core/licensing.FEATURES` às edições novas (Plus com tudo; limites de usuários/entidades)
+- [x] Ajustar `core/licensing.FEATURES` às edições novas (Plus com tudo; 3 usuários e 10 entidades)
 
 ## Fase B — Completar o básico (Free)
 
@@ -71,10 +70,11 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 - [ ] Limites por edição (usuários e entidades) checados em `core/licensing.allowed()`
 - [ ] **Rede local**: escolher "este PC" ou "rede" no primeiro uso/Configurações.
   - Não usar o arquivo SQLite em pasta compartilhada (corrompe com 2 PCs gravando).
-  - 1º passo (modo A): servidor de banco PostgreSQL ou MariaDB num dos PCs; cada Finora conecta nele
-    via SQLAlchemy.
-  - Evolução possível (modo B): "Finora Servidor" — um PC roda o Finora em modo servidor e os outros falam
-    com ele; mais simples para o cliente e permissões garantidas no servidor.
+  - **Decidido: "Finora Servidor"** — um PC (Windows ou Linux) roda o Finora em modo servidor, dono do
+    banco; os outros PCs falam com ele pela rede. Mais simples para o cliente (não instala banco à parte) e
+    as permissões ficam garantidas no servidor.
+  - Os `services/` passam a poder rodar no servidor; a UI fala com eles localmente (modo "este PC") ou
+    pela rede (modo LAN).
 - [ ] Indicador de conexão na barra de status (mockup: "Conectado · …", "usuários online")
 
 ## Fase D — Distribuição

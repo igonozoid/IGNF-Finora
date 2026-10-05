@@ -5,9 +5,9 @@ só a quantidade de usuários e de entidades.
 
 | Recurso | Free | Plus | Pro |
 |---|---|---|---|
-| Usuários | 1 | limitado¹ | ilimitados |
-| Entidades (PF, MEI, empresa) | 1 | limitado¹ | ilimitadas |
-| Onde ficam os dados | este PC | este PC **ou** rede local² | este PC **ou** rede local² |
+| Usuários | 1 | até 3 | ilimitados |
+| Entidades (PF, MEI, empresa) | 1 | até 10 | ilimitadas |
+| Onde ficam os dados | este PC | este PC **ou** rede local¹ | este PC **ou** rede local¹ |
 | Moedas | 1 | várias | várias |
 | Contas | até 3 | ilimitadas | ilimitadas |
 | Lançamentos, recorrência, parcelamento, transferências | ✓ | ✓ | ✓ |
@@ -22,10 +22,9 @@ só a quantidade de usuários e de entidades.
 | Centros de custo | | ✓ | ✓ |
 | Autopreencher CPF/CNPJ | | ✓ | ✓ |
 
-¹ Quantidades do Plus a definir.
-² **Rede local (LAN)**: um PC guarda o banco e os outros se conectam; o Finora é instalado em cada PC.
-Não é um arquivo numa pasta compartilhada (o SQLite corrompe nesse uso): é um servidor de banco num dos PCs.
+¹ **Rede local (LAN)**: um PC roda o **Finora Servidor** (Windows ou Linux) e os outros PCs, cada um com o
+Finora instalado, se conectam a ele. Não é um arquivo numa pasta compartilhada (o SQLite corrompe nesse uso).
 Ver `docs/ROADMAP.md`, Fase E.
 
 **Futuro (a estudar):** versão **web** por assinatura mensal, com os dados do cliente num banco em nuvem
-(hospedagem própria).
+(hospedagem própria com PHP e MySQL).

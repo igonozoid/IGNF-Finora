@@ -194,7 +194,7 @@ class AccountsPage(QWidget):
         fl.addLayout(g)
 
         if not accounts.multi_currency():
-            msg = "Contas em outra moeda fazem parte da edição Pro."
+            msg = "Contas em outra moeda fazem parte das edições Plus e Pro."
             self.currency_lbl.layout().insertWidget(1, lock_icon(msg, self.t))
             self.currency_box.setEnabled(False)
             self.currency_box.setToolTip(msg)

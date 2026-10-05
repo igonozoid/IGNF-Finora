@@ -44,8 +44,8 @@ O **IGNF Finora** é um aplicativo desktop para quem quer organizar o próprio d
 
 | | **Free** | **Plus** | **Pro** |
 |---|:---:|:---:|:---:|
-| Usuários | 1 | limitado | ilimitados |
-| Entidades (PF, MEI, empresa) | 1 | limitado | ilimitadas |
+| Usuários | 1 | até 3 | ilimitados |
+| Entidades (PF, MEI, empresa) | 1 | até 10 | ilimitadas |
 | Dados neste PC ou em rede local | só neste PC | ✅ | ✅ |
 | Moedas | 1 | várias | várias |
 | Contas | até 3 | ilimitadas | ilimitadas |

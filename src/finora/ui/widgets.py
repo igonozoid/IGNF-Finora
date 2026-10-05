@@ -9,9 +9,10 @@ from finora.ui.theme import SP_M, SP_S
 
 UPGRADE_TEXT = (
     "Esse recurso faz parte das edições pagas do IGNF Finora.\n\n"
-    "Plus: contas ilimitadas, importação de extrato (OFX), anexos, orçamento e exportação.\n"
-    "Pro: tudo do Plus + contas em outras moedas e várias entidades.\n\n"
-    "A ativação da licença chega em breve, em Configurações."
+    "Plus: todos os recursos (contas ilimitadas, várias moedas, OFX, anexos, orçamento, exportação,\n"
+    "rede local…) para até 3 usuários e 10 entidades.\n"
+    "Pro: tudo do Plus, com usuários e entidades ilimitados.\n\n"
+    "Já tem uma chave? Cole em Configurações › Sua edição."
 )
 
 

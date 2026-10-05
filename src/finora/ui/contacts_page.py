@@ -18,7 +18,7 @@ from finora.ui.widgets import button, field_label, lock_icon, show_upgrade
 PANEL_W = 320
 STACK_BELOW = 760   # abaixo dessa largura, o cadastro ocupa o lugar da lista
 FILTERS = [("all", "Todos")] + [(k, label) for k, (_c, label, _h) in contacts.ROLES.items()]
-LOOKUP_MSG = "Autopreencher pelo CPF/CNPJ (dados da Receita Federal) é um recurso da edição Pro."
+LOOKUP_MSG = "Autopreencher pelo CPF/CNPJ (dados da Receita Federal) é um recurso das edições Plus e Pro."
 
 
 class ContactRow(QWidget):

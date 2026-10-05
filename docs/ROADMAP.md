@@ -11,8 +11,15 @@ considerado maduro, em fases. Cada item vira um passo pequeno, testado e com com
   e 10 entidades**; Pro é ilimitado.
 - **Onde ficam os dados (Plus/Pro)**: o cliente escolhe — **neste PC** (banco local) ou **rede local**
   (vários PCs, Finora instalado em cada um).
-- **Futuro (a estudar)**: versão **web** por mensalidade, com os dados do cliente num banco em nuvem
-  (hospedagem própria na HostGator: **PHP + MySQL** — a base web tende a partir do IgnControl, que é Laravel).
+- **Versão "web" (futuro, mensalidade)**: é **o mesmo app desktop**, só que com o banco **remoto** (nuvem),
+  na hospedagem própria (HostGator: PHP + MySQL). Não é um site.
+- **Versão mobile (futuro)**: app **simplificado** que conecta ao servidor web.
+- **A decidir — como o app fala com o banco remoto**: celular não deve (nem consegue com segurança) falar
+  direto com o MySQL, então o mobile exige uma **API** no servidor web (PHP, que a HostGator roda). O desktop
+  poderia conectar direto no MySQL remoto, mas isso põe a senha do banco em cada instalação e a HostGator
+  só libera MySQL remoto para IPs cadastrados. **Recomendação**: o desktop também usar a API — e o
+  **Finora Servidor** (rede local, Fase E) falar o **mesmo protocolo** (HTTP/JSON). Assim um app só tem três
+  modos de dados: este PC, rede local (Finora Servidor) e nuvem (API PHP), e o mobile reaproveita a API.
 
 ### Distribuição
 - **App portátil, sem instalador** (instalador fica para depois, se fizer sentido).
@@ -88,4 +95,6 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 
 ## Futuro (a estudar)
 
-- [ ] Versão web por mensalidade, dados em nuvem (ver "Edições" acima)
+- [ ] Modo nuvem: o mesmo app desktop com o banco remoto (HostGator, PHP + MySQL), por mensalidade
+- [ ] API no servidor web (PHP), com o mesmo protocolo do Finora Servidor (ver "A decidir" acima)
+- [ ] App mobile simplificado, conectado à API do servidor web

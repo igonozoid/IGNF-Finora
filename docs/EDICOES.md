@@ -26,5 +26,7 @@ só a quantidade de usuários e de entidades.
 Finora instalado, se conectam a ele. Não é um arquivo numa pasta compartilhada (o SQLite corrompe nesse uso).
 Ver `docs/ROADMAP.md`, Fase E.
 
-**Futuro (a estudar):** versão **web** por assinatura mensal, com os dados do cliente num banco em nuvem
-(hospedagem própria com PHP e MySQL).
+**Futuro (a estudar):**
+- **Nuvem** por assinatura mensal: o mesmo app desktop, com os dados do cliente num banco remoto
+  (hospedagem própria com PHP e MySQL).
+- **Mobile**: app simplificado que conecta ao servidor web.

@@ -1,11 +1,32 @@
-"""Preferências do usuário guardadas pelo Qt (QSettings)."""
+"""Preferências do usuário, num arquivo dentro da pasta de dados (data/finora.ini): app portátil,
+nada no Registro do Windows."""
 from PySide6.QtCore import QSettings
 
+from finora.core.paths import DATA_DIR
+
 ORG, APP = "IGNF", "Finora"
+FILE = DATA_DIR / "finora.ini"
 
 
 def _s() -> QSettings:
-    return QSettings(ORG, APP)
+    return QSettings(str(FILE), QSettings.IniFormat)
+
+
+def migrate_from_registry() -> int:
+    """Versões antigas guardavam as preferências no Registro (QSettings nativo). Copia para o finora.ini
+    na primeira vez e limpa o Registro. Retorna quantas preferências foram trazidas."""
+    if FILE.exists():
+        return 0
+    old = QSettings(ORG, APP)
+    keys = old.allKeys()
+    if not keys:
+        return 0
+    new = _s()
+    for k in keys:
+        new.setValue(k, old.value(k))
+    new.sync()
+    old.clear()
+    return len(keys)
 
 
 def get_theme(default: str = "light") -> str:

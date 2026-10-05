@@ -1,7 +1,7 @@
 import sys
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QApplication, QDialog
-from finora.core import settings
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+from finora.core import paths, settings
 from finora.core.db import Session, init_db
 from finora.services import backup, setup
 from finora.ui import theme
@@ -10,6 +10,7 @@ from finora.ui.main_window import MainWindow
 
 def main():
     init_db()
+    settings.migrate_from_registry()   # versões antigas guardavam as preferências no Registro
     app = QApplication(sys.argv)
     app.setOrganizationName(settings.ORG)
     app.setApplicationName(settings.APP)
@@ -19,6 +20,8 @@ def main():
     font.setPointSize(theme.FONT_PT)
     app.setFont(font)
     t = theme.apply(app, settings.get_theme(theme.DEFAULT_THEME))
+    if paths.DATA_NOTICE:
+        QMessageBox.information(None, "Onde ficam seus dados", paths.DATA_NOTICE)
 
     with Session() as s:
         profile = setup.current_profile(s)

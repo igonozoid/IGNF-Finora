@@ -24,12 +24,11 @@ def profile(session):
 
 
 @pytest.fixture(autouse=True)
-def isolated_settings(monkeypatch):
-    """Preferências (QSettings) num espaço só dos testes: nada lê nem grava as do usuário,
+def isolated_settings(monkeypatch, tmp_path):
+    """Preferências num finora.ini só do teste: nada lê nem grava as do usuário,
     e uma licença ativada no computador não muda o resultado dos testes."""
     from finora.core import licensing, settings
-    monkeypatch.setattr(settings, "ORG", "IGNF-pytest")
+    monkeypatch.setattr(settings, "FILE", tmp_path / "finora.ini")
+    monkeypatch.setattr(settings, "ORG", "IGNF-pytest")   # Registro usado só pelo teste de migração
     monkeypatch.setattr(licensing, "_cache", None)
-    settings.set_license_key("")
     yield
-    settings.set_license_key("")

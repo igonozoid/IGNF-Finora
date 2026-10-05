@@ -35,7 +35,7 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 
 ## Fase A — Fundação (antes de outras pessoas testarem)
 
-- [ ] Pasta de dados portátil (regra acima) e preferências/licença em `data/finora.ini` (sair do Registro)
+- [x] Pasta de dados portátil (regra acima) e preferências/licença em `data/finora.ini` (sair do Registro)
 - [ ] Python 3.12 no `.venv` e `requires-python >= 3.12`
 - [ ] Alembic no lugar do ajuste provisório de colunas em `init_db` (essencial para banco em rede)
 - [ ] Ligar chaves estrangeiras no SQLite (`PRAGMA foreign_keys=ON`)

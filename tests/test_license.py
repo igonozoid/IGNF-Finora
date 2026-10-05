@@ -36,7 +36,8 @@ def test_tolera_espacos_quebras_e_minusculas(keys):
 
 
 @pytest.mark.parametrize("mexer", [
-    lambda k: k[:-1] + ("A" if k[-1] != "A" else "B"),       # assinatura alterada
+    # assinatura alterada (não o último caractere: ele pode ter só bits de preenchimento do Base32)
+    lambda k: k[:-4] + ("A" if k[-4] != "A" else "B") + k[-3:],
     lambda k: k[:12] + ("A" if k[12] != "A" else "B") + k[13:],  # dados alterados (ex.: trocar edição)
     lambda k: k[:30],                                          # incompleta
     lambda k: "ABC-123",                                       # outro produto

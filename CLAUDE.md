@@ -25,5 +25,8 @@ Referência visual: mockup "App Financeiro" (exportado em `docs/mockup/`). Siga-
 7. Backup/restauração.
 8. Licença (chave offline assinada).
 
+Etapas 1–8 concluídas. Próximos passos, em fases, e decisões de distribuição (app portátil, tudo numa pasta,
+Windows > Linux > macOS): ver `docs/ROADMAP.md`.
+
 ## DRE pessoal — grupos
 Receitas · (−) Moradia · (−) Alimentação · (−) Transporte · (−) Saúde · (−) Educação · (−) Lazer · (−) Outras despesas · = Sobra do mês · (−) Investimentos/Reserva · = Saldo livre

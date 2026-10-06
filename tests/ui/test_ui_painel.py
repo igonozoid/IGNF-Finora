@@ -40,7 +40,7 @@ def test_fluxo_de_caixa_e_cadeados(window, dialogs):
     flow = page.views["flow"]
     assert flow.k_start.value.text() == "R$ 6.000,00"
     assert flow.model.rowCount() >= 2
-    page.buttons[2][0].click()                                  # Orçado x realizado: edição paga
+    next(b for b, _l, key in page.buttons if key == "budget").click()   # Orçado x realizado: edição paga
     assert any("Orçado x realizado" in t for t in dialogs.shown)
 
 
@@ -114,3 +114,41 @@ def test_perfil_nome_vazio_nao_salva(window):
     page.name_edit.setText("  ")
     page.profile_save.click()
     assert page.profile_error.isVisible() and window.profile.name == "Rodrigo"
+
+
+# ---------- relatórios em lista ----------
+def _report(window, key):
+    from finora.ui.reports_page import REPORTS
+    window.go_to(5)
+    page = window.pages[5]
+    page.group.button(next(i for i, r in enumerate(REPORTS) if r[0] == key)).click()
+    return page.views[key]
+
+
+def test_extrato_por_conta(window):
+    view = _report(window, "statement")
+    assert view.account.currentText() == "Nubank"
+    texts = [view.table.item(r, 1).text() for r in range(view.table.rowCount())]
+    assert texts[0] == "Saldo anterior" and "Salário" in texts
+    assert "Saldo final" in view.footer.text()
+
+
+def test_por_categoria_e_por_contato(window):
+    view = _report(window, "category")
+    cats = [view.table.item(r, 0).text() for r in range(view.table.rowCount())]
+    assert "Receitas › Salário" in cats and "Moradia › Aluguel ou financiamento" in cats
+    view = _report(window, "contact")
+    names = [view.table.item(r, 0).text() for r in range(view.table.rowCount())]
+    assert {"Empresa X", "Imobiliária", "Enel"} <= set(names)
+
+
+def test_inadimplencia_e_duplo_clique_abre_lancamento(window):
+    from datetime import date
+    view = _report(window, "overdue")
+    if date.today().day == 1:                                      # no dia 1 a luz do exemplo não está atrasada
+        assert view.empty.isVisible()
+        return
+    texts = [view.table.item(r, 1).text() for r in range(view.table.rowCount())]
+    assert texts[0].startswith("Você deve") and "Conta de luz" in texts
+    view._double(texts.index("Conta de luz"), 1)
+    assert window.stack.currentIndex() == 1 and window.pages[1].form.editing.description == "Conta de luz"

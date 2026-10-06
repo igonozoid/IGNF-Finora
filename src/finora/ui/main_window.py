@@ -38,7 +38,7 @@ NAV = [
      "Aqui você vai organizar seus gastos e ganhos em grupos, como Moradia, Alimentação e Lazer."),
     ("fa6s.address-book", "Contatos", "Pessoas e empresas com quem você troca dinheiro",
      "Aqui você vai cadastrar quem te paga e quem você paga, para encontrar tudo mais rápido."),
-    ("fa6s.file-lines", "Relatórios", "DRE pessoal e fluxo de caixa",
+    ("fa6s.file-lines", "Relatórios", "DRE, fluxo de caixa, extratos e atrasados",
      "Aqui você vai ver, mês a mês, quanto entrou, quanto saiu e quanto sobrou."),
     ("fa6s.gear", "Configurações", "Preferências, backup e licença",
      "Aqui você vai ajustar o app, fazer cópia de segurança dos seus dados e ativar sua licença."),
@@ -282,6 +282,8 @@ class MainWindow(QMainWindow):
         self.tabs.theme_btn.clicked.connect(self.toggle_theme)
         self.pages[0].open_entry.connect(self.open_entry)
         self.pages[0].open_statement.connect(self.open_statement)
+        self.pages[5].open_entry.connect(self.open_entry)
+        self.pages[5].open_statement.connect(self.open_statement)
         self.sidebar.theme_btn.clicked.connect(self.toggle_theme)
         self.header.new_btn.clicked.connect(self.new_entry)
         for i in range(len(NAV)):

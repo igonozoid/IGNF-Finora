@@ -29,6 +29,10 @@ NARROW_BAR = 640     # abaixo dessa largura do relatório, a barra de ferramenta
 REPORTS = [
     ("dre", "DRE pessoal", "fa6s.chart-column", None),
     ("flow", "Fluxo de caixa", "fa6s.water", None),
+    ("statement", "Extrato por conta", "fa6s.list", None),
+    ("category", "Por categoria", "fa6s.tags", None),
+    ("contact", "Por contato", "fa6s.address-book", None),
+    ("overdue", "Inadimplência", "fa6s.hourglass-half", None),
     ("budget", "Orçado x realizado", "fa6s.bullseye", "budget"),
 ]
 LOCK_MSG = {"budget": "Orçado x realizado é um recurso da edição Plus.",
@@ -491,16 +495,24 @@ class FlowView(QWidget):
 # ---------- página ----------
 class ReportsPage(QWidget):
     message = Signal(str)
+    open_entry = Signal(int)
+    open_statement = Signal(int, object)
 
     def __init__(self, profile: Profile, t: dict, parent=None):
         super().__init__(parent)
         self.setObjectName("content")
         self.t = t
-        self.views = {"dre": DreView(profile, t), "flow": FlowView(profile, t)}
+        from finora.ui import report_lists as rl
+        self.views = {"dre": DreView(profile, t), "flow": FlowView(profile, t),
+                      "statement": rl.AccountStatementView(profile, t), "category": rl.ByCategoryView(profile, t),
+                      "contact": rl.ByContactView(profile, t), "overdue": rl.OverdueView(profile, t)}
         self.stack = QStackedWidget()
         for v in self.views.values():
             self.stack.addWidget(v)
             v.message.connect(self.message.emit)
+            if hasattr(v, "open_entry"):
+                v.open_entry.connect(self.open_entry.emit)
+                v.open_statement.connect(self.open_statement.emit)
 
         self.nav = QWidget()
         nl = QVBoxLayout(self.nav)

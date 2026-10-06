@@ -12,7 +12,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from finora.core.money import CENT
 from finora.models import Category, Entry
@@ -46,8 +46,20 @@ def period_months(key: str, today: date | None = None) -> list[tuple[int, int]]:
         return [(today.year, m) for m in range(1, today.month + 1)]
     if key == "last_year":
         return [(today.year - 1, m) for m in range(1, 13)]
-    n = {"3m": 3, "6m": 6, "12m": 12}[key]
+    if key == "last_month":
+        d = entries.add_months(first, -1)
+        return [(d.year, d.month)]
+    n = {"1m": 1, "3m": 3, "6m": 6, "12m": 12}[key]
     return [(d.year, d.month) for d in (entries.add_months(first, -i) for i in range(n - 1, -1, -1))]
+
+
+# Períodos dos relatórios em lista (extrato, por categoria, por contato)
+LIST_PERIODS = {"1m": "Este mês", "last_month": "Mês passado", **PERIODS}
+
+
+def period_range(key: str, today: date | None = None) -> tuple[date, date]:
+    months = period_months(key, today)
+    return entries.month_range(*months[0])[0], entries.month_range(*months[-1])[1]
 
 
 # ---------- DRE ----------
@@ -196,3 +208,175 @@ def cash_flow(s: Session, entity_id: int, days: int = 30, today: date | None = N
         bal = bal + inc - exp
         out.append(FlowDay(d, inc.quantize(CENT), exp.quantize(CENT), bal.quantize(CENT), [m[2] for m in moves]))
     return CashFlow(start.quantize(CENT), out, overdue)
+
+
+# ---------- extrato por conta ----------
+@dataclass(frozen=True)
+class StatementLine:
+    entry_id: int
+    day: date
+    description: str
+    category: str
+    inflow: Decimal
+    outflow: Decimal
+    balance: Decimal
+
+
+@dataclass(frozen=True)
+class AccountStatement:
+    opening: Decimal                 # saldo antes do 1º dia do período
+    lines: list[StatementLine]
+
+    @property
+    def inflow(self) -> Decimal:
+        return sum((x.inflow for x in self.lines), ZERO)
+
+    @property
+    def outflow(self) -> Decimal:
+        return sum((x.outflow for x in self.lines), ZERO)
+
+    @property
+    def closing(self) -> Decimal:
+        return self.lines[-1].balance if self.lines else self.opening
+
+
+def _realized(account_id: int):
+    """O que mexeu de verdade no saldo da conta: pagos e compras no cartão (data da compra)."""
+    from sqlalchemy import or_
+    return (or_(Entry.account_id == account_id, Entry.dest_account_id == account_id)
+            & Entry.status.in_(("paid", "card")))
+
+
+def _move(e: Entry, account_id: int) -> tuple[date, Decimal]:
+    when = e.competence_date if e.status == "card" else e.paid_date
+    amount = Decimal(e.amount)
+    if e.kind == "transfer":
+        return when, amount if e.dest_account_id == account_id else -amount
+    return when, amount if e.kind == "income" else -amount
+
+
+def account_statement(s: Session, account_id: int, first: date, last: date) -> AccountStatement:
+    """Extrato: saldo anterior + cada movimento do período (pela data em que aconteceu) com o saldo corrido."""
+    from finora.models import Account
+    acc = s.get(Account, account_id)
+    rows = s.execute(select(Entry, Category.name).outerjoin(Category, Entry.category_id == Category.id)
+                     .where(_realized(account_id))).all()
+    opening = Decimal(acc.opening_balance)
+    moves = []
+    for e, cat in rows:
+        when, value = _move(e, account_id)
+        if when < first:
+            opening += value
+        elif when <= last:
+            label = "Transferência" if e.kind == "transfer" else (cat or "Sem categoria")
+            moves.append((when, e.id, e.description or "", label, value))
+    moves.sort(key=lambda m: (m[0], m[1]))
+    lines, bal = [], opening
+    for when, eid, desc, label, value in moves:
+        bal += value
+        lines.append(StatementLine(eid, when, desc, label, value if value > 0 else ZERO,
+                                   -value if value < 0 else ZERO, bal.quantize(CENT)))
+    return AccountStatement(opening.quantize(CENT), lines)
+
+
+# ---------- por categoria ----------
+@dataclass(frozen=True)
+class CategoryTotal:
+    group: str
+    category: str
+    kind: str                         # income | expense
+    total: Decimal
+    count: int
+
+
+def by_category(s: Session, entity_id: int, first: date, last: date) -> list[CategoryTotal]:
+    """Quanto entrou/saiu por categoria no período (competência: pago ou não). Maiores primeiro."""
+    parent = aliased(Category)
+    q = (select(Entry.kind, Entry.amount, Category.name, parent.name)
+         .select_from(Entry).outerjoin(Category, Entry.category_id == Category.id)
+         .outerjoin(parent, Category.parent_id == parent.id)
+         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
+                Entry.competence_date.between(first, last)))
+    acc: dict[tuple, list] = {}
+    for kind, amount, cat, grp in s.execute(q):
+        group = grp or cat or "Sem categoria"
+        name = cat if grp else (cat or "Sem categoria")
+        item = acc.setdefault((kind, group, name), [ZERO, 0])
+        item[0] += Decimal(amount)
+        item[1] += 1
+    out = [CategoryTotal(g, c, k, v[0].quantize(CENT), v[1]) for (k, g, c), v in acc.items()]
+    return sorted(out, key=lambda x: (x.kind != "income", -x.total))
+
+
+# ---------- por contato ----------
+@dataclass(frozen=True)
+class ContactTotal:
+    contact: str
+    received: Decimal                  # o que esse contato te pagou
+    paid: Decimal                      # o que você pagou a ele
+    count: int
+
+
+def by_contact(s: Session, entity_id: int, first: date, last: date) -> list[ContactTotal]:
+    from finora.models import Contact
+    q = (select(Contact.name, Entry.kind, Entry.amount)
+         .select_from(Entry).join(Contact, Entry.contact_id == Contact.id)
+         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
+                Entry.competence_date.between(first, last)))
+    acc: dict[str, list] = {}
+    for name, kind, amount in s.execute(q):
+        item = acc.setdefault(name, [ZERO, ZERO, 0])
+        item[0 if kind == "income" else 1] += Decimal(amount)
+        item[2] += 1
+    out = [ContactTotal(n, v[0].quantize(CENT), v[1].quantize(CENT), v[2]) for n, v in acc.items()]
+    return sorted(out, key=lambda x: -(x.received + x.paid))
+
+
+# ---------- inadimplência (atrasados) ----------
+AGING = [(30, "Até 30 dias"), (60, "31 a 60 dias"), (90, "61 a 90 dias"), (None, "Mais de 90 dias")]
+
+
+@dataclass(frozen=True)
+class OverdueItem:
+    entry_id: int | None               # None = fatura de cartão
+    kind: str                          # income | expense
+    description: str
+    contact: str
+    due: date
+    amount: Decimal
+    days: int
+    card_account_id: int | None = None
+
+
+@dataclass(frozen=True)
+class OverdueReport:
+    payables: list[OverdueItem]        # você deve
+    receivables: list[OverdueItem]     # te devem
+
+    @staticmethod
+    def buckets(items: list[OverdueItem]) -> list[tuple[str, Decimal, int]]:
+        out = []
+        lo = 0
+        for hi, label in AGING:
+            sel = [i for i in items if i.days > lo and (hi is None or i.days <= hi)]
+            out.append((label, sum((i.amount for i in sel), ZERO), len(sel)))
+            lo = hi or lo
+        return out
+
+
+def overdue(s: Session, entity_id: int, today: date | None = None) -> OverdueReport:
+    """Tudo o que venceu e não foi pago/recebido, com os dias de atraso. Faturas de cartão atrasadas entram."""
+    from finora.services import cards
+    today = today or date.today()
+    q = entries.query(entity_id).where(Entry.status == "pending", Entry.kind != "transfer", Entry.due_date < today)
+    pay, rec = [], []
+    for row in s.execute(q.order_by(Entry.due_date)):
+        e = entries.to_view(row)
+        item = OverdueItem(e.id, e.kind, e.description, e.contact or "", e.due_date, e.amount,
+                           (today - e.due_date).days)
+        (rec if e.kind == "income" else pay).append(item)
+    for st in cards.open_statements(s, entity_id, today - timedelta(days=1), today):
+        pay.append(OverdueItem(None, "expense", f"Fatura {st.account} {st.label}", "", st.due, st.remaining,
+                               (today - st.due).days, st.account_id))
+    pay.sort(key=lambda i: i.due)
+    return OverdueReport(pay, rec)

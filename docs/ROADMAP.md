@@ -62,18 +62,34 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 - [x] Contatos ampliados (endereço, dados bancários)
 - [x] Fontes IBM Plex embutidas
 
-## Fase C — Recursos das edições pagas (hoje só com cadeado)
+## Fase C — Recursos das edições pagas
 
-- [ ] Exportar Excel/PDF, importar OFX + conciliação, orçado x realizado, anexos, backup em nuvem
-- [ ] Multimoeda, centros de custo, autopreencher CPF/CNPJ
+Estratégia: construir tudo completo e depois "capar" a Free com `licensing.allowed()` (cadeado + convite).
+Ordem de implementação:
+
+- [ ] Exportar Excel/PDF: lançamentos e todos os relatórios
+- [ ] Importar OFX (extrato do banco) sem duplicar
+- [ ] Conciliação: casar linhas do extrato com lançamentos, sugerir, criar o que falta (mockup: Conciliação)
+- [ ] Centros de custo: cadastro, campo no lançamento, relatório por centro de custo (mockup + IgnControl)
+- [ ] Orçado x realizado: orçamento mensal por categoria e por centro de custo, com alerta de estouro
+- [ ] Anexos de comprovantes nos lançamentos (arquivos dentro da pasta de dados)
+- [ ] Multimoeda: moedas, cotações com histórico por data, contas em outra moeda, transferência com câmbio
+- [ ] Autopreencher CPF/CNPJ (consulta pública de CNPJ)
+- [ ] Backup automático (ao fechar e agendado) para uma pasta de nuvem (OneDrive, Google Drive, Dropbox)
+- [ ] Do IgnControl: fechamento de período (trava lançamentos até uma data)
+- [ ] Do IgnControl: previsão de caixa dia a dia (pior saldo projetado) e relatório analítico
 - [ ] App de licenças (repositório privado)
+
+Do IgnControl **não** trazemos: estoque, vendas, RH, rural, agenda de tarefas e cofre de senhas — fogem de
+finanças pessoais. Podem virar módulos opcionais no futuro.
 
 ## Fase E — Multiusuário, multiempresa e rede local (Plus/Pro)
 
 - [ ] Usuários, login e troca de usuário (mockup: tela de login)
 - [ ] Várias entidades e escolha de entidade (mockup: "Escolha a entidade"); isolamento por `entity_id`
 - [ ] Permissões por módulo e entidade: nenhum / leitura / total (mockup: Administração › Permissões)
-- [ ] Histórico de alterações / auditoria: quem fez o quê e quando (mockup: Log de auditoria)
+- [ ] Histórico de alterações / auditoria: quem fez o quê e quando, antes/depois (mockup: Log de auditoria)
+- [ ] Tela Administração (mockup): usuários, permissões, entidades, fechamento de período, auditoria
 - [ ] Limites por edição (usuários e entidades) checados em `core/licensing.allowed()`
 - [ ] **Rede local**: escolher "este PC" ou "rede" no primeiro uso/Configurações.
   - Não usar o arquivo SQLite em pasta compartilhada (corrompe com 2 PCs gravando).

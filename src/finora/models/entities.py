@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from sqlalchemy import ForeignKey, String, Numeric, Boolean, Integer
+from sqlalchemy import ForeignKey, String, Numeric, Boolean, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
 
@@ -84,3 +84,17 @@ class Entry(Base):
     installment: Mapped[str | None] = mapped_column(String(10))  # ex.: 4/12
     # Liga lançamentos de uma mesma recorrência/parcelamento (para "editar este e os próximos").
     series_id: Mapped[str | None] = mapped_column(String(32), index=True)
+
+class BankLine(Base):
+    """Linha de extrato importada (OFX). Fica guardada para a conciliação e para não importar duas vezes."""
+    __tablename__ = "bank_lines"
+    __table_args__ = (UniqueConstraint("account_id", "fitid", name="uq_bank_line"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
+    fitid: Mapped[str] = mapped_column(String(80))          # identificador da transação dado pelo banco
+    posted: Mapped[date]
+    amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))  # + entrou, − saiu
+    memo: Mapped[str] = mapped_column(String(200), default="")
+    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending|matched|ignored
+    entry_id: Mapped[int | None] = mapped_column(ForeignKey("entries.id", ondelete="SET NULL"))

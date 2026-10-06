@@ -96,3 +96,30 @@ def test_nao_copia_sobre_o_proprio_banco(tmp_path):
         backup.backup_to(db_file, db_file)
     with pytest.raises(ValueError):
         backup.restore_from(db_file, db_file, tmp_path / "backups")
+
+
+def test_backup_na_nuvem_um_por_dia_e_ultimos_14(tmp_path):
+    db_file = _make_db(tmp_path / "finora.db", n_entries=2)
+    cloud = tmp_path / "OneDrive"
+    cloud.mkdir()
+    for day in range(1, 21):
+        backup.cloud_backup(cloud, db_file, now=datetime(2026, 10, day, 22, 0))
+    made = backup.cloud_backup(cloud, db_file, now=datetime(2026, 10, 20, 23, 0))     # mesmo dia: substitui
+    names = sorted(p.name for p in (cloud / "IGNF-Finora").glob("finora-*.db"))
+    assert len(names) == 14 and names[0] == "finora-2026-10-07.db" and made.name == "finora-2026-10-20.db"
+    infos = backup.list_cloud(cloud)
+    assert len(infos) == 14 and infos[0].entries == 2
+    with pytest.raises(ValueError, match="não existe"):
+        backup.cloud_backup(tmp_path / "sumiu", db_file)
+    assert backup.list_cloud("") == []
+
+
+def test_encontra_pastas_de_nuvem(tmp_path, monkeypatch):
+    for name in ("OneDrive", "Dropbox", "Google Drive"):
+        (tmp_path / name).mkdir()
+    monkeypatch.delenv("OneDrive", raising=False)
+    monkeypatch.delenv("OneDriveConsumer", raising=False)
+    monkeypatch.delenv("OneDriveCommercial", raising=False)
+    found = backup.cloud_candidates(tmp_path)
+    labels = {label for label, path in found if path.parent == tmp_path}
+    assert {"OneDrive", "Dropbox", "Google Drive"} <= labels

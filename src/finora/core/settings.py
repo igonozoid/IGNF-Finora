@@ -61,6 +61,15 @@ def set_backup_folder(path: str) -> None:
     _s().setValue("backup/folder", path)
 
 
+def get_cloud_folder() -> str:
+    """Pasta sincronizada com a nuvem (OneDrive, Google Drive, Dropbox…) para o backup ao fechar. Vazio = desligado."""
+    return str(_s().value("backup/cloud", ""))
+
+
+def set_cloud_folder(path: str) -> None:
+    _s().setValue("backup/cloud", path)
+
+
 def get_last_backup() -> str:
     """Data/hora (ISO) do último backup manual."""
     return str(_s().value("backup/last", ""))

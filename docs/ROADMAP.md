@@ -75,7 +75,7 @@ Ordem de implementação:
 - [x] Anexos de comprovantes nos lançamentos (guardados dentro do banco: vão no backup e no modo rede)
 - [x] Multimoeda: moedas, cotações com histórico por data (manual ou PTAX), contas em outra moeda, transferência com câmbio
 - [x] Autopreencher CNPJ (BrasilAPI) e endereço pelo CEP; CPF não tem consulta pública (LGPD)
-- [ ] Backup automático (ao fechar e agendado) para uma pasta de nuvem (OneDrive, Google Drive, Dropbox)
+- [x] Backup automático ao fechar numa pasta de nuvem (OneDrive, Google Drive, Dropbox), últimos 14 dias
 - [ ] Do IgnControl: fechamento de período (trava lançamentos até uma data)
 - [ ] Do IgnControl: previsão de caixa dia a dia (pior saldo projetado) e relatório analítico
 - [ ] App de licenças (repositório privado)

@@ -3,7 +3,9 @@
 Usa a API de backup do SQLite: a cópia sai consistente mesmo com o app aberto.
 Um backup é o próprio arquivo do banco (.db), então dá para guardar em pendrive, nuvem etc.
 """
+import os
 import sqlite3
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +16,9 @@ AUTO_PREFIX = "auto-"
 SAFETY_PREFIX = "antes-de-restaurar-"
 UPDATE_PREFIX = "antes-de-atualizar-"   # cópia feita pelo init_db antes de aplicar migrações
 KEEP_AUTO = 7
+KEEP_CLOUD = 14
+CLOUD_SUBDIR = "IGNF-Finora"            # dentro da pasta da nuvem
+CLOUD_PREFIX = "finora-"
 REQUIRED_TABLES = {"entities", "accounts", "categories", "entries"}
 
 
@@ -118,6 +123,62 @@ def list_local(backup_dir: Path | None = None) -> list[BackupInfo]:
     backup_dir = Path(backup_dir or db.BACKUP_DIR)
     out = []
     for p in backup_dir.glob("*.db"):
+        try:
+            out.append(inspect_backup(p))
+        except ValueError:
+            continue
+    return sorted(out, key=lambda b: b.modified, reverse=True)
+
+
+# ---------- backup numa pasta sincronizada com a nuvem ----------
+def cloud_candidates(home: Path | None = None) -> list[tuple[str, Path]]:
+    """Pastas de OneDrive / Google Drive / Dropbox / iCloud encontradas neste computador."""
+    home = Path(home or Path.home())
+    found: list[tuple[str, Path]] = []
+
+    def add(label: str, path: Path | str | None):
+        if path and Path(path).is_dir() and all(Path(path) != p for _l, p in found):
+            found.append((label, Path(path)))
+
+    for var in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
+        add("OneDrive", os.environ.get(var))
+    for name in ("OneDrive", "Dropbox", "Google Drive", "GoogleDrive", "Meu Drive", "My Drive"):
+        add("Google Drive" if "Drive" in name and "One" not in name else name, home / name)
+    if sys.platform == "win32":
+        for letter in "GHIJ":                              # Google Drive para computador monta uma unidade
+            for sub in ("My Drive", "Meu Drive"):
+                add("Google Drive", Path(f"{letter}:/{sub}"))
+    cloud = home / "Library" / "CloudStorage"            # macOS
+    if cloud.is_dir():
+        for p in sorted(cloud.iterdir()):
+            label = ("Google Drive" if p.name.startswith("GoogleDrive") else
+                     "OneDrive" if p.name.startswith("OneDrive") else
+                     "Dropbox" if p.name.startswith("Dropbox") else p.name)
+            add(label, p)
+    add("iCloud Drive", home / "Library" / "Mobile Documents" / "com~apple~CloudDocs")
+    return found
+
+
+def cloud_backup(folder: Path, db_file: Path | None = None, keep: int = KEEP_CLOUD,
+                 now: datetime | None = None) -> Path:
+    """Grava a cópia do dia em <pasta>/IGNF-Finora/finora-AAAA-MM-DD.db (substitui a do mesmo dia) e mantém só
+    os `keep` dias mais recentes. O programa da nuvem sincroniza o arquivo."""
+    folder = Path(folder)
+    if not folder.is_dir():
+        raise ValueError(f"A pasta da nuvem não existe mais: {folder}")
+    now = now or datetime.now()
+    dest_dir = folder / CLOUD_SUBDIR
+    made = backup_to(dest_dir / f"{CLOUD_PREFIX}{now:%Y-%m-%d}.db", db_file)
+    for old in sorted(dest_dir.glob(f"{CLOUD_PREFIX}????-??-??.db"))[:-keep]:
+        old.unlink()
+    return made
+
+
+def list_cloud(folder: Path | str) -> list[BackupInfo]:
+    if not folder:
+        return []
+    out = []
+    for p in (Path(folder) / CLOUD_SUBDIR).glob(f"{CLOUD_PREFIX}*.db"):
         try:
             out.append(inspect_backup(p))
         except ValueError:

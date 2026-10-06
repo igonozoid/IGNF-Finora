@@ -212,15 +212,117 @@ class SettingsPage(QWidget):
         self.local_rows.setSpacing(0)
         lay.addLayout(self.local_rows)
 
+        lay.addSpacing(theme.SP_S)
         if not allowed(current_edition(), "cloud_backup"):
-            lay.addSpacing(theme.SP_S)
+            self.cloud_box = None
             lay.addWidget(upgrade_box("Backup automático na nuvem, para não perder nada nem se o computador "
                                       "estragar, faz parte da edição Plus.", self.t, self))
+        else:
+            self._cloud_ui(lay)
 
         self.backup_btn.clicked.connect(self._backup_now)
         self.restore_btn.clicked.connect(self._restore_file)
         self.auto_chk.toggled.connect(self._toggle_auto)
         return box
+
+    def _cloud_ui(self, lay: QVBoxLayout):
+        head = QHBoxLayout()
+        head.addWidget(QLabel("Backup na nuvem", objectName="sectionTitle"))
+        head.addWidget(help_icon("Ao fechar o app, uma cópia do dia vai para a pasta do OneDrive, Google Drive ou\n"
+                                 "Dropbox deste computador, e o programa da nuvem envia para a sua conta.\n"
+                                 f"Ficam os últimos {backup.KEEP_CLOUD} dias. Para restaurar em outro computador,\n"
+                                 "instale o Finora, escolha a mesma pasta e clique em Restaurar.", self.t))
+        head.addStretch(1)
+        self.cloud_open = button("Abrir pasta", "link", self.t, "fa6s.folder-open")
+        self.cloud_open.clicked.connect(
+            lambda: _open_folder(Path(settings.get_cloud_folder()) / backup.CLOUD_SUBDIR))
+        head.addWidget(self.cloud_open)
+        lay.addLayout(head)
+        row = QHBoxLayout()
+        row.setSpacing(theme.SP_M)
+        self.cloud_box = QComboBox()
+        self.cloud_now = button("Enviar agora", "secondary", self.t, "fa6s.cloud-arrow-up", "fg")
+        row.addWidget(self.cloud_box, 1)
+        row.addWidget(self.cloud_now)
+        lay.addLayout(row)
+        self.cloud_status = QLabel(wordWrap=True)
+        self.cloud_status.setProperty("role", "field")
+        lay.addWidget(self.cloud_status)
+        self.cloud_rows = QVBoxLayout()
+        self.cloud_rows.setSpacing(0)
+        lay.addLayout(self.cloud_rows)
+        self._fill_cloud_box()
+        self.cloud_box.activated.connect(self._cloud_chosen)
+        self.cloud_now.clicked.connect(self._cloud_now)
+
+    def _fill_cloud_box(self):
+        current = settings.get_cloud_folder()
+        self.cloud_box.blockSignals(True)
+        self.cloud_box.clear()
+        self.cloud_box.addItem("Desligado", "")
+        paths = []
+        for label, path in backup.cloud_candidates():
+            self.cloud_box.addItem(f"{label} — {path}", str(path))
+            paths.append(str(path))
+        if current and current not in paths:
+            self.cloud_box.addItem(current, current)
+        self.cloud_box.addItem("Escolher outra pasta…", "*")
+        self.cloud_box.setCurrentIndex(max(0, self.cloud_box.findData(current)))
+        self.cloud_box.blockSignals(False)
+
+    def _cloud_chosen(self, _i: int = 0):
+        value = self.cloud_box.currentData()
+        if value == "*":
+            path = QFileDialog.getExistingDirectory(self, "Pasta sincronizada com a nuvem",
+                                                    settings.get_cloud_folder() or str(Path.home()))
+            if not path:
+                self._fill_cloud_box()
+                return
+            value = path
+        settings.set_cloud_folder(value)
+        self._fill_cloud_box()
+        self.message.emit("Backup na nuvem desligado." if not value else
+                          f"Backup na nuvem ligado: {Path(value) / backup.CLOUD_SUBDIR}")
+        if value:
+            self._cloud_now()
+        self._refresh_cloud()
+
+    def _cloud_now(self):
+        folder = settings.get_cloud_folder()
+        if not folder:
+            self.message.emit("Escolha primeiro a pasta da nuvem.")
+            return
+        try:
+            made = backup.cloud_backup(Path(folder))
+        except (ValueError, OSError) as e:
+            QMessageBox.warning(self, "Backup na nuvem", f"Não foi possível gravar na pasta da nuvem.\n\n{e}")
+            return
+        log.info("Backup na nuvem (manual): %s", made)
+        self.message.emit(f"Backup enviado para {made.parent}")
+        self._refresh_cloud()
+
+    def _refresh_cloud(self):
+        if getattr(self, "cloud_box", None) is None:
+            return
+        folder = settings.get_cloud_folder()
+        while self.cloud_rows.count():
+            w = self.cloud_rows.takeAt(0).widget()
+            if w:
+                w.setParent(None)
+                w.deleteLater()
+        self.cloud_now.setEnabled(bool(folder))
+        self.cloud_open.setVisible(bool(folder))
+        if not folder:
+            found = len(backup.cloud_candidates())
+            self.cloud_status.setText("Escolha a pasta do OneDrive, Google Drive ou Dropbox deste computador."
+                                      + ("" if found else " Não encontrei nenhuma: instale o programa da nuvem "
+                                                          "ou escolha a pasta à mão."))
+            return
+        items = backup.list_cloud(folder)
+        self.cloud_status.setText(f"Ao fechar o app, a cópia do dia vai para {Path(folder) / backup.CLOUD_SUBDIR}."
+                                  + ("" if items else " Ainda não há cópias lá."))
+        for b in items[:5]:
+            self.cloud_rows.addWidget(self._local_row(b))
 
     def _refresh_backup(self):
         last = settings.get_last_backup()
@@ -244,6 +346,7 @@ class SettingsPage(QWidget):
             self.local_rows.addWidget(self._local_row(b))
         if not items:
             self.local_rows.addWidget(_muted("Nenhum ainda. O primeiro automático é feito na próxima abertura."))
+        self._refresh_cloud()
 
     def _local_row(self, b: backup.BackupInfo) -> QFrame:
         row = QFrame(objectName="listRow")
@@ -253,7 +356,8 @@ class SettingsPage(QWidget):
         when = QLabel(f"{b.modified:%d/%m/%Y %H:%M}")
         when.setFont(theme.mono_font())
         when.setFixedWidth(120)
-        kind = ("Antes de restaurar" if b.path.name.startswith(backup.SAFETY_PREFIX) else
+        kind = ("Nuvem" if b.path.name.startswith(backup.CLOUD_PREFIX) else
+                "Antes de restaurar" if b.path.name.startswith(backup.SAFETY_PREFIX) else
                 "Antes de atualizar" if b.path.name.startswith(backup.UPDATE_PREFIX) else "Automático")
         what = QLabel(f"{kind} · {b.accounts} {'conta' if b.accounts == 1 else 'contas'} · "
                       f"{b.entries} {'lançamento' if b.entries == 1 else 'lançamentos'}")

@@ -152,3 +152,32 @@ def test_inadimplencia_e_duplo_clique_abre_lancamento(window):
     assert texts[0].startswith("Você deve") and "Conta de luz" in texts
     view._double(texts.index("Conta de luz"), 1)
     assert window.current_key() == "entries" and window.page("entries").form.editing.description == "Conta de luz"
+
+
+def test_backup_na_nuvem_escolher_pasta_e_ao_fechar(plus, window, dialogs, tmp_path, monkeypatch):
+    from finora import __main__ as app_main
+    from finora.core import settings
+    from finora.services import backup
+    cloud = tmp_path / "Dropbox"
+    cloud.mkdir()
+    monkeypatch.setattr(backup, "cloud_candidates", lambda home=None: [("Dropbox", cloud)])
+    page = window.page("settings")
+    page._fill_cloud_box()
+    page.cloud_box.setCurrentIndex(page.cloud_box.findData(str(cloud)))
+    page._cloud_chosen()
+    assert settings.get_cloud_folder() == str(cloud)
+    assert len(list((cloud / "IGNF-Finora").glob("finora-*.db"))) == 1          # já envia na hora
+    assert page.cloud_rows.count() == 1 and "Nuvem" in page.cloud_rows.itemAt(0).widget().findChildren(
+        type(page.cloud_status))[1].text()
+    # ao fechar o app
+    (cloud / "IGNF-Finora" / next(iter((cloud / "IGNF-Finora").glob("*.db"))).name).unlink()
+    app_main.cloud_backup_on_close()
+    assert len(list((cloud / "IGNF-Finora").glob("finora-*.db"))) == 1
+    # desligar
+    page.cloud_box.setCurrentIndex(0)
+    page._cloud_chosen()
+    assert settings.get_cloud_folder() == "" and not page.cloud_now.isEnabled()
+
+
+def test_backup_na_nuvem_bloqueado_na_free(window):
+    assert window.page("settings").cloud_box is None

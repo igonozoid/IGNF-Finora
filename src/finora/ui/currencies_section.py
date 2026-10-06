@@ -31,6 +31,11 @@ def _rate_text(v: Decimal) -> str:
     return txt
 
 
+def _table_height(tv: QTableWidget, rows: int) -> int:
+    """Altura exata para `rows` linhas + cabeçalho (sem barra de rolagem nem sobra)."""
+    return tv.horizontalHeader().sizeHint().height() + rows * theme.ROW_H + 2 * tv.frameWidth()
+
+
 class CurrenciesSection(QFrame):
     message = Signal(str)
     changed = Signal()             # cotações mudaram: os valores em moeda principal foram recalculados
@@ -116,7 +121,6 @@ class CurrenciesSection(QFrame):
         self.history.setSelectionMode(QAbstractItemView.SingleSelection)
         self.history.setShowGrid(False)
         self.history.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.history.setMaximumHeight(6 * theme.ROW_H + 30)
         lay.addWidget(self.history)
         self.del_btn = button("Excluir cotação selecionada", "link")
         lay.addWidget(self.del_btn, 0, Qt.AlignLeft)
@@ -173,7 +177,7 @@ class CurrenciesSection(QFrame):
                     it.setFont(theme.mono_font())
                 self.table.setItem(r, col, it)
         self.table.setVisible(bool(st))
-        self.table.setFixedHeight((len(st) + 1) * theme.ROW_H + 6 if st else 0)
+        self.table.setFixedHeight(_table_height(self.table, len(st)) if st else 0)
         missing = [c for c in st if c.latest is None and c.accounts]
         self.warn.setText(" ".join(f"{c.currency} está sem cotação: o saldo e os lançamentos dessa moeda contam "
                                    f"1 para 1 em {self.base} até você cadastrar uma." for c in missing))
@@ -199,7 +203,7 @@ class CurrenciesSection(QFrame):
                     it.setFont(theme.mono_font())
                 self.history.setItem(r, col, it)
         self.history.setVisible(bool(self._rates))
-        self.history.setFixedHeight((min(len(self._rates), 6) + 1) * theme.ROW_H + 6)
+        self.history.setFixedHeight(_table_height(self.history, min(len(self._rates), 6)))
         self.del_btn.setVisible(bool(self._rates))
 
     # ----- ações -----

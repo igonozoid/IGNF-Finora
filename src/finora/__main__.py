@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 from PySide6.QtCore import qInstallMessageHandler
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
@@ -71,8 +72,22 @@ def main():
 
     w = MainWindow(profile); w.show()
     code = app.exec()
+    cloud_backup_on_close()
     log.info("App fechado")
     return code
+
+
+def cloud_backup_on_close() -> None:
+    """Edições pagas: ao fechar, a cópia do dia vai para a pasta da nuvem escolhida em Configurações."""
+    from finora.core.licensing import allowed, current_edition
+    folder = settings.get_cloud_folder()
+    if not folder or not allowed(current_edition(), "cloud_backup"):
+        return
+    try:
+        made = backup.cloud_backup(Path(folder))
+        log.info("Backup na nuvem: %s", made)
+    except Exception:                      # nunca impede o app de fechar
+        log.exception("Backup na nuvem falhou")
 
 
 if __name__ == "__main__":

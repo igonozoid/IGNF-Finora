@@ -158,7 +158,8 @@ class SettingsPage(QWidget):
         when = QLabel(f"{b.modified:%d/%m/%Y %H:%M}")
         when.setFont(theme.mono_font())
         when.setFixedWidth(120)
-        kind = "Antes de restaurar" if b.path.name.startswith(backup.SAFETY_PREFIX) else "Automático"
+        kind = ("Antes de restaurar" if b.path.name.startswith(backup.SAFETY_PREFIX) else
+                "Antes de atualizar" if b.path.name.startswith(backup.UPDATE_PREFIX) else "Automático")
         what = QLabel(f"{kind} · {b.accounts} {'conta' if b.accounts == 1 else 'contas'} · "
                       f"{b.entries} {'lançamento' if b.entries == 1 else 'lançamentos'}")
         what.setMinimumWidth(1)

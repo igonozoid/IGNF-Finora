@@ -11,7 +11,7 @@ Referência visual: mockup "App Financeiro" (exportado em `docs/mockup/`). Siga-
 - Valores monetários: `Decimal`, nunca float. Fonte monoespaçada em colunas de valor.
 - Toda regra de negócio em `services/`; a UI não faz SQL.
 - Recursos pagos sempre checam `core/licensing.allowed()`; na Free, mostrar o recurso com cadeado e convite para upgrade.
-- Migrações via Alembic a partir da 1ª versão publicada.
+- Migrações via Alembic (`src/finora/migrations`): mudou um modelo, gere uma revisão com `alembic revision --autogenerate -m "…"` e revise o arquivo. O app aplica sozinho ao abrir (com backup antes). O teste `test_migracoes_batem_com_os_modelos` quebra se faltar migração.
 - Commits pequenos, mensagem em PT-BR.
 
 ## Ordem de construção

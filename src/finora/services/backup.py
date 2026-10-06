@@ -12,6 +12,7 @@ from finora.core import db
 
 AUTO_PREFIX = "auto-"
 SAFETY_PREFIX = "antes-de-restaurar-"
+UPDATE_PREFIX = "antes-de-atualizar-"   # cópia feita pelo init_db antes de aplicar migrações
 KEEP_AUTO = 7
 REQUIRED_TABLES = {"entities", "accounts", "categories", "entries"}
 

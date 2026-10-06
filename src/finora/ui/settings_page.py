@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 
 from finora import __version__
 from finora.core import db, licensing, settings
+from finora.core.logs import log
 from finora.core.license_key import LicenseError
 from finora.core.licensing import allowed, current_edition
 from finora.services import backup
@@ -189,6 +190,7 @@ class SettingsPage(QWidget):
             return
         settings.set_backup_folder(str(dest.parent))
         settings.set_last_backup(datetime.now().isoformat(timespec="minutes"))
+        log.info("Backup manual salvo: %s", dest.name)
         self.message.emit(f"Backup salvo em {dest}")
         self._refresh_backup()
 
@@ -221,7 +223,8 @@ class SettingsPage(QWidget):
         if box.clickedButton() is not ok:
             return
         try:
-            backup.restore_from(path)
+            safety = backup.restore_from(path)
+            log.info("Backup restaurado: %s (cópia dos dados anteriores: %s)", Path(path).name, safety.name)
         except (ValueError, OSError) as e:
             QMessageBox.warning(self, "Restaurar backup", f"Não foi possível restaurar.\n\n{e}")
             return
@@ -357,9 +360,11 @@ class SettingsPage(QWidget):
         try:
             lic = licensing.activate(key)
         except LicenseError as e:
+            log.info("Ativação de licença recusada: %s", e)
             self._key_err(str(e))
             return
         self._key_err(None)
+        log.info("Licença ativada: edição %s, nº %s", lic.edition, lic.license_id)
         QMessageBox.information(self, "Licença ativada",
                                 f"Edição {lic.edition.capitalize()} ativada para {lic.name}.\n"
                                 "O IGNF Finora vai reabrir para liberar os recursos.")
@@ -372,6 +377,7 @@ class SettingsPage(QWidget):
                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return
         licensing.deactivate()
+        log.info("Licença removida deste computador")
         self.restart_requested.emit()
 
     # ---------- sobre ----------

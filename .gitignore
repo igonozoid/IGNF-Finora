@@ -10,3 +10,4 @@ data/backups/
 *.pem
 data/*.ini
 data/*.log
+data/*.log.*

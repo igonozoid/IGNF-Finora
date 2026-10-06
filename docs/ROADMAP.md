@@ -71,7 +71,7 @@ Ordem de implementação:
 - [x] Importar OFX (extrato do banco) sem duplicar
 - [x] Conciliação: casar linhas do extrato com lançamentos, sugerir, criar o que falta (mockup: Conciliação)
 - [x] Centros de custo: cadastro, campo no lançamento, relatório por centro de custo (mockup + IgnControl)
-- [ ] Orçado x realizado: orçamento mensal por categoria e por centro de custo, com alerta de estouro
+- [x] Orçado x realizado: orçamento mensal por categoria e por centro de custo, com alerta de estouro
 - [ ] Anexos de comprovantes nos lançamentos (arquivos dentro da pasta de dados)
 - [ ] Multimoeda: moedas, cotações com histórico por data, contas em outra moeda, transferência com câmbio
 - [ ] Autopreencher CPF/CNPJ (consulta pública de CNPJ)

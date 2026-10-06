@@ -98,3 +98,12 @@ class BankLine(Base):
     memo: Mapped[str] = mapped_column(String(200), default="")
     status: Mapped[str] = mapped_column(String(10), default="pending")  # pending|matched|ignored
     entry_id: Mapped[int | None] = mapped_column(ForeignKey("entries.id", ondelete="SET NULL"))
+
+class Budget(Base):
+    """Orçamento mensal de uma categoria (quanto você pretende gastar nela por mês)."""
+    __tablename__ = "budgets"
+    __table_args__ = (UniqueConstraint("entity_id", "category_id", name="uq_budget_category"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"))
+    amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))

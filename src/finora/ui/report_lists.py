@@ -6,13 +6,13 @@ from decimal import Decimal
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QHBoxLayout, QHeaderView, QLabel, QTableWidget, QTableWidgetItem, QVBoxLayout,
-    QWidget,
+    QAbstractItemView, QCheckBox, QComboBox, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QTableWidget,
+    QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from finora.core import money
 from finora.core.db import Session
-from finora.services import accounts, export, reports
+from finora.services import accounts, budgets, export, reports
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.widgets import help_icon, set_tone
@@ -51,8 +51,7 @@ class TableReport(QWidget):
             else:
                 hdr.setSectionResizeMode(i, QHeaderView.Fixed)
                 hdr.resizeSection(i, width)
-            if is_value:
-                self.table.horizontalHeaderItem(i).setTextAlignment(R)
+            self.table.horizontalHeaderItem(i).setTextAlignment(R if is_value else L)
         self.empty = QLabel(alignment=Qt.AlignCenter, wordWrap=True)
         self.empty.setProperty("role", "muted")
         self.footer = QLabel(wordWrap=True)
@@ -290,6 +289,80 @@ class ByCostCenterView(TableReport):
                         "Cadastre em Centros de custo e escolha-o nos lançamentos.")
         spent = sum((r.spent for r in data if r.name != "Sem centro de custo"), Decimal(0))
         self.footer.setText(f"Gasto com centro de custo <b>{self.fmt(-spent)}</b>")
+
+
+# ---------- orçado x realizado ----------
+class BudgetView(TableReport):
+    TITLE = "Orçado x realizado"
+    COLUMNS = [("CATEGORIA", None, False), ("ORÇADO/MÊS", 120, True), ("ORÇADO NO PERÍODO", 130, True),
+               ("REALIZADO", 120, True), ("SALDO", 120, True), ("CONSUMO", 110, False), ("STATUS", 80, True)]
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.period = self.period_box()
+        self.bar.addWidget(self.period)
+        self.only_used = QCheckBox("Só com orçamento ou gasto")
+        self.only_used.toggled.connect(self.refresh)
+        self.bar.addWidget(self.only_used)
+        self.finish_bar("Dê dois cliques no ORÇADO/MÊS de uma categoria para definir quanto pretende gastar\n"
+                        "nela por mês (vazio apaga). Grupo sem orçamento próprio usa a soma das subcategorias.\n"
+                        "Realizado = despesas do período pela data da compra/vencimento, pagas ou não.")
+        self.table.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
+        self.table.itemChanged.connect(self._edited)
+        self._data: list[budgets.BudgetRow] = []
+
+    def refresh(self):
+        first, last = reports.period_range(self.period.currentData())
+        with Session() as s:
+            self._data = budgets.report(s, self.profile.id, first, last, self.only_used.isChecked())
+        many = first.month != last.month or first.year != last.year
+        self.table.setColumnHidden(2, not many)
+        rows = []
+        for r in self._data:
+            status = {"none": "", "ok": f"{r.share:.0%}" if r.share is not None else "",
+                      "warn": f"{r.share:.0%}" if r.share is not None else "", "over": "Estourou"}[r.status]
+            rows.append({"cells": [("      " if r.level else "") + r.name, r.monthly, r.planned,
+                                   -r.actual if r.actual else None, r.left, "", status],
+                         "bold": r.level == 0,
+                         "tones": {1: "mut" if r.own is None else None, 4: "neg" if r.left and r.left < 0 else None,
+                                   6: {"over": "neg", "warn": "acc"}.get(r.status, "mut")}})
+        self.table.blockSignals(True)
+        self.fill(rows, "Nenhuma categoria de despesa para orçar.")
+        from finora.ui.cost_centers_page import UsageBar
+        for i, r in enumerate(self._data):
+            item = self.table.item(i, 1)
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
+            item.setToolTip("Dois cliques para mudar" + ("" if r.own is not None or r.monthly is None
+                                                       else " (hoje é a soma das subcategorias)"))
+            for c in (0, 2, 3, 4, 5, 6):
+                it = self.table.item(i, c)
+                it.setFlags(it.flags() & ~Qt.ItemIsEditable)
+            self.table.setCellWidget(i, 5, UsageBar(r.share, self.t))
+        self.table.blockSignals(False)
+        planned = sum((r.planned or Decimal(0) for r in self._data if r.level == 0), Decimal(0))
+        actual = sum((r.actual for r in self._data if r.level == 0), Decimal(0))
+        self.footer.setText(f"Orçado <b>{self.fmt(planned)}</b> &nbsp;·&nbsp; Realizado <b>{self.fmt(-actual)}</b>"
+                            f" &nbsp;·&nbsp; Saldo <b>{self.fmt(planned - actual)}</b>")
+
+    def _edited(self, item):
+        if item.column() != 1 or item.row() >= len(self._data):
+            return
+        row = self._data[item.row()]
+        text = item.text().strip()
+        try:
+            value = money.parse(text) if text and text != "—" else None
+        except ValueError:
+            QMessageBox.warning(self, "Orçamento", "Valor inválido. Use o formato 1.234,56.")
+            self.refresh()
+            return
+        try:
+            with Session() as s:
+                budgets.set_budget(s, self.profile.id, row.category_id, value)
+        except ValueError as e:
+            QMessageBox.warning(self, "Orçamento", str(e))
+        else:
+            self.message.emit(f"Orçamento de {row.name}: {self.fmt(value) if value else 'removido'}.")
+        self.refresh()
 
 
 # ---------- inadimplência ----------

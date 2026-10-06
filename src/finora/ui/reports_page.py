@@ -537,7 +537,7 @@ class ReportsPage(QWidget):
         from finora.ui import report_lists as rl
         self.views = {"dre": DreView(profile, t), "flow": FlowView(profile, t),
                       "statement": rl.AccountStatementView(profile, t), "category": rl.ByCategoryView(profile, t),
-                      "cost_center": rl.ByCostCenterView(profile, t),
+                      "cost_center": rl.ByCostCenterView(profile, t), "budget": rl.BudgetView(profile, t),
                       "contact": rl.ByContactView(profile, t), "overdue": rl.OverdueView(profile, t)}
         self.stack = QStackedWidget()
         for v in self.views.values():

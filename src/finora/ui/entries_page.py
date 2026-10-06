@@ -15,7 +15,7 @@ import qtawesome as qta
 from finora.core import money
 from finora.core.db import Session
 from finora.core.licensing import allowed, current_edition
-from finora.services import accounts, cards, categories, contacts, cost_centers, entries, export
+from finora.services import accounts, budgets, cards, categories, contacts, cost_centers, entries, export
 from finora.services.entries import EntryData, EntryView
 from finora.services.setup import Profile
 from finora.ui import theme
@@ -639,6 +639,9 @@ class EntryForm(QFrame):
                     n = entries.update(s, self.editing.id, d, scope)
                     sel = self.editing.id
                     msg = f"{n} lançamentos alterados." if n > 1 else "Lançamento alterado."
+                if d.kind == "expense" and allowed(current_edition(), "budget"):
+                    warn = budgets.overspent(s, self.profile.id, d.category_id, d.due_date, self.profile.currency)
+                    msg = f"{msg} {warn}" if warn else msg
         except ValueError as e:
             self._error(str(e))
             return

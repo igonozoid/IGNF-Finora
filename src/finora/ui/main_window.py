@@ -45,7 +45,7 @@ NAV = [
      "Aqui você vai cadastrar quem te paga e quem você paga, para encontrar tudo mais rápido."),
     ("reconcile", "fa6s.scale-balanced", "Conciliação", "Extrato do banco x seus lançamentos",
      "Aqui você importa o extrato do banco e confere se tudo foi lançado."),
-    ("reports", "fa6s.file-lines", "Relatórios", "DRE, fluxo de caixa, extratos e atrasados",
+    ("reports", "fa6s.file-lines", "Relatórios", "DRE, fluxo de caixa, extratos, orçamento e atrasados",
      "Aqui você vai ver, mês a mês, quanto entrou, quanto saiu e quanto sobrou."),
     ("settings", "fa6s.gear", "Configurações", "Preferências, backup e licença",
      "Aqui você vai ajustar o app, fazer cópia de segurança dos seus dados e ativar sua licença."),

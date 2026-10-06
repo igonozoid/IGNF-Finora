@@ -4,13 +4,14 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from finora.core import db
 from finora.models import Base
 from finora.services import setup
 
 
 @pytest.fixture
 def session():
-    engine = create_engine("sqlite://")
+    engine = db.sqlite_pragmas(create_engine("sqlite://"))
     Base.metadata.create_all(engine)
     with Session(engine) as s:
         yield s

@@ -45,7 +45,7 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 - [x] Pasta de dados portátil (regra acima) e preferências/licença em `data/finora.ini` (sair do Registro)
 - [x] Python 3.12 no `.venv` e `requires-python >= 3.12`
 - [ ] Alembic no lugar do ajuste provisório de colunas em `init_db` (essencial para banco em rede)
-- [ ] Ligar chaves estrangeiras no SQLite (`PRAGMA foreign_keys=ON`)
+- [x] Ligar chaves estrangeiras no SQLite (`PRAGMA foreign_keys=ON`)
 - [ ] Log de erros em arquivo + janela amigável de "algo deu errado"
 - [ ] Testes de tela no repositório (pytest-qt) e testes rodando no GitHub (Windows e Linux),
       também contra PostgreSQL/MariaDB

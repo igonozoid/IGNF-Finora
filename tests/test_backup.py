@@ -5,13 +5,14 @@ import pytest
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
+from finora.core import db
 from finora.models import Base, Entry
 from finora.services import accounts, backup, entries, setup
 from finora.services.entries import EntryData
 
 
 def _make_db(path, name="Ana", n_entries=0):
-    eng = create_engine(f"sqlite:///{path}")
+    eng = db.sqlite_pragmas(create_engine(f"sqlite:///{path}"))
     Base.metadata.create_all(eng)
     with Session(eng) as s:
         p = setup.run_first_setup(s, name=name, currency="BRL", account_name="Banco", account_kind="bank",
@@ -25,7 +26,7 @@ def _make_db(path, name="Ana", n_entries=0):
 
 
 def _count_entries(path):
-    eng = create_engine(f"sqlite:///{path}")
+    eng = db.sqlite_pragmas(create_engine(f"sqlite:///{path}"))
     with Session(eng) as s:
         n = s.scalar(select(func.count(Entry.id)))
     eng.dispose()

@@ -28,8 +28,9 @@ recursos pagos em `core/licensing.py` (`allowed()`), que aparecem com cadeado e 
 | Fechamento de período | | ✓ | ✓ |
 | Conciliação com o extrato do banco | | ✓ | ✓ |
 
-¹ **Rede local (LAN)**: um PC roda o **Finora Servidor** (Windows ou Linux) e os outros PCs, cada um com o
-Finora instalado, se conectam a ele. Não é um arquivo numa pasta compartilhada (o SQLite corrompe nesse uso).
+¹ **Rede local (LAN)**: um PC vira o **Finora Servidor** (Windows ou Linux): o Finora baixa do site oficial e
+cuida de um banco MariaDB portátil, e os outros PCs, cada um com o Finora, se conectam a ele (Configurações ›
+Onde ficam os dados). Não é um arquivo numa pasta compartilhada (o SQLite corrompe nesse uso).
 Ver `docs/ROADMAP.md`, Fase E.
 
 **Futuro (a estudar):**

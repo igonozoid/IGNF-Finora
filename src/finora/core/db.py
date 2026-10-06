@@ -52,7 +52,9 @@ def describe(eng=None) -> str:
     eng = eng or engine
     if not is_server(eng):
         return f"Dados salvos neste computador · {DATA_DIR.name}/finora.db"
-    return f"Dados no servidor {eng.url.host}:{eng.url.port or 3306}"
+    if eng.url.host in ("127.0.0.1", "localhost"):
+        return f"Dados no Finora Servidor deste computador (porta {eng.url.port or 3306})"
+    return f"Dados no Finora Servidor {eng.url.host}:{eng.url.port or 3306}"
 
 MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
 BASELINE = "0001"   # 1ª revisão do Alembic = esquema das etapas 1 a 8

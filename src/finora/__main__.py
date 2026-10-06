@@ -41,6 +41,9 @@ def main():
         log.warning(paths.DATA_NOTICE.replace("\n", " "))
         QMessageBox.information(None, "Onde ficam seus dados", paths.DATA_NOTICE)
 
+    from finora.ui.connection import connect_from_settings
+    if not connect_from_settings():
+        return 0
     try:
         safety = init_db()
     except Exception:
@@ -62,7 +65,7 @@ def main():
         profile = wizard.profile
         log.info("Primeiro uso concluído")
 
-    if settings.get_auto_backup():
+    if settings.get_auto_backup() and settings.get_db_config().mode != "client":   # no servidor, ele faz
         try:
             made = backup.auto_backup()    # 1 por dia, mantém os últimos 7 em data/backups
             if made:

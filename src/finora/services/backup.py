@@ -54,7 +54,11 @@ def _copy(src: Path, dest: Path) -> None:
 
 
 def backup_to(dest: Path, db_file: Path | None = None) -> Path:
-    """Copia o banco para `dest` (sobrescreve se existir)."""
+    """Copia o banco para `dest` (sobrescreve se existir). No modo servidor (sem `db_file`), exporta o banco do
+    servidor para um arquivo .db — o mesmo formato, que abre em qualquer Finora."""
+    if db_file is None and db.is_server():
+        from finora.services import dbcopy
+        return dbcopy.export_to_file(db.engine, Path(dest))
     dest, src = Path(dest), Path(db_file or db.DB_FILE)
     if dest.resolve() == src.resolve():
         raise ValueError("Escolha outro lugar: esse é o próprio arquivo de dados do app.")
@@ -94,6 +98,12 @@ def restore_from(path: Path, db_file: Path | None = None, backup_dir: Path | Non
     """Troca o banco atual pelo backup. Antes, guarda uma cópia do atual e devolve onde ela ficou.
     Depois de restaurar, o app precisa ser reaberto."""
     inspect_backup(path)                                   # não restaura arquivo inválido
+    if db_file is None and db.is_server():                 # modo servidor: troca os dados do servidor
+        from finora.services import dbcopy
+        safety = Path(backup_dir or db.BACKUP_DIR) / f"{SAFETY_PREFIX}{(now or datetime.now()):%Y-%m-%d_%H%M%S}.db"
+        dbcopy.export_to_file(db.engine, safety)
+        dbcopy.import_from_file(Path(path), db.engine)
+        return safety
     db_file = Path(db_file or db.DB_FILE)
     if Path(path).resolve() == db_file.resolve():
         raise ValueError("Esse é o arquivo de dados que já está em uso.")

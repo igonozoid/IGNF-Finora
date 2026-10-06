@@ -411,9 +411,13 @@ class MainWindow(QMainWindow):
         sb = self.statusBar()
         sb.setSizeGripEnabled(False)
         sb.setFixedHeight(24)
-        db = QLabel(f"Dados salvos neste computador · {DATA_DIR.name}/finora.db")
-        db.setToolTip(str(DATA_DIR / "finora.db"))
-        sb.addWidget(db)
+        from finora.core import db as dbmod
+        where = QLabel(dbmod.describe())
+        where.setToolTip(str(DATA_DIR / "finora.db") if not dbmod.is_server() else
+                         "Os dados ficam no Finora Servidor; este computador só mostra e grava lá.")
+        if dbmod.is_server():
+            where.setProperty("tone", "pos")
+        sb.addWidget(where)
         sb.addPermanentWidget(QLabel(f"Edição {current_edition().value.capitalize()}"))
         sb.addPermanentWidget(QLabel(f"v{__version__}"))
 

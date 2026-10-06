@@ -47,7 +47,7 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 - [x] Ligar chaves estrangeiras no SQLite (`PRAGMA foreign_keys=ON`)
 - [x] Log de erros em arquivo + janela amigável de "algo deu errado"
 - [x] Testes de tela no repositório (pytest-qt) e testes rodando no GitHub (Windows e Linux)
-- [ ] Testes também contra o banco do Finora Servidor (quando ele existir, Fase E)
+- [x] Testes também contra o banco do Finora Servidor (quando ele existir, Fase E)
 - [x] Ajustar `core/licensing.FEATURES` às edições novas (Plus com tudo; 3 usuários e 10 entidades)
 
 ## Fase B — Completar o básico (Free)
@@ -90,13 +90,14 @@ finanças pessoais. Podem virar módulos opcionais no futuro.
 - [x] Histórico de alterações / auditoria: quem fez o quê e quando, antes/depois (mockup: Log de auditoria)
 - [x] Tela Administração (mockup): usuários, permissões, entidades, fechamento de período, auditoria
 - [x] Limites por edição (usuários e entidades) checados em `core/licensing.allowed()`
-- [ ] **Rede local**: escolher "este PC" ou "rede" no primeiro uso/Configurações.
+- [x] **Rede local** (Configurações › Onde ficam os dados): neste computador, num servidor da rede, ou este
+  computador é o servidor (Windows testado; Linux pelo pacote oficial, a testar num PC Linux de verdade).
   - Não usar o arquivo SQLite em pasta compartilhada (corrompe com 2 PCs gravando).
   - **Finora Servidor**: um PC (Windows ou Linux) roda um MariaDB portátil cuidado pelo Finora (iniciar,
     parar, criar o banco e o usuário, mostrar o endereço para os outros PCs). Os outros PCs apontam para ele
     em Configurações › Onde ficam os dados.
   - Levar os dados deste PC para o servidor (cópia completa) e backup do servidor para um arquivo .db.
-- [ ] Indicador de conexão na barra de status (mockup: "Conectado · …", "usuários online")
+- [x] Indicador de conexão na barra de status (mockup: "Conectado · …"); falta "usuários online"
 
 ## Fase D — Distribuição
 

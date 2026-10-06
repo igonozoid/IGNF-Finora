@@ -168,3 +168,14 @@ def set_db_config(cfg: DbConfig) -> None:
     s.setValue("db/name", cfg.name)
     s.setValue("db/user", cfg.user)
     s.setValue("db/password", secret.protect(cfg.password))
+
+
+def get_server_root() -> str:
+    """Senha do administrador (root) do MariaDB deste PC, quando ele é o servidor."""
+    from finora.core import secret
+    return secret.unprotect(str(_s().value("server/root", "")))
+
+
+def set_server_root(password: str) -> None:
+    from finora.core import secret
+    _s().setValue("server/root", secret.protect(password))

@@ -72,8 +72,12 @@ class SettingsPage(QWidget):
         self.currencies = CurrenciesSection(profile.id, profile.currency, t, MAX_W)
         self.currencies.message.connect(self.message.emit)
         # seções que só quem administra vê (perfil, moedas, backup, fechamento e licença)
-        self.admin_sections = [self._profile_section(), self.currencies, self._backup_section(),
-                               self._lock_section()]
+        from finora.ui.data_location_section import DataLocationSection
+        self.data_location = DataLocationSection(t, MAX_W)
+        self.data_location.message.connect(self.message.emit)
+        self.data_location.restart_requested.connect(self.restart_requested.emit)
+        self.admin_sections = [self._profile_section(), self.data_location, self.currencies,
+                               self._backup_section(), self._lock_section()]
         for w in self.admin_sections:
             bl.addWidget(w)
         bl.addWidget(self._appearance_section())
@@ -676,6 +680,7 @@ class SettingsPage(QWidget):
     def refresh(self):
         self._refresh_backup()
         self.currencies.refresh()      # contas novas em outra moeda aparecem aqui
+        self.data_location.refresh()
         self._refresh_lock()
 
     def apply_theme(self, t: dict):

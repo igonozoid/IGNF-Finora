@@ -32,7 +32,8 @@ a = Analysis([str(ROOT / "packaging" / "launcher.py")], pathex=[str(ROOT / "src"
              hiddenimports=hidden, excludes=excludes, noarchive=False)
 # DLLs grandes que o Finora não usa: OpenGL por software, Qt Quick/QML e o leitor de PDF do Qt
 DROP = ("opengl32sw", "qt6quick", "qt6qml", "qt6pdf", "qt6virtualkeyboard")
-a.binaries = [b for b in a.binaries if not Path(b[0]).name.lower().startswith(DROP)]
+a.binaries = [b for b in a.binaries
+              if not Path(b[0]).name.lower().removeprefix("lib").startswith(DROP)]   # Linux: libQt6Quick.so…
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="IGNF-Finora", console=False,
           icon=str(ICON) if ICON.exists() else None, upx=False)

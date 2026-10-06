@@ -47,8 +47,8 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 - [x] Alembic no lugar do ajuste provisório de colunas em `init_db` (essencial para banco em rede)
 - [x] Ligar chaves estrangeiras no SQLite (`PRAGMA foreign_keys=ON`)
 - [x] Log de erros em arquivo + janela amigável de "algo deu errado"
-- [ ] Testes de tela no repositório (pytest-qt) e testes rodando no GitHub (Windows e Linux),
-      também contra PostgreSQL/MariaDB
+- [x] Testes de tela no repositório (pytest-qt) e testes rodando no GitHub (Windows e Linux)
+- [ ] Testes também contra o banco do Finora Servidor (quando ele existir, Fase E)
 - [x] Ajustar `core/licensing.FEATURES` às edições novas (Plus com tudo; 3 usuários e 10 entidades)
 
 ## Fase B — Completar o básico (Free)

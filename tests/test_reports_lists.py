@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal as D
 
 import pytest
@@ -103,3 +103,16 @@ def test_inadimplencia_com_faixas_e_fatura(ctx):
     assert [(i.description, i.contact, i.days) for i in rep.receivables] == [("Aula não paga", "Pedro", 44)]
     assert rep.buckets(rep.payables) == [("Até 30 dias", D("320.00"), 2), ("31 a 60 dias", D("0.00"), 0),
                                          ("61 a 90 dias", D("80.00"), 1), ("Mais de 90 dias", D("0.00"), 0)]
+
+
+def test_analitico_lista_receitas_e_despesas_do_periodo(session, profile):
+    s, eid = session, profile.id
+    bank = accounts.list_accounts(s, eid)[0].id
+    for kind, desc, day in (("expense", "Luz", 5), ("income", "Salário", 1), ("expense", "Fora", 40)):
+        when = date(2026, 10, 1) + timedelta(days=day - 1)
+        entries.create(s, eid, EntryData(kind=kind, description=desc, amount=D("10"), due_date=when,
+                                         account_id=bank))
+    out = reports.analytical(s, eid, date(2026, 10, 1), date(2026, 10, 31))
+    assert [e.description for e in out] == ["Salário", "Luz"]
+    assert [e.description for e in reports.analytical(s, eid, date(2026, 10, 1), date(2026, 10, 31), "expense")] \
+        == ["Luz"]

@@ -365,6 +365,47 @@ class BudgetView(TableReport):
         self.refresh()
 
 
+# ---------- analítico ----------
+class AnalyticalView(TableReport):
+    TITLE = "Analítico"
+    COLUMNS = [("DATA", 70, False), ("DESCRIÇÃO", None, False), ("CATEGORIA", 150, False),
+               ("CENTRO DE CUSTO", 120, False), ("CONTATO", 130, False), ("CONTA", 110, False), ("VALOR", 120, True)]
+    KINDS = {"all": "Receitas e despesas", "income": "Só receitas", "expense": "Só despesas"}
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.period = self.period_box()
+        self.bar.addWidget(self.period)
+        self.kind = QComboBox()
+        for k, label in self.KINDS.items():
+            self.kind.addItem(label, k)
+        self.kind.currentIndexChanged.connect(self.refresh)
+        self.bar.addWidget(self.kind)
+        self.finish_bar("Cada receita e despesa do período (pela data da compra/vencimento), pagas ou não,\n"
+                        "com categoria, centro de custo, contato e conta. Valores na moeda principal.\n"
+                        "Dois cliques abrem o lançamento.")
+
+    def subtitle(self) -> str:
+        return f"{self.period.currentText()} · {self.kind.currentText()}"
+
+    def refresh(self):
+        first, last = reports.period_range(self.period.currentData())
+        with Session() as s:
+            data = reports.analytical(s, self.profile.id, first, last, self.kind.currentData())
+        many_years = first.year != last.year
+        rows = [{"cells": [e.competence_date.strftime("%d/%m/%y" if many_years else "%d/%m"),
+                           e.description + (f" ({e.installment})" if e.installment else ""),
+                           e.category or "Sem categoria", e.cost_center or "", e.contact or "", e.account,
+                           e.base_amount if e.kind == "income" else -e.base_amount],
+                 "tones": {6: "pos" if e.kind == "income" else None, 2: None if e.category else "mut"},
+                 "target": ("entry", e.id)} for e in data]
+        self.fill(rows, "Nenhuma receita ou despesa neste período.")
+        inc = sum((e.base_amount for e in data if e.kind == "income"), Decimal(0))
+        exp = sum((e.base_amount for e in data if e.kind == "expense"), Decimal(0))
+        self.footer.setText(f"{len(data)} lançamentos &nbsp;·&nbsp; Receitas <b>{self.fmt(inc)}</b> &nbsp;·&nbsp; "
+                            f"Despesas <b>{self.fmt(-exp)}</b> &nbsp;·&nbsp; Resultado <b>{self.fmt(inc - exp)}</b>")
+
+
 # ---------- inadimplência ----------
 class OverdueView(TableReport):
     TITLE = "Inadimplência"

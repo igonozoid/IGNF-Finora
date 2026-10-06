@@ -370,6 +370,15 @@ def by_cost_center(s: Session, entity_id: int, first: date, last: date) -> list[
     return out
 
 
+# ---------- analítico ----------
+def analytical(s: Session, entity_id: int, first: date, last: date, kind: str = "all") -> list:
+    """Todas as receitas e despesas do período (competência), na ordem das datas. kind: all | income | expense."""
+    q = entries.query(entity_id).where(Entry.kind != "transfer", Entry.competence_date.between(first, last))
+    if kind in ("income", "expense"):
+        q = q.where(Entry.kind == kind)
+    return [entries.to_view(r) for r in s.execute(q.order_by(Entry.competence_date, Entry.id))]
+
+
 # ---------- inadimplência (atrasados) ----------
 AGING = [(30, "Até 30 dias"), (60, "31 a 60 dias"), (90, "61 a 90 dias"), (None, "Mais de 90 dias")]
 

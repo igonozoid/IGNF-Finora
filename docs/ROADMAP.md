@@ -77,7 +77,7 @@ Ordem de implementação:
 - [x] Autopreencher CNPJ (BrasilAPI) e endereço pelo CEP; CPF não tem consulta pública (LGPD)
 - [x] Backup automático ao fechar numa pasta de nuvem (OneDrive, Google Drive, Dropbox), últimos 14 dias
 - [x] Do IgnControl: fechamento de período (trava lançamentos até uma data)
-- [ ] Do IgnControl: previsão de caixa dia a dia (pior saldo projetado) e relatório analítico
+- [x] Do IgnControl: previsão de caixa dia a dia (pior saldo projetado) e relatório analítico
 - [ ] App de licenças (repositório privado)
 
 Do IgnControl **não** trazemos: estoque, vendas, RH, rural, agenda de tarefas e cofre de senhas — fogem de

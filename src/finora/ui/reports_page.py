@@ -34,6 +34,7 @@ REPORTS = [
     ("cost_center", "Por centro de custo", "fa6s.diagram-project", "cost_centers"),
     ("contact", "Por contato", "fa6s.address-book", None),
     ("overdue", "Inadimplência", "fa6s.hourglass-half", None),
+    ("analytical", "Analítico", "fa6s.table-list", None),
     ("budget", "Orçado x realizado", "fa6s.bullseye", "budget"),
 ]
 LOCK_MSG = {"budget": "Orçado x realizado é um recurso da edição Plus.",
@@ -508,6 +509,11 @@ class FlowView(QWidget):
                                f"(chega a {money.fmt(low.balance, cur)}). Veja o que dá para adiar ou antecipar.")
             set_tone(self.alert, "neg")
             self.alert.show()
+        elif low is not None and flow.days:
+            self.alert.setText(f"Menor saldo no período: {money.fmt(low.balance, cur)} em "
+                               f"{low.day.strftime('%d/%m')}. É o ponto mais apertado do caixa.")
+            set_tone(self.alert, "mut")
+            self.alert.show()
         else:
             self.alert.hide()
         self.chart.set_flow(flow, self.t)
@@ -538,7 +544,8 @@ class ReportsPage(QWidget):
         self.views = {"dre": DreView(profile, t), "flow": FlowView(profile, t),
                       "statement": rl.AccountStatementView(profile, t), "category": rl.ByCategoryView(profile, t),
                       "cost_center": rl.ByCostCenterView(profile, t), "budget": rl.BudgetView(profile, t),
-                      "contact": rl.ByContactView(profile, t), "overdue": rl.OverdueView(profile, t)}
+                      "contact": rl.ByContactView(profile, t), "overdue": rl.OverdueView(profile, t),
+                      "analytical": rl.AnalyticalView(profile, t)}
         self.stack = QStackedWidget()
         for v in self.views.values():
             self.stack.addWidget(v)

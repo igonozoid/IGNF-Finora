@@ -181,3 +181,18 @@ def test_backup_na_nuvem_escolher_pasta_e_ao_fechar(plus, window, dialogs, tmp_p
 
 def test_backup_na_nuvem_bloqueado_na_free(window):
     assert window.page("settings").cloud_box is None
+
+
+def test_relatorio_analitico_e_menor_saldo_no_fluxo(window, qtbot):
+    window.go_to("reports")
+    rp = window.page("reports")
+    rp._select(next(i for i, (_b, _l, key) in enumerate(rp.buttons) if key == "analytical"))
+    view = rp.views["analytical"]
+    view.period.setCurrentIndex(view.period.findData("1m"))
+    descr = [view.table.item(r, 1).text() for r in range(view.table.rowCount())]
+    assert "Salário" in descr and "Mercado" in descr and "lançamentos" in view.footer.text()
+    view.kind.setCurrentIndex(view.kind.findData("income"))
+    assert all(view.table.item(r, 1).text() != "Mercado" for r in range(view.table.rowCount()))
+    flow = rp.views["flow"]
+    flow.refresh()
+    assert flow.alert.text()                         # sempre mostra o ponto mais apertado do caixa

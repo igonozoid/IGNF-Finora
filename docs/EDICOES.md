@@ -3,6 +3,9 @@
 A **Free** é para uma pessoa num computador. **Plus** e **Pro** têm todos os recursos; a diferença entre elas é
 só a quantidade de usuários e de entidades.
 
+**Como construímos:** primeiro o app completo (o que Plus/Pro terão); depois a Free é "capada" marcando os
+recursos pagos em `core/licensing.py` (`allowed()`), que aparecem com cadeado e convite para upgrade.
+
 | Recurso | Free | Plus | Pro |
 |---|---|---|---|
 | Usuários | 1 | até 3 | ilimitados |
@@ -13,6 +16,7 @@ só a quantidade de usuários e de entidades.
 | Lançamentos, recorrência, parcelamento, transferências | ✓ | ✓ | ✓ |
 | Categorias, DRE pessoal, fluxo de caixa, Dashboard | ✓ | ✓ | ✓ |
 | Backup e restauração local | ✓ | ✓ | ✓ |
+| Recibo imprimível e em PDF | ✓ | ✓ | ✓ |
 | Login, permissões por módulo e histórico de alterações | | ✓ | ✓ |
 | Importação OFX / conciliação | | ✓ | ✓ |
 | Anexos de comprovantes | | ✓ | ✓ |

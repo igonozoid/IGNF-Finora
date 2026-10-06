@@ -80,3 +80,37 @@ def test_ativar_licenca(window, dialogs, monkeypatch):
     page.key_edit.setPlainText(key)
     page._activate()
     assert "REINICIAR" in dialogs.shown and licensing.current_edition().value == "plus"
+
+
+# ---------- Perfil ----------
+def test_editar_perfil_atualiza_o_app_todo(window):
+    from finora.core import db
+    from finora.services import accounts
+    window.go_to(6)
+    page = window.pages[6]
+    assert page.name_edit.text() == "Rodrigo" and not page.profile_save.isEnabled()
+    page.name_edit.setText("Rodrigo Silva")
+    assert page.profile_save.isEnabled()
+    page.currency_box.setCurrentIndex(page.currency_box.findData("USD"))
+    assert page.currency_note.isVisible() and "não são convertidos" in page.currency_note.text()
+    assert not page.accounts_too.isVisible()                 # Free: as contas mudam junto, sem escolha
+    page.profile_save.click()
+    assert window.profile.name == "Rodrigo Silva" and window.profile.currency == "USD"
+    assert window.sidebar._name.text() == "Rodrigo Silva" and "USD" in window.sidebar._sub.text()
+    assert window.tabs._name.text() == "Rodrigo Silva"
+    with db.Session() as s:
+        assert {a.currency for a in accounts.list_accounts(s, window.profile.id)} == {"USD"}
+    window.go_to(1)
+    assert window.pages[1].tot_pay.text().startswith("US$")   # valores já com o símbolo novo
+    window.go_to(0)
+    assert window.pages[0].k_balance.value.text() == "US$ 6.000,00"
+    window.go_to(2)
+    assert window.pages[2].currency_box.currentData() == "USD"
+
+
+def test_perfil_nome_vazio_nao_salva(window):
+    window.go_to(6)
+    page = window.pages[6]
+    page.name_edit.setText("  ")
+    page.profile_save.click()
+    assert page.profile_error.isVisible() and window.profile.name == "Rodrigo"

@@ -95,10 +95,23 @@ def show_upgrade(parent, reason: str) -> None:
     QMessageBox.information(parent, "Recurso das edições pagas", f"{reason}\n\n{UPGRADE_TEXT}")
 
 
+class WrapFrame(QFrame):
+    """QFrame com texto que quebra linha. Dentro de área com rolagem o Qt não considera a altura do texto
+    quebrado no espaço mínimo e espreme o quadro; aqui a altura necessária vira mínimo a cada largura."""
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        lay = self.layout()
+        if lay is not None and lay.hasHeightForWidth():
+            need = lay.totalHeightForWidth(self.width())
+            if need != self.minimumHeight():
+                self.setMinimumHeight(need)
+
+
 def upgrade_box(reason: str, t: dict, parent=None, compact: bool = False) -> QFrame:
     """Aviso de limite da edição Free, com cadeado e convite para upgrade.
     `compact`: botão embaixo do texto, para painéis estreitos."""
-    box = QFrame(objectName="lockBox")
+    box = WrapFrame(objectName="lockBox")
     outer = QVBoxLayout(box)
     outer.setContentsMargins(SP_M + 2, SP_M, SP_M + 2, SP_M)
     outer.setSpacing(SP_M)

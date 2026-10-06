@@ -5,8 +5,8 @@ from pathlib import Path
 from PySide6.QtCore import QStandardPaths, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit, QScrollArea,
-    QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
+    QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from finora import __version__
@@ -14,7 +14,9 @@ from finora.core import db, licensing, settings
 from finora.core.logs import log
 from finora.core.license_key import LicenseError
 from finora.core.licensing import allowed, current_edition
-from finora.services import backup
+from finora.core import money
+from finora.core.db import Session
+from finora.services import backup, setup
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.widgets import button, help_icon, icon_label, set_tone, show_upgrade, upgrade_box
@@ -54,6 +56,7 @@ class SettingsPage(QWidget):
     message = Signal(str)
     theme_requested = Signal(str)
     nav_requested = Signal(str)
+    profile_changed = Signal(object)
     restart_requested = Signal()
 
     def __init__(self, profile: Profile, t: dict, parent=None):
@@ -65,6 +68,7 @@ class SettingsPage(QWidget):
         bl = QVBoxLayout(body)
         bl.setContentsMargins(0, 0, 0, 0)
         bl.setSpacing(theme.SP_L)
+        bl.addWidget(self._profile_section())
         bl.addWidget(self._backup_section())
         bl.addWidget(self._appearance_section())
         bl.addWidget(self._edition_section())
@@ -76,6 +80,91 @@ class SettingsPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(14, theme.SP_L, 14, theme.SP_L)
         root.addWidget(scroll)
+
+    # ---------- perfil ----------
+    def _profile_section(self) -> QFrame:
+        box, lay = _section("Seu perfil", "fa6s.user", self.t)
+        form = QGridLayout()
+        form.setHorizontalSpacing(theme.SP_M)
+        form.setVerticalSpacing(6)
+        self.name_edit = QLineEdit(maxLength=120)
+        self.currency_box = QComboBox()
+        for code, (sym, label) in money.CURRENCIES.items():
+            self.currency_box.addItem(f"{label} ({sym})", code)
+        form.addWidget(QLabel("Nome"), 0, 0)
+        form.addWidget(self.name_edit, 0, 1)
+        cur_lbl = QHBoxLayout()
+        cur_lbl.setSpacing(4)
+        cur_lbl.addWidget(QLabel("Moeda principal"))
+        cur_lbl.addWidget(help_icon("A moeda em que você recebe e gasta no dia a dia.\n"
+                                    "Os relatórios e o saldo total usam essa moeda.", self.t))
+        form.addLayout(cur_lbl, 1, 0)
+        form.addWidget(self.currency_box, 1, 1)
+        form.setColumnStretch(1, 1)
+        lay.addLayout(form)
+
+        self.accounts_too = QCheckBox("Trocar também a moeda das contas que usam a moeda atual")
+        self.accounts_too.setChecked(True)
+        self.accounts_too.setVisible(False)
+        lay.addWidget(self.accounts_too)
+        self.currency_note = QLabel(wordWrap=True)
+        set_tone(self.currency_note, "neg")
+        self.currency_note.hide()
+        lay.addWidget(self.currency_note)
+        self.profile_error = QLabel(wordWrap=True)
+        self.profile_error.setProperty("role", "error")
+        self.profile_error.hide()
+        lay.addWidget(self.profile_error)
+
+        row = QHBoxLayout()
+        self.profile_save = button("Salvar perfil", "primary")
+        row.addWidget(self.profile_save)
+        row.addStretch(1)
+        lay.addLayout(row)
+
+        self.name_edit.textChanged.connect(self._profile_dirty)
+        self.currency_box.currentIndexChanged.connect(self._profile_dirty)
+        self.name_edit.returnPressed.connect(self._save_profile)
+        self.profile_save.clicked.connect(self._save_profile)
+        self._load_profile()
+        return box
+
+    def _load_profile(self):
+        self.name_edit.setText(self.profile.name)
+        self.currency_box.setCurrentIndex(max(0, self.currency_box.findData(self.profile.currency)))
+        self._profile_dirty()
+
+    def _profile_dirty(self):
+        new_cur = self.currency_box.currentData()
+        changing = new_cur != self.profile.currency
+        multi = allowed(current_edition(), "multi_currency")
+        self.accounts_too.setVisible(changing and bool(multi))
+        if changing:
+            old_sym, new_sym = money.symbol(self.profile.currency), money.symbol(new_cur)
+            self.currency_note.setText(
+                f"Atenção: os valores não são convertidos. {old_sym} 100,00 passa a aparecer como "
+                f"{new_sym} 100,00." + ("" if multi else " Na Free todas as contas usam a moeda principal, "
+                                                        "então elas mudam junto."))
+        self.currency_note.setVisible(changing)
+        self.profile_save.setEnabled(changing or self.name_edit.text().strip() != self.profile.name)
+        self.profile_error.hide()
+
+    def _save_profile(self):
+        try:
+            with Session() as s:
+                profile, changed = setup.update_profile(
+                    s, self.profile.id, name=self.name_edit.text(), currency=self.currency_box.currentData(),
+                    accounts_too=self.accounts_too.isChecked())
+        except ValueError as e:
+            self.profile_error.setText(str(e))
+            self.profile_error.show()
+            return
+        log.info("Perfil atualizado (moeda %s; %d contas mudaram de moeda)", profile.currency, changed)
+        self.profile = profile
+        self._load_profile()
+        self.profile_changed.emit(profile)
+        extra = f" {changed} {'conta mudou' if changed == 1 else 'contas mudaram'} de moeda." if changed else ""
+        self.message.emit("Perfil atualizado." + extra)
 
     # ---------- backup ----------
     def _backup_section(self) -> QFrame:

@@ -127,6 +127,7 @@ QPushButton[variant="primary"] {{
     padding: 5px 10px; font-weight: 600;
 }}
 QPushButton[variant="primary"]:hover {{ background: {t['acc_hover']}; }}
+QPushButton[variant="primary"]:disabled {{ background: {t['line']}; color: {t['mut']}; }}
 
 QPushButton[variant="secondary"] {{
     background: transparent; color: {t['fg']}; border: 1px solid {t['line']}; border-radius: 4px;

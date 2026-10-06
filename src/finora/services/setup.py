@@ -45,6 +45,36 @@ def current_profile(s: Session) -> Profile | None:
     return Profile(e.id, e.name, e.currency) if e else None
 
 
+def update_profile(s: Session, entity_id: int, *, name: str, currency: str,
+                   accounts_too: bool = True) -> tuple[Profile, int]:
+    """Muda nome e/ou moeda principal. Os VALORES não são convertidos (não há câmbio): só a moeda exibida.
+
+    Ao trocar a moeda, as contas que usavam a moeda antiga passam para a nova. Na Free isso é
+    obrigatório (uma moeda só); nas edições pagas, com `accounts_too=False`, elas ficam como estão.
+    Retorna (perfil atualizado, quantas contas mudaram de moeda).
+    """
+    from finora.services.accounts import multi_currency
+    name = name.strip()
+    if not name:
+        raise ValueError("Digite seu nome (ou apelido).")
+    if currency not in CURRENCIES:
+        raise ValueError(f"Moeda não suportada: {currency}")
+    e = s.get(Entity, entity_id)
+    changed = 0
+    try:
+        if currency != e.currency and (accounts_too or not multi_currency()):
+            for a in s.scalars(select(Account).where(Account.entity_id == entity_id,
+                                                     Account.currency == e.currency)):
+                a.currency = currency
+                changed += 1
+        e.name, e.currency = name, currency
+        s.commit()
+    except Exception:
+        s.rollback()
+        raise
+    return Profile(e.id, e.name, e.currency), changed
+
+
 def run_first_setup(s: Session, *, name: str, currency: str, account_name: str, account_kind: str,
                     balance: Decimal, default_categories: bool = True) -> Profile:
     """Grava tudo numa transação só. Para cartão, `balance` é a fatura em aberto (vira saldo negativo)."""

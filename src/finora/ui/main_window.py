@@ -66,18 +66,17 @@ class Sidebar(QWidget):
         bl.setContentsMargins(theme.SP_M, theme.SP_M, theme.SP_M, theme.SP_M)
         bl.setSpacing(theme.SP_M)
         self._brand_icon = QLabel()
-        self._brand_icon.setToolTip(f"{profile.name} · Pessoal · {profile.currency}")
+
         self._names = QWidget()
         names = QVBoxLayout(self._names)
         names.setContentsMargins(0, 0, 0, 0)
         names.setSpacing(0)
-        name = QLabel(profile.name, objectName="brandName")
-        name.setMinimumWidth(1)  # nome longo é cortado, não alarga o menu
-        name.setToolTip(profile.name)
-        names.addWidget(name)
-        sub = QLabel(f"Pessoal · {profile.currency}", objectName="brandSub")
-        sub.setToolTip(f"Moeda principal: {CURRENCIES[profile.currency][1]}")
-        names.addWidget(sub)
+        self._name = QLabel(objectName="brandName")
+        self._name.setMinimumWidth(1)  # nome longo é cortado, não alarga o menu
+        names.addWidget(self._name)
+        self._sub = QLabel(objectName="brandSub")
+        names.addWidget(self._sub)
+        self.set_profile(profile)
         bl.addWidget(self._brand_icon)
         bl.addWidget(self._names, 1)
         self._brand_layout = bl
@@ -112,6 +111,13 @@ class Sidebar(QWidget):
         lay.addWidget(self.theme_btn)
         self._lay = lay
         self._dark = False
+
+    def set_profile(self, profile: Profile):
+        self._name.setText(profile.name)
+        self._name.setToolTip(profile.name)
+        self._sub.setText(f"Pessoal · {profile.currency}")
+        self._sub.setToolTip(f"Moeda principal: {CURRENCIES[profile.currency][1]}")
+        self._brand_icon.setToolTip(f"{profile.name} · Pessoal · {profile.currency}")
 
     def set_mode(self, mode: str):
         self.mode = mode
@@ -156,10 +162,10 @@ class TopTabs(QFrame):
         cl.setContentsMargins(2, 0, 10, 0)
         cl.setSpacing(6)
         self._chip_icon = QLabel()
-        name = QLabel(profile.name, objectName="brandName")
-        name.setToolTip(f"{profile.name} · Pessoal · {profile.currency}")
+        self._name = QLabel(objectName="brandName")
         cl.addWidget(self._chip_icon)
-        cl.addWidget(name)
+        cl.addWidget(self._name)
+        self.set_profile(profile)
         lay.addWidget(chip)
         lay.addSpacing(4)
         self.group = QButtonGroup(self, exclusive=True)
@@ -177,6 +183,10 @@ class TopTabs(QFrame):
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.setToolTip("Alternar entre tema claro e escuro (Ctrl+T)")
         lay.addWidget(self.theme_btn)
+
+    def set_profile(self, profile: Profile):
+        self._name.setText(profile.name)
+        self._name.setToolTip(f"{profile.name} · Pessoal · {profile.currency}")
 
     def apply_theme(self, name: str, t: dict):
         self._chip_icon.setPixmap(qta.icon("fa6s.coins", color=t["acc"]).pixmap(QSize(14, 14)))
@@ -243,6 +253,7 @@ class MainWindow(QMainWindow):
         self.pages[6].theme_requested.connect(self.set_theme)
         self.pages[6].restart_requested.connect(self.restart)
         self.pages[6].nav_requested.connect(self.set_nav)
+        self.pages[6].profile_changed.connect(self.set_profile)
         for p in self.pages:
             self.stack.addWidget(p)
             if hasattr(p, "message"):
@@ -336,6 +347,24 @@ class MainWindow(QMainWindow):
             p.apply_theme(t)
         retheme(self, t)
         self.pages[6].set_theme_name(name)
+
+    def set_profile(self, profile: Profile):
+        """Nome ou moeda mudaram em Configurações: atualiza tudo sem reabrir o app."""
+        self.profile = profile
+        self.sidebar.set_profile(profile)
+        self.tabs.set_profile(profile)
+        for page in self.pages:
+            parts = [page] + [getattr(page, n) for n in ("form", "model", "chart") if hasattr(page, n)]
+            for view in getattr(page, "views", {}).values():
+                parts += [view] + [getattr(view, n) for n in ("model", "chart") if hasattr(view, n)]
+            for obj in parts:
+                if hasattr(obj, "profile"):
+                    obj.profile = profile
+                if isinstance(getattr(obj, "currency", None), str):
+                    obj.currency = profile.currency
+        if self.pages[2].editing is None:
+            self.pages[2]._new()                  # "Nova conta" já vem com a moeda nova
+        self.go_to(self.stack.currentIndex())     # redesenha a tela atual com os dados novos
 
     def apply_nav(self, mode: str):
         """Barra lateral, só ícones (trilho) ou abas no topo — as 3 opções do mockup."""

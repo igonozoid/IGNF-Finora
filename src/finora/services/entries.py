@@ -140,8 +140,12 @@ def to_view(row) -> EntryView:
 
 
 def list_entries(s: Session, entity_id: int, *, year: int, month: int, filter: str = "all",
-                 search: str = "", today: date | None = None) -> list[EntryView]:
-    """Lançamentos do mês (pelo vencimento). 'Atrasados' ignora o mês; 'Pagos' usa a data do pagamento."""
+                 search: str = "", today: date | None = None, account_id: int | None = None,
+                 category_id: int | None = None) -> list[EntryView]:
+    """Lançamentos do mês (pelo vencimento). 'Atrasados' ignora o mês; 'Pagos' usa a data do pagamento.
+
+    `account_id`: só os dessa conta (inclui transferências que entram nela).
+    `category_id`: só os dessa categoria; se for um grupo, inclui as subcategorias dele."""
     today = today or date.today()
     first, last = month_range(year, month)
     q = query(entity_id)
@@ -155,6 +159,11 @@ def list_entries(s: Session, entity_id: int, *, year: int, month: int, filter: s
             q = q.where(Entry.status == "pending", Entry.kind == "income")
         elif filter == "payable":
             q = q.where(Entry.status == "pending", Entry.kind == "expense")
+    if account_id:
+        q = q.where(or_(Entry.account_id == account_id, Entry.dest_account_id == account_id))
+    if category_id:
+        ids = [category_id] + list(s.scalars(select(Category.id).where(Category.parent_id == category_id)))
+        q = q.where(Entry.category_id.in_(ids))
     if search.strip():
         like = f"%{search.strip().lower()}%"
         q = q.where(or_(func.lower(Entry.description).like(like), func.lower(Contact.name).like(like),
@@ -326,6 +335,20 @@ def delete(s: Session, entry_id: int, scope: str = "one") -> int:
         s.delete(x)
     s.commit()
     return len(targets)
+
+
+def set_paid_many(s: Session, entry_ids: list[int], when: date | None = None) -> tuple[int, int]:
+    """Marca vários como pagos/recebidos de uma vez. Pula os que já estão pagos e as compras no cartão
+    (essas são pagas pela fatura). Retorna (quantos foram marcados, quantos foram pulados)."""
+    done = skipped = 0
+    for e in s.scalars(select(Entry).where(Entry.id.in_(entry_ids))):
+        if e.status != "pending":
+            skipped += 1
+            continue
+        e.status, e.paid_date = "paid", when or date.today()
+        done += 1
+    s.commit()
+    return done, skipped
 
 
 def set_paid(s: Session, entry_id: int, paid: bool, when: date | None = None) -> None:

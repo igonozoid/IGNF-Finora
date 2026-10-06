@@ -160,3 +160,26 @@ def test_marcar_pago(ctx):
     assert accounts.list_accounts(s, ctx["eid"])[0].balance == D("-20.50")
     entries.set_paid(s, i, False)
     assert not entries.get(s, i).is_paid
+
+
+def test_filtro_por_conta_e_categoria(ctx):
+    s, eid = ctx["s"], ctx["eid"]
+    entries.create(s, eid, _data(ctx))                                                        # luz, banco
+    entries.create(s, eid, _data(ctx, description="Mercado", category_id=ctx["mercado"], account_id=ctx["cash"]))
+    entries.create(s, eid, _data(ctx, kind="transfer", description="Saque", amount=D("50"), category_id=None,
+                                 dest_account_id=ctx["cash"]))
+    names = lambda **kw: [e.description for e in entries.list_entries(s, eid, year=2026, month=10, today=TODAY, **kw)]
+    assert names(account_id=ctx["cash"]) == ["Mercado", "Saque"]                         # transferência entra
+    assert names(account_id=ctx["bank"]) == ["Conta de luz", "Saque"]
+    assert names(category_id=ctx["mercado"]) == ["Mercado"]
+    moradia = next(g.id for g in categories.tree(s, eid) if g.name == "Moradia")
+    assert names(category_id=moradia) == ["Conta de luz"]                                # grupo inclui filhas
+
+
+def test_pagar_varios_de_uma_vez(ctx):
+    s = ctx["s"]
+    a = entries.create(s, ctx["eid"], _data(ctx))[0]
+    b = entries.create(s, ctx["eid"], _data(ctx, description="Água"))[0]
+    c = entries.create(s, ctx["eid"], _data(ctx, description="Já paga", paid=True))[0]
+    assert entries.set_paid_many(s, [a, b, c], date(2026, 10, 12)) == (2, 1)
+    assert all(entries.get(s, i).is_paid for i in (a, b)) and entries.get(s, a).paid_date == date(2026, 10, 12)

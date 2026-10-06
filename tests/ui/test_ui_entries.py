@@ -128,3 +128,63 @@ def test_formulario_ocupa_a_tela_em_janela_estreita(window, qtbot):
     assert page.form_scroll.isVisible() and not page.left.isVisible()
     page.form.cancel_btn.click()
     assert page.left.isVisible()
+
+
+def test_filtro_por_conta_e_categoria(window):
+    from finora.services import accounts as acc_svc
+    with db.Session() as s:
+        cash = acc_svc.create(s, window.profile.id, name="Carteira", kind="cash", opening_balance=D(0))
+    page = _page(window)
+    window.new_entry()
+    _fill(page.form, desc="Pão", amount="12,00", category="Alimentação › Supermercado")
+    page.form.account.setCurrentIndex(page.form.account.findData(cash))
+    page.form.save_btn.click()
+    page.account_filter.setCurrentIndex(page.account_filter.findData(cash))
+    page.account_filter.activated.emit(page.account_filter.currentIndex())
+    assert _names(page) == ["Pão"] and page.clear_filters.isVisible()
+    page._clear_filters()
+    i = page.category_filter.findText("Moradia")                       # grupo inclui subcategorias
+    page.category_filter.setCurrentIndex(i)
+    page.category_filter.activated.emit(i)
+    assert set(_names(page)) == {"Aluguel", "Conta de luz"}
+    page._clear_filters()
+    assert not page.clear_filters.isVisible() and "Pão" in _names(page)
+
+
+def test_ordenar_por_coluna(window):
+    from finora.ui.entries_page import C_DESC, C_VALUE
+    from PySide6.QtCore import Qt
+    page = _page(window)
+    page.table.sortByColumn(C_DESC, Qt.AscendingOrder)
+    assert _names(page) == sorted(_names(page), key=str.lower)
+    page.table.sortByColumn(C_VALUE, Qt.DescendingOrder)
+    assert page.model.rows[0].description == "Salário"                # maior valor (receita) primeiro
+    page.refresh()                                                      # ordenação continua após recarregar
+    assert page.model.rows[0].description == "Salário"
+
+
+def test_duplicar_abre_formulario_preenchido(window):
+    page = _page(window)
+    mercado = next(e for e in page.model.rows if e.description == "Mercado")
+    page.duplicate_entry(mercado)
+    f = page.form
+    assert f.title.text() == "Novo lançamento (cópia)" and f.editing is None
+    assert f.desc.text() == "Mercado" and f.amount.text() == "640,10"
+    assert f.category.currentText() == "Alimentação › Supermercado"
+    f.save_btn.click()
+    assert _names(page).count("Mercado") == 2
+
+
+def test_pagar_varios_selecionados(window, qtbot):
+    from PySide6.QtCore import QItemSelectionModel
+    page = _page(window)
+    page.table.clearSelection()
+    sm = page.table.selectionModel()
+    for r, e in enumerate(page.model.rows):
+        if e.description in ("Mercado", "Conta de luz", "Salário"):
+            sm.select(page.model.index(r, 0), QItemSelectionModel.Select | QItemSelectionModel.Rows)
+    assert page.sel_bar.isVisible() and page.sel_lbl.text().startswith("3 selecionados")
+    assert page.pay_sel.text() == "Marcar 2 como pagos"                # salário já recebido fica de fora
+    page.pay_sel.click()
+    assert next(e for e in page.model.rows if e.description == "Mercado").is_paid
+    assert next(e for e in page.model.rows if e.description == "Conta de luz").is_paid

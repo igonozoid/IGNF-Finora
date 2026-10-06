@@ -1,6 +1,7 @@
 """Tela de Lançamentos: tabela filtrável por mês + formulário lateral (mockup "Lançamentos")."""
 import calendar
 from datetime import date
+from decimal import Decimal
 
 from PySide6.QtCore import QAbstractTableModel, QDate, QModelIndex, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QPen, QShortcut
@@ -47,6 +48,7 @@ class EntriesModel(QAbstractTableModel):
         self.currency = "BRL"
         self.today = date.today()
         self.show_year = False
+        self.sort_col, self.sort_order = C_DUE, Qt.AscendingOrder
         self.set_theme(t)
 
     def set_theme(self, t: dict):
@@ -62,7 +64,36 @@ class EntriesModel(QAbstractTableModel):
     def set_rows(self, rows: list[EntryView], show_year: bool):
         self.beginResetModel()
         self.rows, self.show_year, self.today = rows, show_year, date.today()
+        self._apply_sort()
         self.endResetModel()
+
+    def _key(self, e: EntryView):
+        col = self.sort_col
+        if col == C_DESC:
+            return (e.description.lower(), e.due_date)
+        if col == C_CONTACT:
+            return ((e.contact or "").lower(), e.due_date)
+        if col == C_CAT:
+            return ((e.category or "").lower(), e.due_date)
+        if col == C_ACC:
+            return (e.account.lower(), e.due_date)
+        if col == C_VALUE:
+            return (-e.amount if e.kind == "expense" else e.amount, e.due_date)
+        if col == C_STATUS:
+            return (e.status_label(self.today), e.due_date)
+        if col == C_KIND:
+            return (e.kind, e.due_date)
+        return (e.due_date, e.id)
+
+    def _apply_sort(self):
+        self.rows.sort(key=self._key, reverse=self.sort_order == Qt.DescendingOrder)
+
+    def sort(self, column, order=Qt.AscendingOrder):
+        """Clique no cabeçalho ordena pela coluna (de novo inverte)."""
+        self.layoutAboutToBeChanged.emit()
+        self.sort_col, self.sort_order = column, order
+        self._apply_sort()
+        self.layoutChanged.emit()
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self.rows)
@@ -487,6 +518,22 @@ class EntryForm(QFrame):
             b.setEnabled(True)
         self.desc.setFocus()
 
+    def open_copy(self, e: EntryView):
+        """Novo lançamento com os dados de `e` (tipo, descrição, valor, conta, categoria, contato, data)."""
+        self.open_new(e.competence_date if e.on_card and e.competence_date else e.due_date)
+        self.title.setText("Novo lançamento (cópia)")
+        self.kind_group.button(list(entries.KINDS).index(e.kind)).setChecked(True)
+        self.account.setCurrentIndex(max(0, self.account.findData(e.account_id)))
+        self._kind_changed()
+        if e.dest_account_id:
+            self.dest.setCurrentIndex(max(0, self.dest.findData(e.dest_account_id)))
+        self._load_categories(e.category_id)
+        self.desc.setText(e.description)
+        self.amount.setText(money.fmt(e.amount, self.profile.currency).split(" ", 1)[1])
+        self.contact.setCurrentText(e.contact or "")
+        self.desc.setFocus()
+        self.desc.selectAll()
+
     def open_edit(self, e: EntryView):
         self.editing = e
         self.title.setText("Editar lançamento")
@@ -627,6 +674,27 @@ class EntriesPage(QWidget):
             self.filter_group.addButton(b, i)
             row2.addWidget(b)
         row2.addStretch(1)
+        self.row2 = row2
+        self.filters_w = QWidget()
+        fw = QHBoxLayout(self.filters_w)
+        fw.setContentsMargins(0, 0, 0, 0)
+        fw.setSpacing(6)
+        self.account_filter = QComboBox()
+        self.account_filter.setToolTip("Mostrar só os lançamentos de uma conta (inclui transferências)")
+        self.category_filter = QComboBox()
+        self.category_filter.setToolTip("Mostrar só uma categoria; escolhendo um grupo, entram as subcategorias")
+        for box in (self.account_filter, self.category_filter):
+            box.setMinimumWidth(130)
+            box.setMaximumWidth(200)
+            fw.addWidget(box)
+        self.clear_filters = button("Limpar", "link", t, "fa6s.xmark")
+        self.clear_filters.setToolTip("Tirar os filtros de conta e categoria")
+        self.clear_filters.hide()
+        fw.addWidget(self.clear_filters)
+        row2.addWidget(self.filters_w)
+        self.filters_row = QHBoxLayout()          # usada só em janela estreita
+        self.filters_row.setContentsMargins(0, 0, 0, 0)
+        self._filters_below = False
         self.filter_group.button(3).setToolTip("Contas em aberto que já venceram, de qualquer mês")
         self.filter_group.button(4).setToolTip("O que foi pago ou recebido neste mês")
 
@@ -637,7 +705,7 @@ class EntriesPage(QWidget):
         self.table.setModel(self.model)
         self.table.setItemDelegateForColumn(C_STATUS, StatusDelegate(self.model))
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)   # Ctrl/Shift: vários
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setShowGrid(False)
         self.table.setWordWrap(False)
@@ -652,6 +720,9 @@ class EntriesPage(QWidget):
         for col, w in ((C_KIND, 28), (C_DUE, 70), (C_CONTACT, 140), (C_CAT, 150), (C_ACC, 120),
                        (C_VALUE, 120), (C_STATUS, 96)):
             hdr.resizeSection(col, w)
+        hdr.setSortIndicator(C_DUE, Qt.AscendingOrder)
+        self.table.setSortingEnabled(True)
+        hdr.setToolTip("Clique no título de uma coluna para ordenar")
 
         self.empty = QLabel(alignment=Qt.AlignCenter, wordWrap=True)
         self.empty.setProperty("role", "muted")
@@ -661,6 +732,19 @@ class EntriesPage(QWidget):
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(0, 0, 0, 0)
         bl.setSpacing(theme.SP_S)
+        self.sel_bar = QFrame(objectName="totalsBar")
+        sl = QHBoxLayout(self.sel_bar)
+        sl.setContentsMargins(0, 0, 0, 0)
+        sl.setSpacing(theme.SP_M)
+        self.sel_lbl = QLabel()
+        self.sel_lbl.setFont(theme.mono_font())
+        self.pay_sel = button("Marcar como pagos", "secondary", t, "fa6s.circle-check", "pos")
+        self.pay_sel.setToolTip("Marca os selecionados como pagos/recebidos hoje.\n"
+                                "Compras no cartão ficam de fora: são pagas pela fatura.")
+        sl.addWidget(self.sel_lbl)
+        sl.addWidget(self.pay_sel)
+        sl.addStretch(1)
+        self.sel_bar.hide()
         bl.addStretch(1)
         self.tot_rec, self.tot_pay, self.tot_bal = QLabel(), QLabel(), QLabel()
         for label, val, role in (("A receber", self.tot_rec, "total"), ("A pagar", self.tot_pay, "total"),
@@ -678,6 +762,7 @@ class EntriesPage(QWidget):
         ll.setSpacing(theme.SP_M)
         ll.addLayout(row1)
         ll.addLayout(row2)
+        ll.addLayout(self.filters_row)
         self.statements_bar = QLabel(wordWrap=True)
         self.statements_bar.setTextFormat(Qt.RichText)
         self.statements_bar.linkActivated.connect(self._open_statement_link)
@@ -685,6 +770,7 @@ class EntriesPage(QWidget):
         ll.addWidget(self.statements_bar)
         ll.addWidget(self.table, 1)
         ll.addWidget(self.empty, 1)
+        ll.addWidget(self.sel_bar)
         ll.addWidget(bar)
 
         self.form = EntryForm(profile, t)
@@ -705,6 +791,11 @@ class EntriesPage(QWidget):
         self.today_btn.clicked.connect(self._go_today)
         self.search.textChanged.connect(lambda: self.refresh())
         self.filter_group.idClicked.connect(self._filter_changed)
+        self.account_filter.activated.connect(lambda _i: self.refresh())
+        self.category_filter.activated.connect(lambda _i: self.refresh())
+        self.clear_filters.clicked.connect(self._clear_filters)
+        self.table.selectionModel().selectionChanged.connect(self._selection_changed)
+        self.pay_sel.clicked.connect(self._pay_selected)
         self.ofx_btn.clicked.connect(lambda: show_upgrade(self, "Importar extrato OFX é um recurso da edição Plus."))
         self.table.doubleClicked.connect(lambda idx: self.edit_entry(idx.data(Qt.UserRole)))
         self.table.customContextMenuRequested.connect(self._context_menu)
@@ -736,9 +827,13 @@ class EntriesPage(QWidget):
         if select_id is None:
             cur = self._current()
             select_id = cur.id if cur else None
+        self._fill_filters()
+        acc_id, cat_id = self.account_filter.currentData(), self.category_filter.currentData()
+        self.clear_filters.setVisible(bool(acc_id or cat_id))
         with Session() as s:
             rows = entries.list_entries(s, self.profile.id, year=self.year, month=self.month,
-                                        filter=self.filter, search=self.search.text())
+                                        filter=self.filter, search=self.search.text(),
+                                        account_id=acc_id, category_id=cat_id)
             totals = entries.month_totals(s, self.profile.id, self.year, self.month)
             first, last = entries.month_range(self.year, self.month)
             sts = cards.due_between(s, self.profile.id, first, last)
@@ -761,6 +856,8 @@ class EntriesPage(QWidget):
         if not rows:
             if self.search.text().strip():
                 self.empty.setText("Nada encontrado com essa busca.")
+            elif acc_id or cat_id:
+                self.empty.setText("Nada neste mês com esses filtros de conta/categoria.")
             elif late:
                 self.empty.setText("Nenhuma conta atrasada. Tudo em dia!")
             else:
@@ -773,6 +870,61 @@ class EntriesPage(QWidget):
                     self.table.selectRow(r)
                     self.table.scrollTo(self.model.index(r, 0))
                     break
+        self._selection_changed()
+
+    def _fill_filters(self):
+        """Recarrega as listas de conta/categoria (podem ter mudado), mantendo o que estava escolhido."""
+        acc_keep, cat_keep = self.account_filter.currentData(), self.category_filter.currentData()
+        with Session() as s:
+            accs = accounts.list_accounts(s, self.profile.id)
+            tree = categories.tree(s, self.profile.id)
+        for box in (self.account_filter, self.category_filter):
+            box.blockSignals(True)
+            box.clear()
+        self.account_filter.addItem("Todas as contas", None)
+        for a in accs:
+            self.account_filter.addItem(a.name, a.id)
+        self.category_filter.addItem("Todas as categorias", None)
+        for g in tree:
+            self.category_filter.addItem(g.name, g.id)
+            for c in g.children:
+                self.category_filter.addItem(f"    {c.name}", c.id)
+        self.account_filter.setCurrentIndex(max(0, self.account_filter.findData(acc_keep)))
+        self.category_filter.setCurrentIndex(max(0, self.category_filter.findData(cat_keep)))
+        for box in (self.account_filter, self.category_filter):
+            box.blockSignals(False)
+
+    def _clear_filters(self):
+        self.account_filter.setCurrentIndex(0)
+        self.category_filter.setCurrentIndex(0)
+        self.refresh()
+
+    # ----- seleção de vários -----
+    def _selected(self) -> list[EntryView]:
+        rows = sorted({i.row() for i in self.table.selectionModel().selectedRows()})
+        return [self.model.rows[r] for r in rows if r < len(self.model.rows)]
+
+    def _selection_changed(self, *_):
+        sel = self._selected()
+        many = len(sel) > 1
+        if many:
+            total = sum((e.amount if e.kind == "income" else -e.amount for e in sel if e.kind != "transfer"),
+                        Decimal(0))
+            self.sel_lbl.setText(f"{len(sel)} selecionados · {money.fmt(total, self.profile.currency)}")
+        payable = [e for e in sel if e.status == "pending"]
+        self.sel_bar.setVisible(many)
+        self.pay_sel.setVisible(bool(payable))
+        self.pay_sel.setText(f"Marcar {len(payable)} como pagos" if many else "Marcar como pagos")
+
+    def _pay_selected(self):
+        sel = self._selected()
+        with Session() as s:
+            done, skipped = entries.set_paid_many(s, [e.id for e in sel], date.today())
+        msg = f"{done} {'lançamento marcado' if done == 1 else 'lançamentos marcados'} como pagos/recebidos."
+        if skipped:
+            msg += f" {skipped} ficaram de fora (já pagos ou compras no cartão)."
+        self.message.emit(msg)
+        self.refresh()
 
     def _current(self) -> EntryView | None:
         idx = self.table.currentIndex()
@@ -796,6 +948,8 @@ class EntriesPage(QWidget):
         self.year, self.month = e.due_date.year, e.due_date.month
         self.filter_group.button(0).setChecked(True)
         self.filter = "all"
+        self.account_filter.setCurrentIndex(0)
+        self.category_filter.setCurrentIndex(0)
         self.search.blockSignals(True)
         self.search.clear()
         self.search.blockSignals(False)
@@ -806,6 +960,11 @@ class EntriesPage(QWidget):
         if e is None:
             return
         self.form.open_edit(e)
+        self._show_form(True)
+
+    def duplicate_entry(self, e: EntryView):
+        """Abre um lançamento novo já preenchido com os dados deste (nada é salvo até clicar Salvar)."""
+        self.form.open_copy(e)
         self._show_form(True)
 
     def close_form(self):
@@ -820,6 +979,15 @@ class EntriesPage(QWidget):
         narrow = self.width() < STACK_BELOW
         self.left.setVisible(not (narrow and self.form_scroll.isVisible()))
         self.form_scroll.setFixedWidth(max(FORM_W, self.width() - 28) if narrow else FORM_W)
+        below = self.left.width() < 820
+        if below != self._filters_below:
+            self._filters_below = below
+            (self.row2 if not below else self.filters_row).addWidget(self.filters_w)
+            if below:
+                self.filters_row.addStretch(1)
+            else:
+                while self.filters_row.count():
+                    self.filters_row.takeAt(0)
         w = self.table.viewport().width() if self.left.isVisible() else self.width() - 28
         for col, min_w in HIDE_WHEN_NARROW:
             self.table.setColumnHidden(col, w < min_w)
@@ -883,6 +1051,14 @@ class EntriesPage(QWidget):
             return
         e: EntryView = idx.data(Qt.UserRole)
         menu = QMenu(self)
+        sel = self._selected()
+        if len(sel) > 1:                             # vários selecionados
+            n = len([x for x in sel if x.status == "pending"])
+            act = menu.addAction(qta.icon("fa6s.circle-check", color=self.t["pos"]),
+                                 f"Marcar {n} como pagos hoje", self._pay_selected)
+            act.setEnabled(n > 0)
+            menu.exec(self.table.viewport().mapToGlobal(pos))
+            return
         verb = {"income": "recebido", "expense": "pago", "transfer": "feita"}[e.kind]
         if e.on_card:
             menu.addAction(qta.icon("fa6s.file-invoice-dollar", color=self.t["acc"]), "Ver fatura",
@@ -892,6 +1068,7 @@ class EntriesPage(QWidget):
                            "Marcar como em aberto" if e.is_paid else f"Marcar como {verb} hoje",
                            lambda: self._toggle_paid(e))
         menu.addAction(qta.icon("fa6s.pen", color=self.t["mut"]), "Editar", lambda: self.edit_entry(e))
+        menu.addAction(qta.icon("fa6s.clone", color=self.t["mut"]), "Duplicar", lambda: self.duplicate_entry(e))
         menu.addSeparator()
         menu.addAction(qta.icon("fa6s.trash", color=self.t["neg"]), "Excluir", lambda: self._delete(e))
         menu.exec(self.table.viewport().mapToGlobal(pos))

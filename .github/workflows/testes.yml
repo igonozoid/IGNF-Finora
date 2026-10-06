@@ -71,11 +71,12 @@ jobs:
           python -m pip install -e ".[dev]"
       - name: Criar o banco de migração
         run: |
-          mysql -h127.0.0.1 -uroot -proot -e "CREATE DATABASE finora_mig CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON finora_mig.* TO 'finora'@'%';"
+          mysql -h127.0.0.1 -uroot -proot -e "CREATE DATABASE finora_mig CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON finora_mig.* TO 'finora'@'%'; CREATE DATABASE finora_copy CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON finora_copy.* TO 'finora'@'%';"
       - name: Migrações do zero no MariaDB
         run: |
           python -c "from sqlalchemy import create_engine; from finora.core import db; db.init_db(create_engine('mysql+pymysql://finora:finora@127.0.0.1:3306/finora_mig?charset=utf8mb4')); print('ok')"
       - name: Regras de negócio no MariaDB
         env:
           FINORA_TEST_DB_URL: mysql+pymysql://finora:finora@127.0.0.1:3306/finora_test?charset=utf8mb4
+          FINORA_TEST_COPY_URL: mysql+pymysql://finora:finora@127.0.0.1:3306/finora_copy?charset=utf8mb4
         run: python -m pytest -q tests --ignore=tests/ui

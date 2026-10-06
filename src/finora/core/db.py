@@ -23,8 +23,36 @@ def sqlite_pragmas(eng):
     return eng
 
 
-engine = sqlite_pragmas(create_engine(f"sqlite:///{DB_FILE}", future=True))
+def make_engine(url: str):
+    """SQLite (este PC) ou servidor (MariaDB na rede). No servidor, confere a conexão antes de usar e renova
+    as conexões paradas há muito tempo (o MariaDB derruba conexões ociosas)."""
+    if url.startswith("sqlite"):
+        return sqlite_pragmas(create_engine(url, future=True))
+    return create_engine(url, future=True, pool_pre_ping=True, pool_recycle=1800)
+
+
+engine = make_engine(f"sqlite:///{DB_FILE}")
 Session = sessionmaker(engine)
+
+
+def use(url: str) -> None:
+    """Troca o banco do app inteiro (todas as telas usam `Session`, que passa a apontar para o novo)."""
+    global engine
+    engine.dispose()
+    engine = make_engine(url)
+    Session.configure(bind=engine)
+
+
+def is_server(eng=None) -> bool:
+    return (eng or engine).dialect.name != "sqlite"
+
+
+def describe(eng=None) -> str:
+    """Texto curto para a barra de status: "neste computador" ou "no servidor 192.168.0.10"."""
+    eng = eng or engine
+    if not is_server(eng):
+        return f"Dados salvos neste computador · {DATA_DIR.name}/finora.db"
+    return f"Dados no servidor {eng.url.host}:{eng.url.port or 3306}"
 
 MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
 BASELINE = "0001"   # 1ª revisão do Alembic = esquema das etapas 1 a 8
@@ -64,7 +92,7 @@ def init_db(eng=None, backup_dir: Path | None = None) -> str | None:
     if current == head:
         return None
     safety = None
-    if has_tables and eng.url.database not in (None, "", ":memory:"):
+    if has_tables and eng.dialect.name == "sqlite" and eng.url.database not in (None, "", ":memory:"):
         from finora.services import backup
         safety = str(backup.backup_to(Path(backup_dir or BACKUP_DIR) / f"{backup.UPDATE_PREFIX}{current}-para-{head}.db",
                                       Path(eng.url.database)))

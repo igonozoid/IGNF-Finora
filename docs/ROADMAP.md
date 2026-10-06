@@ -78,7 +78,7 @@ Ordem de implementação:
 - [x] Backup automático ao fechar numa pasta de nuvem (OneDrive, Google Drive, Dropbox), últimos 14 dias
 - [x] Do IgnControl: fechamento de período (trava lançamentos até uma data)
 - [x] Do IgnControl: previsão de caixa dia a dia (pior saldo projetado) e relatório analítico
-- [ ] App de licenças (repositório privado)
+- [x] App de licenças: pasta `../IGNF-Finora-Licencas` (git local; falta criar o repositório privado no GitHub)
 
 Do IgnControl **não** trazemos: estoque, vendas, RH, rural, agenda de tarefas e cofre de senhas — fogem de
 finanças pessoais. Podem virar módulos opcionais no futuro.

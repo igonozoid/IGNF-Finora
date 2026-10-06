@@ -79,4 +79,4 @@ jobs:
         env:
           FINORA_TEST_DB_URL: mysql+pymysql://finora:finora@127.0.0.1:3306/finora_test?charset=utf8mb4
           FINORA_TEST_COPY_URL: mysql+pymysql://finora:finora@127.0.0.1:3306/finora_copy?charset=utf8mb4
-        run: python -m pytest -q tests --ignore=tests/ui
+        run: python -m pytest -q -p no:pytestqt tests --ignore=tests/ui   # só regras: sem telas, sem libs gráficas

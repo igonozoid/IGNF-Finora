@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from sqlalchemy import ForeignKey, String, Numeric, Boolean, Integer, UniqueConstraint
+from sqlalchemy import ForeignKey, String, Numeric, Boolean, Integer, LargeBinary, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
 
@@ -107,3 +107,15 @@ class Budget(Base):
     entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"))
     amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+
+class Attachment(Base):
+    """Comprovante anexado a um lançamento (foto, PDF…). O arquivo fica dentro do banco: vai junto no backup
+    e, no futuro, no modo rede/nuvem."""
+    __tablename__ = "attachments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
+    entry_id: Mapped[int] = mapped_column(ForeignKey("entries.id", ondelete="CASCADE"), index=True)
+    filename: Mapped[str] = mapped_column(String(200))
+    size: Mapped[int] = mapped_column(Integer)
+    added: Mapped[date]
+    data: Mapped[bytes] = mapped_column(LargeBinary(length=16_000_000), deferred=True)   # MySQL: MEDIUMBLOB

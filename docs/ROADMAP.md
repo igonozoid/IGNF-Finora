@@ -72,7 +72,7 @@ Ordem de implementação:
 - [x] Conciliação: casar linhas do extrato com lançamentos, sugerir, criar o que falta (mockup: Conciliação)
 - [x] Centros de custo: cadastro, campo no lançamento, relatório por centro de custo (mockup + IgnControl)
 - [x] Orçado x realizado: orçamento mensal por categoria e por centro de custo, com alerta de estouro
-- [ ] Anexos de comprovantes nos lançamentos (arquivos dentro da pasta de dados)
+- [x] Anexos de comprovantes nos lançamentos (guardados dentro do banco: vão no backup e no modo rede)
 - [ ] Multimoeda: moedas, cotações com histórico por data, contas em outra moeda, transferência com câmbio
 - [ ] Autopreencher CPF/CNPJ (consulta pública de CNPJ)
 - [ ] Backup automático (ao fechar e agendado) para uma pasta de nuvem (OneDrive, Google Drive, Dropbox)

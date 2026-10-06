@@ -224,9 +224,9 @@ QPushButton[variant="chip"] {{
 QPushButton[variant="chip"]:hover {{ border-color: {t['mut']}; }}
 QPushButton[variant="chip"]:checked {{ background: {t['acc']}; color: {t['on_acc']}; border-color: {t['acc']}; }}
 QLabel#avatar {{ background: {t['line']}; border-radius: 14px; font-weight: 600; font-size: 8pt; }}
-QListWidget#contactList, QListWidget#statementList {{ background: {t['bg']}; border: 1px solid {t['line']}; border-radius: 4px; outline: 0; }}
-QListWidget#contactList::item, QListWidget#statementList::item {{ border-bottom: 1px solid {t['line']}; }}
-QListWidget#contactList::item:selected, QListWidget#statementList::item:selected {{ background: {t['panel']}; border-left: 2px solid {t['acc']}; }}
+QListWidget#contactList, QListWidget#statementList, QListWidget#attachList {{ background: {t['bg']}; border: 1px solid {t['line']}; border-radius: 4px; outline: 0; }}
+QListWidget#contactList::item, QListWidget#statementList::item, QListWidget#attachList::item {{ border-bottom: 1px solid {t['line']}; }}
+QListWidget#contactList::item:selected, QListWidget#statementList::item:selected, QListWidget#attachList::item:selected {{ background: {t['panel']}; border-left: 2px solid {t['acc']}; }}
 QListWidget#contactList::item:hover:!selected, QListWidget#statementList::item:hover:!selected {{ background: {t['panel']}; }}
 
 /* Tabela */

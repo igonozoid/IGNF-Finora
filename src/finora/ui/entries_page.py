@@ -15,10 +15,13 @@ import qtawesome as qta
 from finora.core import money
 from finora.core.db import Session
 from finora.core.licensing import allowed, current_edition
-from finora.services import accounts, budgets, cards, categories, contacts, cost_centers, entries, export
+from finora.services import (
+    accounts, attachments, budgets, cards, categories, contacts, cost_centers, entries, export,
+)
 from finora.services.entries import EntryData, EntryView
 from finora.services.setup import Profile
 from finora.ui import theme
+from finora.ui.attachments_box import AttachmentsBox
 from finora.ui.card_statements import open_statements
 from finora.ui.receipt_dialog import ReceiptDialog
 from finora.ui.widgets import button, field_label, help_icon, lock_icon, show_upgrade, themed_icon
@@ -53,6 +56,7 @@ class EntriesModel(QAbstractTableModel):
         self.currency = "BRL"
         self.today = date.today()
         self.show_year = False
+        self.attached: dict[int, int] = {}       # lançamento -> nº de comprovantes
         self.sort_col, self.sort_order = C_DUE, Qt.AscendingOrder
         self.set_theme(t)
 
@@ -63,6 +67,7 @@ class EntriesModel(QAbstractTableModel):
             "expense": qta.icon("fa6s.arrow-up", color=t["neg"]),
             "transfer": qta.icon("fa6s.right-left", color=t["mut"]),
             "repeat": qta.icon("fa6s.repeat", color=t["mut"]),
+            "attach": qta.icon("fa6s.paperclip", color=t["mut"]),
         }
         self.layoutChanged.emit()
 
@@ -137,6 +142,8 @@ class EntriesModel(QAbstractTableModel):
         if role == Qt.DecorationRole:
             if col == C_KIND:
                 return self.icons[e.kind]
+            if col == C_DESC and self.attached.get(e.id):
+                return self.icons["attach"]
             if col == C_DESC and e.is_recurring:
                 return self.icons["repeat"]
         if role == Qt.ForegroundRole:
@@ -166,6 +173,8 @@ class EntriesModel(QAbstractTableModel):
                     tip += f"\nParcela {e.installment}"
                 if e.document_no:
                     tip += f"\nDocumento: {e.document_no}"
+                if n := self.attached.get(e.id):
+                    tip += f"\n{n} comprovante{'s' if n > 1 else ''} anexado{'s' if n > 1 else ''}"
                 return tip
             if col == C_STATUS and e.is_paid and e.paid_date:
                 return f"{e.status_label(self.today)} em {e.paid_date.strftime('%d/%m/%Y')}"
@@ -362,6 +371,8 @@ class EntryForm(QFrame):
         self.repeat_preview.setProperty("role", "field")
         rl.addWidget(self.repeat_preview)
         lay.addWidget(self.repeat_frame)
+        self.attach = AttachmentsBox(t)
+        lay.addWidget(self.attach)
 
         self.error = QLabel(wordWrap=True)
         self.error.setProperty("role", "error")
@@ -539,6 +550,7 @@ class EntryForm(QFrame):
         self.repeat.setCurrentIndex(0)
         self.times.setValue(12)
         self.repeat_frame.show()
+        self.attach.set_entry(None)
         self.delete_btn.hide()
         self._error(None)
         self._update_repeat()
@@ -591,6 +603,7 @@ class EntryForm(QFrame):
         elif e.is_recurring:
             self.series_info.setText("Lançamento que se repete.")
         self.series_info.setVisible(bool(e.series_id))
+        self.attach.set_entry(e.id)
         self.delete_btn.show()
         self._error(None)
         self.desc.setFocus()
@@ -837,6 +850,7 @@ class EntriesPage(QWidget):
         self.table.doubleClicked.connect(lambda idx: self.edit_entry(idx.data(Qt.UserRole)))
         self.table.customContextMenuRequested.connect(self._context_menu)
         self.form.saved.connect(self._saved)
+        self.form.attach.changed.connect(self._attachments_changed)
         self.form.closed.connect(self.close_form)
         QShortcut(QKeySequence(Qt.Key_Return), self.table, activated=self._edit_current,
                   context=Qt.WidgetShortcut)
@@ -882,6 +896,8 @@ class EntriesPage(QWidget):
             sts = cards.due_between(s, self.profile.id, first, last)
         self._show_statements(sts)
         late = self.filter == "late"
+        with Session() as s:
+            self.model.attached = attachments.counts(s, [e.id for e in rows])
         self.model.set_rows(rows, show_year=late)
         self.period_locked.emit(late)
         self.period_changed.emit(self.year, self.month)
@@ -1071,6 +1087,12 @@ class EntriesPage(QWidget):
         super().resizeEvent(e)
         self._arrange()
 
+    def _attachments_changed(self, msg: str):
+        self.message.emit(msg)
+        with Session() as s:
+            self.model.attached = attachments.counts(s, [e.id for e in self.model.rows])
+        self.model.layoutChanged.emit()
+
     def _saved(self, msg: str, select_id: int):
         self.message.emit(msg)
         self.close_form()
@@ -1154,5 +1176,6 @@ class EntriesPage(QWidget):
     def apply_theme(self, t: dict):
         self.t = t
         self.form.t = t
+        self.form.attach.apply_theme(t)
         self.model.set_theme(t)
         self.search_icon.setIcon(qta.icon("fa6s.magnifying-glass", color=t["mut"]))

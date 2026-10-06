@@ -35,6 +35,7 @@ class AccountView:
     due_day: int | None = None          # cartão: dia em que a fatura vence
     credit_limit: Decimal | None = None
     base_balance: Decimal | None = None   # saldo na moeda principal (cotação mais recente); None = mesma moeda
+    rate_missing: bool = False            # outra moeda sem nenhuma cotação cadastrada (conta 1 para 1)
 
     @property
     def kind_label(self) -> str:
@@ -115,7 +116,7 @@ def list_accounts(s: Session, entity_id: int, include_inactive: bool = False) ->
         base = None if a.currency == conv.base else conv.convert(balance, a.currency, today)
         out.append(AccountView(a.id, a.name, a.kind, a.currency, Decimal(a.opening_balance), balance, a.is_active,
                                a.closing_day, a.due_day, None if a.credit_limit is None else Decimal(a.credit_limit),
-                               base))
+                               base, base is not None and conv.missing(a.currency)))
     return out
 
 

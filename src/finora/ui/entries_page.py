@@ -136,7 +136,7 @@ class EntriesModel(QAbstractTableModel):
             if col == C_ACC:
                 return f"{e.account} → {e.dest_account}" if e.kind == "transfer" else e.account
             if col == C_VALUE:
-                return money.fmt(-e.amount if e.kind == "expense" else e.amount, self.currency)
+                return money.fmt(-e.amount if e.kind == "expense" else e.amount, e.currency or self.currency)
             if col == C_STATUS:
                 return e.status_label(self.today)
         if role == Qt.DecorationRole:
@@ -310,6 +310,13 @@ class EntryForm(QFrame):
         self.dest = QComboBox()
         self.dest_box = self._field("Para a conta", self.dest)
         lay.addLayout(self.dest_box)
+        self.dest_amount = QLineEdit(placeholderText="0,00")
+        self.dest_amount.setFont(theme.mono_font())
+        self.dest_amount.setAlignment(Qt.AlignRight)
+        self.dest_amount_lbl = field_label("Valor que chega", t, "As contas têm moedas diferentes: quanto entrou na\n"
+                                                                 "conta de destino, já com o câmbio e as tarifas.")
+        self.dest_amount_box = self._field(None, self.dest_amount, self.dest_amount_lbl)
+        lay.addLayout(self.dest_amount_box)
 
         self.category = QComboBox()
         self.category_box = self._field("Categoria", self.category,
@@ -397,6 +404,8 @@ class EntryForm(QFrame):
         self.due.dateChanged.connect(self._update_repeat)
         self.due.dateChanged.connect(self._card_mode)
         self.account.currentIndexChanged.connect(self._card_mode)
+        self.account.currentIndexChanged.connect(self._currency_mode)
+        self.dest.currentIndexChanged.connect(self._currency_mode)
         self.paid.toggled.connect(self.paid_date.setEnabled)
         self.save_btn.clicked.connect(self._save)
         self.cancel_btn.clicked.connect(self.closed.emit)
@@ -470,6 +479,7 @@ class EntryForm(QFrame):
         self._set_visible(self.dest_box, transfer)
         self._set_visible(self.category_box, not transfer)
         self._set_visible(self.cc_box, not transfer and self._has_cc)
+        self._currency_mode()
         self._set_visible(self.contact_box, not transfer)
         self.account_lbl.label.setText("Da conta" if transfer else "Conta")
         self.paid.setText({"income": "Já foi recebido", "expense": "Já foi pago", "transfer": "Já foi feita"}[k])
@@ -485,6 +495,18 @@ class EntryForm(QFrame):
         """A conta escolhida é um cartão com fechamento/vencimento (e não é transferência)?"""
         a = getattr(self, "_accounts", {}).get(self.account.currentData())
         return a if a and a.kind == "card" and a.closing_day and a.due_day and self._kind() != "transfer" else None
+
+    def _currency_mode(self):
+        """Mostra a moeda da conta no rótulo do valor e, em transferência entre moedas, o valor que chega."""
+        accs = getattr(self, "_accounts", {})
+        src, dst = accs.get(self.account.currentData()), accs.get(self.dest.currentData())
+        base = self.profile.currency
+        cur = src.currency if src else base
+        self.amount_lbl.label.setText("Valor" if cur == base else f"Valor ({money.symbol(cur)})")
+        cross = self._kind() == "transfer" and src is not None and dst is not None and src.currency != dst.currency
+        self._set_visible(self.dest_amount_box, cross)
+        if cross:
+            self.dest_amount_lbl.label.setText(f"Valor que chega ({money.symbol(dst.currency)})")
 
     def _card_mode(self):
         """No cartão: a data é a da compra, não há "já foi pago" e mostramos em qual fatura ela cai."""
@@ -544,6 +566,7 @@ class EntryForm(QFrame):
         self.due.setDate(_qdate(default_due))
         self.contact.setCurrentText("")
         self.doc.clear()
+        self.dest_amount.clear()
         self.paid.setChecked(False)
         self.paid_date.setDate(_qdate(date.today()))
         self.paid_date.setEnabled(False)
@@ -593,6 +616,9 @@ class EntryForm(QFrame):
         self._load_cost_centers(e.cost_center_id)
         self.contact.setCurrentText(e.contact or "")
         self.doc.setText(e.document_no or "")
+        self.dest_amount.setText(money.fmt(e.dest_amount, self.profile.currency).split(" ", 1)[1]
+                                 if e.dest_amount is not None else "")
+        self._currency_mode()
         self.paid.setChecked(e.is_paid)
         self.paid_date.setDate(_qdate(e.paid_date or date.today()))
         self.paid_date.setEnabled(e.is_paid)
@@ -621,6 +647,14 @@ class EntryForm(QFrame):
             self.amount.setFocus()
             return None
         k = self._kind()
+        dest_value = None
+        if k == "transfer" and not self.dest_amount_box.itemAt(0).widget().isHidden():
+            try:
+                dest_value = money.parse(self.dest_amount.text()) if self.dest_amount.text().strip() else None
+            except ValueError:
+                self._error("Valor que chega inválido. Use o formato 1.234,56.")
+                self.dest_amount.setFocus()
+                return None
         return EntryData(
             kind=k, description=self.desc.text(), amount=value, due_date=self.due.date().toPython(),
             account_id=self.account.currentData(), dest_account_id=self.dest.currentData() if k == "transfer" else None,
@@ -630,6 +664,7 @@ class EntryForm(QFrame):
             paid=self.paid.isChecked() and self._card() is None,
             paid_date=self.paid_date.date().toPython() if self.paid.isChecked() else None,
             repeat=self.repeat.currentData() if self.editing is None else "none", times=self.times.value(),
+            dest_amount=dest_value,
         )
 
     def _save(self):

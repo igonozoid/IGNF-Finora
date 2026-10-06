@@ -13,7 +13,7 @@ from finora.services import accounts, cards
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.card_statements import open_statements
-from finora.ui.widgets import button, field_label, icon_label, lock_icon, show_upgrade, upgrade_box
+from finora.ui.widgets import button, field_label, icon_label, lock_icon, set_tone, show_upgrade, upgrade_box
 
 KIND_ICONS = {
     "bank": "fa6s.building-columns",
@@ -36,7 +36,8 @@ class AccountCard(QFrame):
     toggle = Signal(int, bool)
     statements = Signal(int)
 
-    def __init__(self, a: accounts.AccountView, t: dict, selected: bool = False, card: dict | None = None):
+    def __init__(self, a: accounts.AccountView, t: dict, selected: bool = False, card: dict | None = None,
+                 base_currency: str = "BRL"):
         super().__init__(objectName="card")
         self.setProperty("inactive", not a.is_active)
         self.setProperty("selected", selected)
@@ -76,6 +77,15 @@ class AccountCard(QFrame):
             bal.setToolTip("No cartão, o saldo negativo é o que você está devendo\n"
                            "(inclui parcelas das próximas faturas).")
         lay.addWidget(bal)
+        if a.base_balance is not None:          # conta em outra moeda: quanto vale na moeda principal hoje
+            if a.rate_missing:
+                approx = QLabel(f"Sem cotação de {a.currency}: conta 1 para 1 no saldo total")
+                set_tone(approx, "neg")
+            else:
+                approx = QLabel(f"≈ {money.fmt(a.base_balance, base_currency)} pela cotação mais recente")
+                approx.setProperty("role", "field")
+            approx.setToolTip("Cadastre ou atualize as cotações em Configurações › Moedas e cotações.")
+            lay.addWidget(approx)
         if card:                       # cartão com fechamento/vencimento: fatura atual e limite
             st = card["statement"]
             fat = QLabel(f"Fatura {st.label}: {money.fmt(st.charges, a.currency)} · {st.status_label(card['today'])}")
@@ -325,6 +335,7 @@ class AccountsPage(QWidget):
         self.form_title.setText("Nova conta")
         self.name_edit.clear()
         self.kind_box.setCurrentIndex(0)
+        self._kind_changed()            # já estando em 0, o sinal não dispara e os campos de cartão ficariam
         self._set_currency(self.profile.currency)
         self.balance_edit.setText("0,00")
         self.closing_spin.setValue(0)
@@ -458,7 +469,8 @@ class AccountsPage(QWidget):
             self.grid.setColumnStretch(c, 1)
         editing_id = self.editing.id if self.editing else None
         for i, a in enumerate(self._items):
-            card = AccountCard(a, self.t, selected=a.id == editing_id, card=self._cards.get(a.id))
+            card = AccountCard(a, self.t, selected=a.id == editing_id, card=self._cards.get(a.id),
+                               base_currency=self.profile.currency)
             card.statements.connect(self._open_statements)
             card.edit.connect(self._edit)
             card.toggle.connect(self._toggle)

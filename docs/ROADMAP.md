@@ -73,7 +73,7 @@ Ordem de implementação:
 - [x] Centros de custo: cadastro, campo no lançamento, relatório por centro de custo (mockup + IgnControl)
 - [x] Orçado x realizado: orçamento mensal por categoria e por centro de custo, com alerta de estouro
 - [x] Anexos de comprovantes nos lançamentos (guardados dentro do banco: vão no backup e no modo rede)
-- [ ] Multimoeda: moedas, cotações com histórico por data, contas em outra moeda, transferência com câmbio
+- [x] Multimoeda: moedas, cotações com histórico por data (manual ou PTAX), contas em outra moeda, transferência com câmbio
 - [ ] Autopreencher CPF/CNPJ (consulta pública de CNPJ)
 - [ ] Backup automático (ao fechar e agendado) para uma pasta de nuvem (OneDrive, Google Drive, Dropbox)
 - [ ] Do IgnControl: fechamento de período (trava lançamentos até uma data)

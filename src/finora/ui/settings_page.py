@@ -69,6 +69,10 @@ class SettingsPage(QWidget):
         bl.setContentsMargins(0, 0, 0, 0)
         bl.setSpacing(theme.SP_L)
         bl.addWidget(self._profile_section())
+        from finora.ui.currencies_section import CurrenciesSection
+        self.currencies = CurrenciesSection(profile.id, profile.currency, t, MAX_W)
+        self.currencies.message.connect(self.message.emit)
+        bl.addWidget(self.currencies)
         bl.addWidget(self._backup_section())
         bl.addWidget(self._appearance_section())
         bl.addWidget(self._edition_section())
@@ -162,6 +166,7 @@ class SettingsPage(QWidget):
         log.info("Perfil atualizado (moeda %s; %d contas mudaram de moeda)", profile.currency, changed)
         self.profile = profile
         self._load_profile()
+        self.currencies.set_base(profile.currency)
         self.profile_changed.emit(profile)
         extra = f" {changed} {'conta mudou' if changed == 1 else 'contas mudaram'} de moeda." if changed else ""
         self.message.emit("Perfil atualizado." + extra)
@@ -488,6 +493,7 @@ class SettingsPage(QWidget):
     # ---------- página ----------
     def refresh(self):
         self._refresh_backup()
+        self.currencies.refresh()      # contas novas em outra moeda aparecem aqui
 
     def apply_theme(self, t: dict):
         self.t = t

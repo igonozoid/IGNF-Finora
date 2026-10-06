@@ -69,6 +69,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
+      - name: Bibliotecas do Qt (o plugin de testes carrega o QtGui)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libglib2.0-0
       - name: Criar o banco de migração
         run: |
           mysql -h127.0.0.1 -uroot -proot -e "CREATE DATABASE finora_mig CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON finora_mig.* TO 'finora'@'%'; CREATE DATABASE finora_copy CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON finora_copy.* TO 'finora'@'%';"
@@ -79,4 +83,4 @@ jobs:
         env:
           FINORA_TEST_DB_URL: mysql+pymysql://finora:finora@127.0.0.1:3306/finora_test?charset=utf8mb4
           FINORA_TEST_COPY_URL: mysql+pymysql://finora:finora@127.0.0.1:3306/finora_copy?charset=utf8mb4
-        run: python -m pytest -q -p no:pytestqt tests --ignore=tests/ui   # só regras: sem telas, sem libs gráficas
+        run: python -m pytest -q tests --ignore=tests/ui

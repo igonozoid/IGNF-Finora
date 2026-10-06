@@ -86,6 +86,10 @@ class EntryView:
     competence_date: date | None = None   # data da compra (cartão) / competência
     cost_center_id: int | None = None
     cost_center: str | None = None
+    currency: str = "BRL"                 # moeda da conta
+    base_amount: Decimal | None = None    # valor na moeda principal
+    dest_amount: Decimal | None = None    # transferência entre moedas: quanto chega no destino
+    dest_currency: str | None = None
 
     @property
     def is_paid(self) -> bool:
@@ -125,7 +129,8 @@ class Totals:
 def query(entity_id: int):
     dest = aliased(Account)
     return (
-        select(Entry, Account.name, dest.name, Category.name, Contact.name, CostCenter.name)
+        select(Entry, Account.name, dest.name, Category.name, Contact.name, CostCenter.name, Account.currency,
+               dest.currency)
         .join(Account, Entry.account_id == Account.id)
         .outerjoin(dest, Entry.dest_account_id == dest.id)
         .outerjoin(Category, Entry.category_id == Category.id)
@@ -136,10 +141,12 @@ def query(entity_id: int):
 
 
 def to_view(row) -> EntryView:
-    e, acc, dest, cat, ct, cc = row
+    e, acc, dest, cat, ct, cc, cur, dest_cur = row
     return EntryView(e.id, e.kind, e.description or "", Decimal(e.amount), e.due_date, e.paid_date, e.status,
                      e.account_id, acc, e.dest_account_id, dest, e.category_id, cat, ct, e.document_no,
-                     e.installment, e.series_id, e.competence_date, e.cost_center_id, cc)
+                     e.installment, e.series_id, e.competence_date, e.cost_center_id, cc, cur,
+                     Decimal(e.base_amount) if e.base_amount is not None else Decimal(e.amount),
+                     Decimal(e.dest_amount) if e.dest_amount is not None else None, dest_cur)
 
 
 def list_entries(s: Session, entity_id: int, *, year: int, month: int, filter: str = "all",
@@ -183,7 +190,7 @@ def month_totals(s: Session, entity_id: int, year: int, month: int) -> Totals:
     """Em aberto no mês. Faturas de cartão a pagar que vencem no mês entram em "a pagar"."""
     from finora.services import cards
     first, last = month_range(year, month)
-    base = select(func.coalesce(func.sum(Entry.amount), 0)).where(
+    base = select(func.coalesce(func.sum(Entry.base_amount), 0)).where(
         Entry.entity_id == entity_id, Entry.status == "pending", Entry.due_date.between(first, last))
     rec = s.scalar(base.where(Entry.kind == "income"))
     pay = Decimal(s.scalar(base.where(Entry.kind == "expense")))
@@ -208,6 +215,7 @@ class EntryData:
     repeat: str = "none"
     times: int = 1
     cost_center_id: int | None = None
+    dest_amount: Decimal | None = None     # transferência entre contas de moedas diferentes
 
 
 def _validate(s: Session, entity_id: int, d: EntryData) -> None:
@@ -224,6 +232,9 @@ def _validate(s: Session, entity_id: int, d: EntryData) -> None:
             raise ValueError("Escolha a conta de destino da transferência.")
         if dest.id == acc.id:
             raise ValueError("A conta de origem e a de destino precisam ser diferentes.")
+        if dest.currency != acc.currency and (d.dest_amount is None or d.dest_amount <= 0):
+            raise ValueError(f"As contas têm moedas diferentes: informe quanto chega em {dest.name} "
+                             f"({dest.currency}).")
     elif d.category_id is not None:
         cat = s.get(Category, d.category_id)
         if cat is None or cat.entity_id != entity_id:
@@ -264,6 +275,7 @@ def _apply(e: Entry, d: EntryData, entity_id: int, contact_id: int | None) -> No
     e.description = d.description.strip()
     e.account_id = d.account_id
     e.dest_account_id = d.dest_account_id if transfer else None
+    e.dest_amount = d.dest_amount if transfer and d.dest_amount else None
     e.category_id = None if transfer else d.category_id
     e.cost_center_id = None if transfer else d.cost_center_id
     e.contact_id = None if transfer else contact_id

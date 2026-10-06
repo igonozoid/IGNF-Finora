@@ -59,7 +59,7 @@ def _own(s: Session, entity_id: int) -> dict[int, Decimal]:
 
 
 def _spent(s: Session, entity_id: int, first: date, last: date) -> dict[int, Decimal]:
-    rows = s.execute(select(Entry.category_id, func.sum(Entry.amount))
+    rows = s.execute(select(Entry.category_id, func.sum(Entry.base_amount))
                      .where(Entry.entity_id == entity_id, Entry.kind == "expense", Entry.status != "canceled",
                             Entry.category_id.is_not(None), Entry.competence_date.between(first, last))
                      .group_by(Entry.category_id))

@@ -56,7 +56,8 @@ def kpis(s: Session, entity_id: int, today: date | None = None) -> Kpis:
     pending = (Entry.entity_id == entity_id) & (Entry.status == "pending") & (Entry.due_date <= horizon)
 
     def total(kind):
-        return s.execute(select(func.sum(Entry.amount), func.count(Entry.id)).where(pending, Entry.kind == kind)).one()
+        return s.execute(select(func.sum(Entry.base_amount), func.count(Entry.id))
+                         .where(pending, Entry.kind == kind)).one()
 
     rec, rec_n = total("income")
     pay, pay_n = total("expense")
@@ -77,7 +78,7 @@ def monthly_flow(s: Session, entity_id: int, months: int = 6, today: date | None
     today = today or date.today()
     start = entries.add_months(today.replace(day=1), -(months - 1))
     end = entries.month_range(today.year, today.month)[1]
-    q = (select(Entry.competence_date, Entry.kind, Entry.amount)
+    q = (select(Entry.competence_date, Entry.kind, Entry.base_amount)
          .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
                 Entry.competence_date.between(start, end)))
     sums: dict[tuple, Decimal] = {}
@@ -106,11 +107,11 @@ def top_expenses(s: Session, entity_id: int, year: int, month: int, n: int = 5) 
     first, last = entries.month_range(year, month)
     group = aliased(Category)
     name = func.coalesce(group.name, Category.name, "Sem categoria")
-    q = (select(name, func.sum(Entry.amount))
+    q = (select(name, func.sum(Entry.base_amount))
          .select_from(Entry)
          .outerjoin(Category, Entry.category_id == Category.id)
          .outerjoin(group, Category.parent_id == group.id)
          .where(Entry.entity_id == entity_id, Entry.kind == "expense", Entry.status != "canceled",
                 Entry.competence_date.between(first, last), _not_investment())
-         .group_by(name).order_by(func.sum(Entry.amount).desc()).limit(n))
+         .group_by(name).order_by(func.sum(Entry.base_amount).desc()).limit(n))
     return [(label, _d(v)) for label, v in s.execute(q)]

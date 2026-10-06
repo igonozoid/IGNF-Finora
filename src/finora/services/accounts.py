@@ -1,5 +1,6 @@
 """Contas: cadastro, saldo, ativar/inativar e limite da edição Free."""
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import case, func, select
@@ -33,6 +34,7 @@ class AccountView:
     closing_day: int | None = None      # cartão: dia em que a fatura fecha
     due_day: int | None = None          # cartão: dia em que a fatura vence
     credit_limit: Decimal | None = None
+    base_balance: Decimal | None = None   # saldo na moeda principal (cotação mais recente); None = mesma moeda
 
     @property
     def kind_label(self) -> str:
@@ -66,12 +68,16 @@ def multi_currency() -> bool:
     return bool(allowed(current_edition(), "multi_currency"))
 
 
-def _currency(s: Session, entity_id: int, currency: str | None) -> str:
-    """Moeda da conta: a da entidade, ou outra só se a edição permitir multimoeda."""
+def _currency(s: Session, entity_id: int, currency: str | None, kind: str = "bank") -> str:
+    """Moeda da conta: a da entidade, ou outra só se a edição permitir multimoeda.
+    Cartão de crédito fica sempre na moeda principal (a fatura vem nela, mesmo com compras no exterior)."""
     base = s.get(Entity, entity_id).currency
     currency = currency or base
     if currency not in CURRENCIES:
         raise ValueError(f"Moeda não suportada: {currency}")
+    if kind == "card" and currency != base:
+        raise ValueError(f"Cartão de crédito fica na moeda principal ({base}): a fatura vem nela, mesmo com "
+                         "compras em outra moeda.")
     if currency != base and not multi_currency():
         raise LimitError("Contas em outra moeda fazem parte das edições Plus e Pro.")
     return currency
@@ -87,7 +93,7 @@ def _movements(s: Session, entity_id: int) -> dict[int, Decimal]:
     signed = case((Entry.kind == "income", Entry.amount), else_=-Entry.amount)
     for acc_id, total in s.execute(select(Entry.account_id, func.sum(signed)).where(paid).group_by(Entry.account_id)):
         out[acc_id] = out.get(acc_id, Decimal(0)) + Decimal(total)
-    dest = select(Entry.dest_account_id, func.sum(Entry.amount)).where(
+    dest = select(Entry.dest_account_id, func.sum(func.coalesce(Entry.dest_amount, Entry.amount))).where(
         paid, Entry.kind == "transfer", Entry.dest_account_id.is_not(None)).group_by(Entry.dest_account_id)
     for acc_id, total in s.execute(dest):
         out[acc_id] = out.get(acc_id, Decimal(0)) + Decimal(total)
@@ -100,18 +106,24 @@ def list_accounts(s: Session, entity_id: int, include_inactive: bool = False) ->
         q = q.where(Account.is_active)
     q = q.order_by(Account.is_active.desc(), Account.name)
     mov = _movements(s, entity_id)
-    return [
-        AccountView(a.id, a.name, a.kind, a.currency, Decimal(a.opening_balance),
-                    Decimal(a.opening_balance) + mov.get(a.id, Decimal(0)), a.is_active,
-                    a.closing_day, a.due_day, None if a.credit_limit is None else Decimal(a.credit_limit))
-        for a in s.scalars(q)
-    ]
+    from finora.services import fx
+    conv = fx.Converter(s, entity_id)
+    today = date.today()
+    out = []
+    for a in s.scalars(q):
+        balance = Decimal(a.opening_balance) + mov.get(a.id, Decimal(0))
+        base = None if a.currency == conv.base else conv.convert(balance, a.currency, today)
+        out.append(AccountView(a.id, a.name, a.kind, a.currency, Decimal(a.opening_balance), balance, a.is_active,
+                               a.closing_day, a.due_day, None if a.credit_limit is None else Decimal(a.credit_limit),
+                               base))
+    return out
 
 
 def total_balance(accounts: list[AccountView]) -> Decimal:
     """Dinheiro que você tem: contas ativas SEM cartões de crédito. A dívida do cartão aparece
     como fatura a pagar (contar as duas coisas seria descontar a mesma dívida duas vezes)."""
-    return sum((a.balance for a in accounts if a.is_active and a.kind != "card"), Decimal("0.00"))
+    return sum((a.balance if a.base_balance is None else a.base_balance
+                for a in accounts if a.is_active and a.kind != "card"), Decimal("0.00"))
 
 
 def money_accounts(accounts: list[AccountView]) -> list[AccountView]:
@@ -157,7 +169,7 @@ def create(s: Session, entity_id: int, *, name: str, kind: str, opening_balance:
     closing_day, due_day, credit_limit = _card_fields(kind, closing_day, due_day, credit_limit)
     if not can_add(s, entity_id):
         raise LimitError(f"A edição Free permite até {limit()} contas ativas.")
-    currency = _currency(s, entity_id, currency)
+    currency = _currency(s, entity_id, currency, kind)
     if kind == "card":
         opening_balance = -abs(opening_balance)
     a = Account(entity_id=entity_id, name=name, kind=kind, currency=currency,
@@ -175,11 +187,14 @@ def update(s: Session, account_id: int, *, name: str, kind: str, opening_balance
     a = s.get(Account, account_id)
     a.name = _check(s, a.entity_id, name, kind, exclude_id=a.id)
     a.closing_day, a.due_day, a.credit_limit = _card_fields(kind, closing_day, due_day, credit_limit)
-    if currency and currency != a.currency:
-        a.currency = _currency(s, a.entity_id, currency)
+    if (currency and currency != a.currency) or (kind == "card" and a.kind != "card"):
+        a.currency = _currency(s, a.entity_id, currency or a.currency, kind)
+    changed_currency = a.currency
     a.kind = kind
     a.opening_balance = -abs(opening_balance) if kind == "card" else opening_balance
     s.commit()
+    from finora.services import fx
+    fx.recompute(s, a.entity_id, changed_currency)      # lançamentos da conta: valor na moeda principal
 
 
 def set_active(s: Session, account_id: int, active: bool) -> None:

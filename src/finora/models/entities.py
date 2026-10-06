@@ -74,7 +74,11 @@ class Entry(Base):
     contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id"))
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
     cost_center_id: Mapped[int | None] = mapped_column(ForeignKey("cost_centers.id"))
-    amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+    amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))                  # na moeda da conta
+    # Valor na moeda principal, pela cotação da data (é o que os relatórios somam). Calculado sozinho ao gravar.
+    base_amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+    # Transferência entre contas de moedas diferentes: quanto chega no destino (na moeda dele).
+    dest_amount: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     description: Mapped[str | None] = mapped_column(String(200))
     document_no: Mapped[str | None] = mapped_column(String(40))
     competence_date: Mapped[date]
@@ -119,3 +123,14 @@ class Attachment(Base):
     size: Mapped[int] = mapped_column(Integer)
     added: Mapped[date]
     data: Mapped[bytes] = mapped_column(LargeBinary(length=16_000_000), deferred=True)   # MySQL: MEDIUMBLOB
+
+class ExchangeRate(Base):
+    """Cotação: quanto vale 1 unidade de `currency` na moeda principal, a partir de `day`."""
+    __tablename__ = "exchange_rates"
+    __table_args__ = (UniqueConstraint("entity_id", "currency", "day", name="uq_rate_day"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
+    currency: Mapped[str] = mapped_column(String(3))
+    day: Mapped[date]
+    rate: Mapped[Decimal] = mapped_column(Numeric(20, 8))
+    source: Mapped[str] = mapped_column(String(20), default="manual")     # manual | bcb (PTAX)

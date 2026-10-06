@@ -95,7 +95,7 @@ class DreReport:
 def _movements(s: Session, entity_id: int, first: date, last: date, regime: str):
     """(data, tipo, valor, grupo da DRE, nome da subcategoria) dos lançamentos do período."""
     when = Entry.paid_date if regime == "cash" else Entry.competence_date
-    q = (select(when, Entry.kind, Entry.amount, Category.dre_group, Category.name)
+    q = (select(when, Entry.kind, Entry.base_amount, Category.dre_group, Category.name)
          .select_from(Entry).outerjoin(Category, Entry.category_id == Category.id)
          .where(Entry.entity_id == entity_id, Entry.kind != "transfer", when.between(first, last)))
     # Caixa: o que saiu do bolso. Compra no cartão sai no vencimento da fatura (paid_date = vencimento).
@@ -180,7 +180,7 @@ def cash_flow(s: Session, entity_id: int, days: int = 30, today: date | None = N
     today = today or date.today()
     end = today + timedelta(days=days - 1)
     start = accounts.total_balance(accounts.list_accounts(s, entity_id))
-    q = (select(Entry.due_date, Entry.kind, Entry.amount, Entry.description)
+    q = (select(Entry.due_date, Entry.kind, Entry.base_amount, Entry.description)
          .where(Entry.entity_id == entity_id, Entry.status == "pending", Entry.kind != "transfer",
                 Entry.due_date <= end)
          .order_by(Entry.due_date, Entry.id))
@@ -251,7 +251,9 @@ def _move(e: Entry, account_id: int) -> tuple[date, Decimal]:
     when = e.competence_date if e.status == "card" else e.paid_date
     amount = Decimal(e.amount)
     if e.kind == "transfer":
-        return when, amount if e.dest_account_id == account_id else -amount
+        if e.dest_account_id == account_id:
+            return when, Decimal(e.dest_amount if e.dest_amount is not None else e.amount)
+        return when, -amount
     return when, amount if e.kind == "income" else -amount
 
 
@@ -292,7 +294,7 @@ class CategoryTotal:
 def by_category(s: Session, entity_id: int, first: date, last: date) -> list[CategoryTotal]:
     """Quanto entrou/saiu por categoria no período (competência: pago ou não). Maiores primeiro."""
     parent = aliased(Category)
-    q = (select(Entry.kind, Entry.amount, Category.name, parent.name)
+    q = (select(Entry.kind, Entry.base_amount, Category.name, parent.name)
          .select_from(Entry).outerjoin(Category, Entry.category_id == Category.id)
          .outerjoin(parent, Category.parent_id == parent.id)
          .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
@@ -319,7 +321,7 @@ class ContactTotal:
 
 def by_contact(s: Session, entity_id: int, first: date, last: date) -> list[ContactTotal]:
     from finora.models import Contact
-    q = (select(Contact.name, Entry.kind, Entry.amount)
+    q = (select(Contact.name, Entry.kind, Entry.base_amount)
          .select_from(Entry).join(Contact, Entry.contact_id == Contact.id)
          .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
                 Entry.competence_date.between(first, last)))
@@ -346,7 +348,7 @@ def by_cost_center(s: Session, entity_id: int, first: date, last: date) -> list[
     """Gastos e receitas de cada centro de custo no período (competência). Lançamentos sem centro entram
     numa linha "Sem centro de custo" no fim, para o total bater."""
     from finora.models import CostCenter
-    q = (select(Entry.cost_center_id, Entry.kind, Entry.amount)
+    q = (select(Entry.cost_center_id, Entry.kind, Entry.base_amount)
          .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
                 Entry.competence_date.between(first, last)))
     acc: dict[int | None, list] = {}
@@ -408,7 +410,7 @@ def overdue(s: Session, entity_id: int, today: date | None = None) -> OverdueRep
     pay, rec = [], []
     for row in s.execute(q.order_by(Entry.due_date)):
         e = entries.to_view(row)
-        item = OverdueItem(e.id, e.kind, e.description, e.contact or "", e.due_date, e.amount,
+        item = OverdueItem(e.id, e.kind, e.description, e.contact or "", e.due_date, e.base_amount,
                            (today - e.due_date).days)
         (rec if e.kind == "income" else pay).append(item)
     for st in cards.open_statements(s, entity_id, today - timedelta(days=1), today):

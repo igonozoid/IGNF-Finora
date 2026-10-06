@@ -42,7 +42,7 @@ class CostCenterView:
 def _sums(s: Session, entity_id: int, year: int, month: int) -> dict[int, tuple[Decimal, Decimal, int]]:
     first, last = month_range(year, month)
     rows = s.execute(
-        select(Entry.cost_center_id, Entry.kind, func.sum(Entry.amount), func.count(Entry.id))
+        select(Entry.cost_center_id, Entry.kind, func.sum(Entry.base_amount), func.count(Entry.id))
         .where(Entry.entity_id == entity_id, Entry.cost_center_id.is_not(None), Entry.status != "canceled",
                Entry.kind.in_(("income", "expense")), Entry.competence_date.between(first, last))
         .group_by(Entry.cost_center_id, Entry.kind))

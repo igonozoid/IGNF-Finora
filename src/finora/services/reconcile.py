@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from finora.models import Account, BankLine, Category, Contact, Entry
@@ -126,12 +126,13 @@ def _candidates(s: Session, line: BankLine, taken: set[int]) -> list[Entry]:
     amount = abs(line.amount)
     first, last = line.posted - timedelta(days=DAYS), line.posted + timedelta(days=DAYS)
     if line.amount > 0:      # entrou: receita na conta ou transferência chegando nela
-        side = or_((Entry.kind == "income") & (Entry.account_id == line.account_id),
-                   (Entry.kind == "transfer") & (Entry.dest_account_id == line.account_id))
+        side = or_((Entry.kind == "income") & (Entry.account_id == line.account_id) & (Entry.amount == amount),
+                   (Entry.kind == "transfer") & (Entry.dest_account_id == line.account_id)
+                   & (func.coalesce(Entry.dest_amount, Entry.amount) == amount))
     else:                    # saiu: despesa ou transferência saindo dela
-        side = (Entry.kind.in_(("expense", "transfer"))) & (Entry.account_id == line.account_id)
+        side = (Entry.kind.in_(("expense", "transfer"))) & (Entry.account_id == line.account_id)             & (Entry.amount == amount)
     rows = s.scalars(select(Entry).where(
-        Entry.entity_id == line.entity_id, side, Entry.amount == amount, Entry.status.in_(("pending", "paid")),
+        Entry.entity_id == line.entity_id, side, Entry.status.in_(("pending", "paid")),
         or_((Entry.status == "pending") & Entry.due_date.between(first, last),
             (Entry.status == "paid") & Entry.paid_date.between(first, last))))
     found = [e for e in rows if e.id not in taken]
@@ -232,7 +233,8 @@ def confirm(s: Session, line_id: int, entry_id: int) -> None:
         raise ValueError("Lançamento não encontrado.")
     if entry_id in _linked_entry_ids(s, line.account_id):
         raise ValueError("Esse lançamento já está ligado a outra linha do extrato.")
-    if abs(line.amount) != e.amount:
+    arrived = e.dest_amount if e.kind == "transfer" and e.dest_account_id == line.account_id and e.dest_amount         else e.amount
+    if abs(line.amount) != arrived:
         raise ValueError("O valor do lançamento é diferente do valor do extrato.")
     if e.status == "pending":
         e.status, e.paid_date = "paid", line.posted

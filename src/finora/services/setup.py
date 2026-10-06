@@ -47,7 +47,7 @@ def current_profile(s: Session) -> Profile | None:
 
 def update_profile(s: Session, entity_id: int, *, name: str, currency: str,
                    accounts_too: bool = True) -> tuple[Profile, int]:
-    """Muda nome e/ou moeda principal. Os VALORES não são convertidos (não há câmbio): só a moeda exibida.
+    """Muda nome e/ou moeda principal. Os VALORES das contas não são convertidos: só a moeda exibida.
 
     Ao trocar a moeda, as contas que usavam a moeda antiga passam para a nova. Na Free isso é
     obrigatório (uma moeda só); nas edições pagas, com `accounts_too=False`, elas ficam como estão.
@@ -67,11 +67,15 @@ def update_profile(s: Session, entity_id: int, *, name: str, currency: str,
                                                      Account.currency == e.currency)):
                 a.currency = currency
                 changed += 1
+        old = e.currency
         e.name, e.currency = name, currency
         s.commit()
     except Exception:
         s.rollback()
         raise
+    if currency != old:
+        from finora.services import fx
+        fx.recompute(s, entity_id)        # a moeda principal mudou: refaz o valor convertido de tudo
     return Profile(e.id, e.name, e.currency), changed
 
 

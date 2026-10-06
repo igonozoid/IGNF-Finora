@@ -94,3 +94,49 @@ def test_erro_num_clique_vai_para_o_log_e_o_app_continua(window, qtbot, tmp_path
         for h in list(logs.log.handlers):
             logs.log.removeHandler(h)
             h.close()
+
+
+def test_busca_global_ctrl_k(window, qtbot):
+    qtbot.keyClick(window, Qt.Key_K, Qt.ControlModifier)
+    search = window.header.search
+    assert search.hasFocus()
+    search.setText("merc")
+    search.textEdited.emit("merc")
+    hits = [search.model.item(r).data(Qt.UserRole) for r in range(search.model.rowCount())]
+    entry = next(h for h in hits if h is not None and h.kind == "entry")
+    assert entry.title == "Mercado"
+    search._activated(search.model.index(hits.index(entry), 0))
+    assert window.stack.currentIndex() == 1 and window.pages[1].form.editing.description == "Mercado"
+    assert search.text() == ""
+
+
+def test_busca_abre_contato_conta_e_categoria(window):
+    from finora.services import search as svc
+    from finora.core import db
+    with db.Session() as s:
+        hits = {h.kind: h for h in svc.search(s, window.profile.id, "en") + svc.search(s, window.profile.id, "Nubank")
+                + svc.search(s, window.profile.id, "Luz")}
+    window.open_hit(hits["contact"])
+    assert window.stack.currentIndex() == 4 and window.pages[4].form.title.text() == hits["contact"].title
+    window.open_hit(hits["account"])
+    assert window.stack.currentIndex() == 2 and window.pages[2].editing.name == "Nubank"
+    window.open_hit(hits["category"])
+    assert window.stack.currentIndex() == 3 and window.pages[3].current.name == "Luz"
+
+
+def test_periodo_no_cabecalho(window):
+    from datetime import date
+    chip = window.header.period
+    window.go_to(1)
+    assert chip.isVisible()
+    today = date.today()
+    chip.shift(-1)
+    entries_page = window.pages[1]
+    assert (entries_page.year, entries_page.month) == (chip.year, chip.month) != (today.year, today.month)
+    assert window.pages[0].period == (chip.year, chip.month)              # Dashboard acompanha
+    entries_page._shift_month(2)                                          # mudou dentro de Lançamentos
+    assert (chip.year, chip.month) == (entries_page.year, entries_page.month)
+    entries_page.filter_group.button(3).click()                           # Atrasados: mês não importa
+    assert not chip.prev.isEnabled()
+    window.go_to(3)
+    assert not chip.isVisible()

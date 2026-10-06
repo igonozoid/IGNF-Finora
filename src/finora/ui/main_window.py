@@ -21,6 +21,7 @@ from finora.ui.categories_page import CategoriesPage
 from finora.ui.contacts_page import ContactsPage
 from finora.ui.dashboard_page import DashboardPage
 from finora.ui.entries_page import MONTHS, EntriesPage
+from finora.ui.header_tools import GlobalSearch, PeriodChip
 from finora.ui.pages import PlaceholderPage
 from finora.ui.reports_page import ReportsPage
 from finora.ui.settings_page import SettingsPage
@@ -45,6 +46,7 @@ NAV = [
 ]
 
 SHOW_NEW_ENTRY = {0, 1, 2}  # Dashboard, Lançamentos, Contas
+PERIOD_PAGES = {0, 1}       # telas que usam o mês do cabeçalho
 
 
 class Sidebar(QWidget):
@@ -205,7 +207,7 @@ class TopTabs(QFrame):
 
 
 class Header(QFrame):
-    def __init__(self, parent=None):
+    def __init__(self, t: dict, parent=None):
         super().__init__(parent)
         self.setObjectName("header")
         self.setFixedHeight(44)
@@ -214,17 +216,27 @@ class Header(QFrame):
         lay.setSpacing(theme.SP_L)
         self.title = QLabel(objectName="pageTitle")
         self.subtitle = QLabel(objectName="pageSubtitle")
+        self.subtitle.setMinimumWidth(1)
+        self.period = PeriodChip(t)
+        self.search = GlobalSearch(t)
         self.new_btn = QPushButton("Novo lançamento")
         self.new_btn.setProperty("variant", "primary")
         self.new_btn.setCursor(Qt.PointingHandCursor)
         self.new_btn.setToolTip("Registrar uma receita, despesa ou transferência (Ctrl+N)")
         lay.addWidget(self.title)
-        lay.addWidget(self.subtitle)
-        lay.addStretch(1)
+        lay.addWidget(self.subtitle, 1)
+        lay.addWidget(self.period)
+        lay.addWidget(self.search)
         lay.addWidget(self.new_btn)
 
     def apply_theme(self, t: dict):
         self.new_btn.setIcon(qta.icon("fa6s.plus", color=t["on_acc"]))
+        self.search.apply_theme(t)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.subtitle.setVisible(self.width() > 900)     # em janela estreita, sobra espaço para busca e mês
+        self.period.set_compact(self.width() < 760)
 
 
 class MainWindow(QMainWindow):
@@ -238,7 +250,7 @@ class MainWindow(QMainWindow):
             self._fit_to_screen()
 
         self.sidebar = Sidebar(profile)
-        self.header = Header()
+        self.header = Header(theme.tokens(settings.get_theme(theme.DEFAULT_THEME)))
         self.tabs = TopTabs(profile)
         self.stack = QStackedWidget()
         t = theme.tokens(settings.get_theme(theme.DEFAULT_THEME))
@@ -283,6 +295,11 @@ class MainWindow(QMainWindow):
         self.pages[0].open_entry.connect(self.open_entry)
         self.pages[0].open_statement.connect(self.open_statement)
         self.pages[5].open_entry.connect(self.open_entry)
+        self.header.search.entity_id = profile.id
+        self.header.search.chosen.connect(self.open_hit)
+        self.header.period.changed.connect(self.set_period)
+        self.pages[1].period_changed.connect(self.set_period)
+        self.pages[1].period_locked.connect(self.header.period.set_locked)
         self.pages[5].open_statement.connect(self.open_statement)
         self.sidebar.theme_btn.clicked.connect(self.toggle_theme)
         self.header.new_btn.clicked.connect(self.new_entry)
@@ -290,6 +307,7 @@ class MainWindow(QMainWindow):
             QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self, activated=lambda i=i: self.go_to(i))
         QShortcut(QKeySequence("Ctrl+T"), self, activated=self.toggle_theme)
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self.new_entry)
+        QShortcut(QKeySequence("Ctrl+K"), self, activated=self.header.search.focus)
 
         self.theme_name = settings.get_theme(theme.DEFAULT_THEME)
         self.apply_theme(self.theme_name)
@@ -326,14 +344,40 @@ class MainWindow(QMainWindow):
         self.tabs.group.button(index).setChecked(True)
         self.header.title.setText(label)
         if index == 0:
-            subtitle = f"Visão geral de {MONTHS[date.today().month - 1]}"
+            y, m = self.header.period.year, self.header.period.month
+            subtitle = f"Visão geral de {MONTHS[m - 1]}" + ("" if y == date.today().year else f" de {y}")
         self.header.subtitle.setText(subtitle)
+        self.header.period.setVisible(index in PERIOD_PAGES)
+        if index != 1:
+            self.header.period.set_locked(False)
         # O botão só aparece onde lançar faz parte do fluxo; o Ctrl+N vale em todas as telas.
         self.header.new_btn.setVisible(index in SHOW_NEW_ENTRY)
 
     def open_entry(self, entry_id: int):
         self.go_to(1)
         self.pages[1].open_by_id(entry_id)
+
+    def set_period(self, year: int, month: int):
+        """Mês de referência mudou (no cabeçalho ou dentro de Lançamentos): todos acompanham."""
+        self.header.period.set(year, month)
+        self.pages[1].set_period(year, month)
+        self.pages[0].set_period(year, month)
+        if self.stack.currentIndex() == 0:
+            self.go_to(0)
+
+    def open_hit(self, hit):
+        """Resultado escolhido na busca global."""
+        if hit.kind == "entry":
+            self.open_entry(hit.id)
+        elif hit.kind == "contact":
+            self.go_to(4)
+            self.pages[4].select_contact(hit.id)
+        elif hit.kind == "account":
+            self.go_to(2)
+            self.pages[2]._edit(hit.id)
+        elif hit.kind == "category":
+            self.go_to(3)
+            self.pages[3].refresh(select_id=hit.id)
 
     def open_statement(self, account_id: int, due):
         """Fatura de cartão clicada no Dashboard: abre a janela de faturas e atualiza a tela atual."""

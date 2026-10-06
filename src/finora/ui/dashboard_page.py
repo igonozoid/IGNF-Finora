@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 
 from finora.core import money
 from finora.core.db import Session
-from finora.services import accounts, cards, dashboard
+from finora.services import accounts, cards, dashboard, entries
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.accounts_page import KIND_ICONS
@@ -75,6 +75,7 @@ class KpiCard(QFrame):
         top.addWidget(icon_label(icon, t, "mut", 11))
         lbl = QLabel(label)
         lbl.setProperty("role", "muted")
+        self.label = lbl
         top.addWidget(lbl)
         top.addStretch(1)
         top.addWidget(help_icon(help_text, t))
@@ -183,6 +184,8 @@ class DashboardPage(QWidget):
         self.setObjectName("content")
         self.profile = profile
         self.t = t
+        today = date.today()
+        self.period = (today.year, today.month)
 
         cur = profile.currency
         self.k_balance = KpiCard("fa6s.wallet", "Saldo em contas", "Soma das contas ativas (banco, carteira,\n"
@@ -277,16 +280,29 @@ class DashboardPage(QWidget):
         self._arrange()
 
     # ----- dados -----
+    def set_period(self, year: int, month: int):
+        """Mês de referência (cabeçalho): sobra do mês, gráfico e maiores despesas.
+        Saldo, a receber/a pagar em 30 dias e vencimentos continuam contando a partir de hoje."""
+        if (year, month) != self.period:
+            self.period = (year, month)
+            if self.isVisible():
+                self.refresh()
+
     def refresh(self):
         today = date.today()
+        year, month = self.period
+        ref = date(year, month, 1)
+        prev = entries.add_months(ref, -1)
         cur = self.profile.currency
         with Session() as s:
             k = dashboard.kpis(s, self.profile.id, today)
-            flow = dashboard.monthly_flow(s, self.profile.id, 6, today)
+            result = dashboard.month_result(s, self.profile.id, year, month)
+            prev_result = dashboard.month_result(s, self.profile.id, prev.year, prev.month)
+            flow = dashboard.monthly_flow(s, self.profile.id, 6, ref)
             accs = accounts.list_accounts(s, self.profile.id)
             due = dashboard.due_soon(s, self.profile.id, 7, today)
             bills = cards.open_statements(s, self.profile.id, today + timedelta(days=7), today)
-            top = dashboard.top_expenses(s, self.profile.id, today.year, today.month)
+            top = dashboard.top_expenses(s, self.profile.id, year, month)
         t = self.t
 
         plural = lambda n, one, many: f"{n} {one if n == 1 else many}"
@@ -296,14 +312,16 @@ class DashboardPage(QWidget):
         late = f" · {plural(k.late_n, 'atrasado', 'atrasados')}" if k.late_n else ""
         self.k_pay.set(money.fmt(k.payable, cur), plural(k.payable_n, "lançamento", "lançamentos") + late,
                        note_tone="neg" if k.late_n else None)
-        prev_name = MONTHS[(today.month - 2) % 12]
-        diff = k.result - k.prev_result
+        prev_name = MONTHS[prev.month - 1]
+        diff = result - prev_result
         if diff == 0:
             note = f"igual a {prev_name}"
         else:
             note = f"{money.fmt(abs(diff), cur)} {'a mais' if diff > 0 else 'a menos'} que em {prev_name}"
-        self.k_result.set(money.fmt(k.result, cur), note,
-                          "pos" if k.result > 0 else "neg" if k.result < 0 else None)
+        self.k_result.label.setText("Sobra do mês" if (year, month) == (today.year, today.month)
+                                    else f"Sobra de {MONTHS[month - 1]}")
+        self.k_result.set(money.fmt(result, cur), note,
+                          "pos" if result > 0 else "neg" if result < 0 else None)
 
         self.chart.set_data(flow, t)
 

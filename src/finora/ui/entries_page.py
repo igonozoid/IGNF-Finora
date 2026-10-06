@@ -623,6 +623,8 @@ class EntryForm(QFrame):
 # ---------- página ----------
 class EntriesPage(QWidget):
     message = Signal(str)
+    period_changed = Signal(int, int)    # o próprio Lançamentos mudou o mês (ex.: abrir pelo Dashboard)
+    period_locked = Signal(bool)         # "Atrasados" ignora o mês
 
     def __init__(self, profile: Profile, t: dict, parent=None):
         super().__init__(parent)
@@ -634,16 +636,8 @@ class EntriesPage(QWidget):
         self.filter = "all"
 
         # Linha 1: mês, busca, importar
-        self.prev_btn = themed_icon(button("", "icon"), "fa6s.chevron-left", t, "fg", 10)
-        self.prev_btn.setToolTip("Mês anterior")
-        self.next_btn = themed_icon(button("", "icon"), "fa6s.chevron-right", t, "fg", 10)
-        self.next_btn.setToolTip("Próximo mês")
-        self.month_lbl = QLabel(objectName="monthLabel")
-        self.month_lbl.setMinimumWidth(130)
-        self.month_lbl.setAlignment(Qt.AlignCenter)
-        self.today_btn = button("Hoje", "link")
-        self.today_btn.setToolTip("Voltar para o mês atual")
-        self.search = QLineEdit(placeholderText="Buscar…", clearButtonEnabled=True)
+        self.search = QLineEdit(placeholderText="Filtrar este mês…", clearButtonEnabled=True)
+        self.search.setToolTip("Filtra a lista do mês. Para procurar em todos os meses, use a busca do topo (Ctrl K).")
         self.search.setMaximumWidth(220)
         self.search.setMinimumWidth(110)
         self.search_icon = self.search.addAction(qta.icon("fa6s.magnifying-glass", color=t["mut"]),
@@ -652,10 +646,6 @@ class EntriesPage(QWidget):
         self.ofx_btn.setToolTip("Importar extrato do banco (edição Plus)")
         row1 = QHBoxLayout()
         row1.setSpacing(theme.SP_S)
-        row1.addWidget(self.prev_btn)
-        row1.addWidget(self.month_lbl)
-        row1.addWidget(self.next_btn)
-        row1.addWidget(self.today_btn)
         row1.addStretch(1)
         row1.addWidget(self.search, 1)
         row1.addSpacing(theme.SP_S)
@@ -787,9 +777,6 @@ class EntriesPage(QWidget):
         root.addWidget(self.left, 1)
         root.addWidget(self.form_scroll)
 
-        self.prev_btn.clicked.connect(lambda: self._shift_month(-1))
-        self.next_btn.clicked.connect(lambda: self._shift_month(1))
-        self.today_btn.clicked.connect(self._go_today)
         self.search.textChanged.connect(lambda: self.refresh())
         self.filter_group.idClicked.connect(self._filter_changed)
         self.account_filter.activated.connect(lambda _i: self.refresh())
@@ -809,6 +796,12 @@ class EntriesPage(QWidget):
         QShortcut(QKeySequence("Ctrl+F"), self, activated=self.search.setFocus)
 
     # ----- navegação -----
+    def set_period(self, year: int, month: int):
+        """Mês escolhido no cabeçalho."""
+        if (year, month) != (self.year, self.month):
+            self.year, self.month = year, month
+            self.refresh()
+
     def _shift_month(self, delta: int):
         y, m = divmod(self.month - 1 + delta, 12)
         self.year, self.month = self.year + y, m + 1
@@ -841,12 +834,8 @@ class EntriesPage(QWidget):
         self._show_statements(sts)
         late = self.filter == "late"
         self.model.set_rows(rows, show_year=late)
-        month_txt = f"{MONTHS[self.month - 1].capitalize()} {self.year}"
-        self.month_lbl.setText(month_txt)
-        for w in (self.prev_btn, self.next_btn, self.month_lbl):
-            w.setEnabled(not late)
-        today = date.today()
-        self.today_btn.setVisible(not late and (self.year, self.month) != (today.year, today.month))
+        self.period_locked.emit(late)
+        self.period_changed.emit(self.year, self.month)
         cur = self.profile.currency
         self.tot_rec.setText(money.fmt(totals.receivable, cur))
         self.tot_pay.setText(money.fmt(totals.payable, cur))

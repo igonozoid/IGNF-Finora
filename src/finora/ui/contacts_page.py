@@ -367,6 +367,20 @@ class ContactsPage(QWidget):
                 self.form.open_new()
         self._arrange()
 
+    def select_contact(self, contact_id: int):
+        """Abre um contato (vindo da busca global): limpa filtro e busca locais e seleciona-o."""
+        self.filter_group.button(0).setChecked(True)
+        self.role = "all"
+        self.search.blockSignals(True)
+        self.search.clear()
+        self.search.blockSignals(False)
+        self._editing = False
+        self.form.current = None
+        self.refresh(select_id=contact_id)
+        row = next((i for i, c in enumerate(self._items) if c.id == contact_id), -1)
+        if row >= 0:
+            self._selected(row)
+
     def _selected(self, row: int):
         """Clique do usuário numa linha."""
         if 0 <= row < len(self._items):

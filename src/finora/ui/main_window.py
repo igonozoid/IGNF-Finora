@@ -23,6 +23,7 @@ from finora.ui.dashboard_page import DashboardPage
 from finora.ui.entries_page import MONTHS, EntriesPage
 from finora.ui.header_tools import GlobalSearch, PeriodChip
 from finora.ui.pages import PlaceholderPage
+from finora.ui.reconcile_page import ReconcilePage
 from finora.ui.reports_page import ReportsPage
 from finora.ui.settings_page import SettingsPage
 from finora.ui.widgets import retheme
@@ -39,6 +40,8 @@ NAV = [
      "Aqui você vai organizar seus gastos e ganhos em grupos, como Moradia, Alimentação e Lazer."),
     ("contacts", "fa6s.address-book", "Contatos", "Pessoas e empresas com quem você troca dinheiro",
      "Aqui você vai cadastrar quem te paga e quem você paga, para encontrar tudo mais rápido."),
+    ("reconcile", "fa6s.scale-balanced", "Conciliação", "Extrato do banco x seus lançamentos",
+     "Aqui você importa o extrato do banco e confere se tudo foi lançado."),
     ("reports", "fa6s.file-lines", "Relatórios", "DRE, fluxo de caixa, extratos e atrasados",
      "Aqui você vai ver, mês a mês, quanto entrou, quanto saiu e quanto sobrou."),
     ("settings", "fa6s.gear", "Configurações", "Preferências, backup e licença",
@@ -256,7 +259,8 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         t = theme.tokens(settings.get_theme(theme.DEFAULT_THEME))
         built = {"dashboard": DashboardPage, "entries": EntriesPage, "accounts": AccountsPage,
-                 "categories": CategoriesPage, "contacts": ContactsPage, "reports": ReportsPage,
+                 "categories": CategoriesPage, "contacts": ContactsPage, "reconcile": ReconcilePage,
+                 "reports": ReportsPage,
                  "settings": SettingsPage}
         self.pages = [built[key](profile, t) if key in built else PlaceholderPage(icon, label, text)
                       for key, icon, label, _sub, text in NAV]
@@ -294,6 +298,8 @@ class MainWindow(QMainWindow):
         self.page("dashboard").open_entry.connect(self.open_entry)
         self.page("dashboard").open_statement.connect(self.open_statement)
         self.page("reports").open_entry.connect(self.open_entry)
+        self.page("reconcile").open_entry.connect(self.open_entry)
+        self.page("entries").import_requested.connect(self.import_ofx)
         self.header.search.entity_id = profile.id
         self.header.search.chosen.connect(self.open_hit)
         self.header.period.changed.connect(self.set_period)
@@ -390,6 +396,11 @@ class MainWindow(QMainWindow):
         """Fatura de cartão clicada no Dashboard: abre a janela de faturas e atualiza a tela atual."""
         self.page("entries").open_statement(account_id, due)
         self.go_to(self.stack.currentIndex())
+
+    def import_ofx(self):
+        """Botão "Importar OFX" de Lançamentos: leva para a Conciliação e já pede o arquivo."""
+        self.go_to("reconcile")
+        self.page("reconcile")._import()
 
     def new_entry(self):
         self.go_to("entries")

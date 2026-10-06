@@ -68,8 +68,8 @@ Estratégia: construir tudo completo e depois "capar" a Free com `licensing.allo
 Ordem de implementação:
 
 - [x] Exportar Excel/PDF: lançamentos e todos os relatórios
-- [ ] Importar OFX (extrato do banco) sem duplicar
-- [ ] Conciliação: casar linhas do extrato com lançamentos, sugerir, criar o que falta (mockup: Conciliação)
+- [x] Importar OFX (extrato do banco) sem duplicar
+- [x] Conciliação: casar linhas do extrato com lançamentos, sugerir, criar o que falta (mockup: Conciliação)
 - [ ] Centros de custo: cadastro, campo no lançamento, relatório por centro de custo (mockup + IgnControl)
 - [ ] Orçado x realizado: orçamento mensal por categoria e por centro de custo, com alerta de estouro
 - [ ] Anexos de comprovantes nos lançamentos (arquivos dentro da pasta de dados)

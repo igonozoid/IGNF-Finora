@@ -627,6 +627,7 @@ class EntryForm(QFrame):
 # ---------- página ----------
 class EntriesPage(QWidget):
     message = Signal(str)
+    import_requested = Signal()
     period_changed = Signal(int, int)    # o próprio Lançamentos mudou o mês (ex.: abrir pelo Dashboard)
     period_locked = Signal(bool)         # "Atrasados" ignora o mês
 
@@ -647,7 +648,7 @@ class EntriesPage(QWidget):
         self.search_icon = self.search.addAction(qta.icon("fa6s.magnifying-glass", color=t["mut"]),
                                                  QLineEdit.LeadingPosition)
         self.ofx_btn = button("Importar OFX", "secondary", t, "fa6s.file-import", "fg")
-        self.ofx_btn.setToolTip("Importar extrato do banco (edição Plus)")
+        self.ofx_btn.setToolTip("Importar o extrato do banco e conciliar (tela Conciliação)")
         row1 = QHBoxLayout()
         row1.setSpacing(theme.SP_S)
         row1.addStretch(1)
@@ -656,6 +657,7 @@ class EntriesPage(QWidget):
         row1.addWidget(self.ofx_btn)
         self.ofx_lock = lock_icon("Importar extrato OFX é um recurso da edição Plus.", t)
         row1.addWidget(self.ofx_lock)
+        self.ofx_lock.setVisible(not allowed(current_edition(), "ofx"))
         self.export_btn = button("Exportar", "secondary", t, "fa6s.file-export", "fg")
         self.export_btn.setToolTip("Salvar a lista que está na tela em Excel ou PDF")
         row1.addWidget(self.export_btn)
@@ -799,7 +801,10 @@ class EntriesPage(QWidget):
         self.clear_filters.clicked.connect(self._clear_filters)
         self.table.selectionModel().selectionChanged.connect(self._selection_changed)
         self.pay_sel.clicked.connect(self._pay_selected)
-        self.ofx_btn.clicked.connect(lambda: show_upgrade(self, "Importar extrato OFX é um recurso da edição Plus."))
+        if allowed(current_edition(), "ofx"):
+            self.ofx_btn.clicked.connect(self.import_requested.emit)
+        else:
+            self.ofx_btn.clicked.connect(lambda: show_upgrade(self, "Importar extrato OFX é um recurso da edição Plus."))
         self.table.doubleClicked.connect(lambda idx: self.edit_entry(idx.data(Qt.UserRole)))
         self.table.customContextMenuRequested.connect(self._context_menu)
         self.form.saved.connect(self._saved)

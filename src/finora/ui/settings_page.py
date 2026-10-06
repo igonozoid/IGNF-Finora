@@ -669,7 +669,32 @@ class SettingsPage(QWidget):
         open_btn.clicked.connect(lambda: _open_folder(db.DATA_DIR))
         row.addWidget(open_btn)
         lay.addLayout(row)
+        upd = QHBoxLayout()
+        self.update_chk = QCheckBox("Avisar quando houver versão nova (consulta o GitHub uma vez por dia)")
+        self.update_chk.setChecked(settings.get_update_check())
+        self.update_chk.toggled.connect(settings.set_update_check)
+        self.update_now = button("Verificar agora", "link", self.t, "fa6s.rotate")
+        self.update_now.clicked.connect(self._check_update)
+        upd.addWidget(self.update_chk, 1)
+        upd.addWidget(self.update_now)
+        lay.addLayout(upd)
+        terms = button("Termos de uso e privacidade", "link", self.t, "fa6s.file-contract")
+        terms.clicked.connect(self._show_terms)
+        lay.addWidget(terms, 0, Qt.AlignLeft)
         return box
+
+    def _show_terms(self):
+        from finora.ui.terms_dialog import TermsDialog
+        TermsDialog(self).exec()
+
+    def _check_update(self):
+        from finora.ui.update_check import UpdateChecker
+        self._checker = UpdateChecker(self)
+        self._checker.done.connect(self.message.emit)
+        self._checker.found.connect(lambda rel: self.window().show_update(rel)
+                                    if hasattr(self.window(), "show_update") else None)
+        self.message.emit("Consultando…")
+        self._checker.start()
 
     def set_admin(self, is_admin: bool):
         """Sem acesso de administração: só Aparência e Sobre."""

@@ -421,6 +421,14 @@ class MainWindow(QMainWindow):
         sb.addPermanentWidget(QLabel(f"Edição {current_edition().value.capitalize()}"))
         sb.addPermanentWidget(QLabel(f"v{__version__}"))
 
+    def show_update(self, release):
+        """Versão nova publicada: link na barra de status (abre a página de download)."""
+        link = QLabel(f'<a href="{release.url}">Versão {release.version} disponível — baixar</a>')
+        link.setOpenExternalLinks(True)
+        link.setToolTip("Descompacte numa pasta nova e copie para ela a pasta data desta versão (veja o LEIA-ME).")
+        self.statusBar().insertPermanentWidget(0, link)
+        self.update_link = link
+
     def go_to(self, where: str | int):
         """Abre uma tela pela chave ("entries") ou pela posição no menu."""
         index = KEYS.index(where) if isinstance(where, str) else where

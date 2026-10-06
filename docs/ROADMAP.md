@@ -101,11 +101,11 @@ finanças pessoais. Podem virar módulos opcionais no futuro.
 
 ## Fase D — Distribuição
 
-- [ ] Pacote portátil Windows (PyInstaller, `.zip`)
-- [ ] Pacote portátil Linux (`.tar.gz`)
+- [x] Pacote portátil Windows (PyInstaller, `.zip`): `python tools/build.py` (testa o executável antes)
+- [x] Pacote portátil Linux (`.tar.gz`): mesmo script; o GitHub gera os dois em Actions › Pacotes
 - [ ] Pacote macOS (sem assinatura, com aviso)
-- [ ] Como o usuário recebe atualizações
-- [ ] Termos de uso e aviso de privacidade (LGPD)
+- [x] Atualizações: aviso de versão nova (GitHub Releases, 1x por dia) + LEIA-ME de como atualizar mantendo `data`
+- [x] Termos de uso e aviso de privacidade (LGPD): aceite na 1ª abertura e em Configurações › Sobre (revisar com advogado)
 - [ ] (Depois) instalador e assinatura digital
 
 ## Futuro (a estudar)

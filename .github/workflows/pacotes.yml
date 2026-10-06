@@ -1,0 +1,62 @@
+name: Pacotes
+
+# Gera o pacote portátil (Windows .zip e Linux .tar.gz). Rode à mão em Actions › Pacotes › Run workflow,
+# ou crie uma tag de versão (ex.: git tag v0.2.0 && git push origin v0.2.0) para publicar uma versão.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  pacote:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]     # Linux mais antigo = pacote roda em mais distribuições
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Bibliotecas do Qt (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 libdbus-1-3 libglib2.0-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0
+      - name: Instalar
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[build]"
+      - name: Gerar e testar o pacote
+        run: python tools/build.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IGNF-Finora-${{ runner.os }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  publicar:
+    name: publicar versão
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: pacote
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: pacotes
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: pacotes/*
+          generate_release_notes: true

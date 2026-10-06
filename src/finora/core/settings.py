@@ -179,3 +179,29 @@ def get_server_root() -> str:
 def set_server_root(password: str) -> None:
     from finora.core import secret
     _s().setValue("server/root", secret.protect(password))
+
+
+def get_update_check() -> bool:
+    """Avisar quando houver versão nova (consulta o GitHub uma vez por dia)."""
+    return _s().value("updates/check", True, type=bool)
+
+
+def set_update_check(on: bool) -> None:
+    _s().setValue("updates/check", on)
+
+
+def get_update_last() -> str:
+    return str(_s().value("updates/last", ""))
+
+
+def set_update_last(day_iso: str) -> None:
+    _s().setValue("updates/last", day_iso)
+
+
+def get_terms_accepted() -> str:
+    """Versão dos termos de uso aceita (vazio = ainda não aceitou)."""
+    return str(_s().value("terms/accepted", ""))
+
+
+def set_terms_accepted(version: str) -> None:
+    _s().setValue("terms/accepted", version)

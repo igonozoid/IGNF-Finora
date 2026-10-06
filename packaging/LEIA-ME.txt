@@ -1,0 +1,27 @@
+IGNF Finora — finanças pessoais
+================================
+
+COMO USAR
+- Abra o arquivo IGNF-Finora (no Windows: IGNF-Finora.exe).
+- Na primeira vez, o Finora cria a pasta "data" aqui ao lado. É nela que ficam
+  seus dados, backups, preferências e a licença. Tudo numa pasta só.
+- Para levar o Finora para outro computador (ou pendrive), copie esta pasta inteira.
+
+ATUALIZAR PARA UMA VERSÃO NOVA
+- Feche o Finora.
+- Descompacte a versão nova numa pasta nova.
+- Copie a pasta "data" da versão antiga para dentro da pasta nova.
+- Abra o Finora novo. Ele atualiza o banco sozinho (e guarda uma cópia antes, em data/backups).
+
+AVISO DO WINDOWS (SmartScreen) / LINUX
+- O programa ainda não tem assinatura digital, então o Windows pode mostrar
+  "O Windows protegeu o computador". Clique em "Mais informações" > "Executar assim mesmo".
+- No Linux, se precisar: chmod +x IGNF-Finora
+
+PRIVACIDADE
+- Seus dados ficam neste computador (ou no seu servidor da rede, se você escolher).
+- O Finora só usa a internet quando você pede: consultar CNPJ/CEP (BrasilAPI), cotação
+  do dólar (Banco Central), baixar o servidor de rede (MariaDB) e ver se há versão nova.
+- Leia os termos completos em Configurações > Sobre.
+
+Fontes IBM Plex: licença SIL Open Font License 1.1 (ver _internal/finora/assets/fonts).

@@ -12,3 +12,5 @@ data/servidor/
 data/*.ini
 data/*.log
 data/*.log.*
+packaging/finora.ico
+packaging/finora.png

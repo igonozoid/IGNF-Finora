@@ -14,7 +14,56 @@ from finora.ui.main_window import MainWindow
 log = logs.log
 
 
+def smoke_test() -> int:
+    """`IGNF-Finora --teste`: confere o pacote sem mostrar nada (fontes, tradução, banco, migrações e a janela
+    principal) e sai. Use com FINORA_DATA_DIR apontando para uma pasta vazia."""
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QTimer
+    from finora import __version__
+    from finora.core import db
+    app = QApplication(sys.argv)
+    problems = []
+    if not {"IBM Plex Sans", "IBM Plex Mono"} <= fonts.load():
+        problems.append("fontes IBM Plex")
+    if not locale_br.install(app):
+        problems.append("tradução pt-BR do Qt")
+    theme.apply(app, "light")
+    init_db()
+    current, head, _ = db.schema_state()
+    if current != head:
+        problems.append(f"migrações ({current} != {head})")
+    with Session() as s:
+        profile = setup.current_profile(s) or setup.run_first_setup(
+            s, name="Teste", currency="BRL", account_name="Banco", account_kind="bank", balance=0)
+    w = MainWindow(profile)
+    for key in ("dashboard", "entries", "reports", "settings"):
+        w.go_to(key)
+    import tempfile
+    from pathlib import Path
+    from finora.services import reconcile
+    from finora.ui import exporting
+    with tempfile.TemporaryDirectory() as tmp:            # exportar PDF e Excel (impressão e openpyxl no pacote)
+        sheet = w.page("reports").views["dre"].export_sheet()
+        exporting.save(sheet, "pdf", str(Path(tmp) / "t.pdf"))
+        exporting.save(sheet, "xlsx", str(Path(tmp) / "t.xlsx"))
+        if not (Path(tmp) / "t.pdf").read_bytes().startswith(b"%PDF"):
+            problems.append("exportar PDF")
+    ofx = (b"OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\n\n<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><CURDEF>BRL"
+           b"<BANKACCTFROM><BANKID>1<ACCTID>1<ACCTTYPE>CHECKING</BANKACCTFROM><BANKTRANLIST><DTSTART>20260101"
+           b"<DTEND>20260102<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260101<TRNAMT>-1.00<FITID>1<MEMO>X</STMTTRN>"
+           b"</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>")
+    if len(reconcile.parse_ofx(ofx)) != 1:                # ler extrato (ofxparse + BeautifulSoup no pacote)
+        problems.append("ler OFX")
+    QTimer.singleShot(300, app.quit)
+    app.exec()
+    print(f"IGNF Finora {__version__}: " + ("OK" if not problems else "PROBLEMAS: " + ", ".join(problems)))
+    return 1 if problems else 0
+
+
 def main():
+    if "--teste" in sys.argv:
+        return smoke_test()
     logs.setup()
     logs.session_start(paths.DATA_DIR)
     moved = settings.migrate_from_registry()   # versões antigas guardavam as preferências no Registro
@@ -41,6 +90,12 @@ def main():
         log.warning(paths.DATA_NOTICE.replace("\n", " "))
         QMessageBox.information(None, "Onde ficam seus dados", paths.DATA_NOTICE)
 
+    from finora.ui.terms_dialog import TERMS_VERSION, TermsDialog
+    if settings.get_terms_accepted() != TERMS_VERSION:
+        if TermsDialog(ask=True).exec() != QDialog.Accepted:
+            return 0
+        settings.set_terms_accepted(TERMS_VERSION)
+        log.info("Termos de uso aceitos (versão %s)", TERMS_VERSION)
     from finora.ui.connection import connect_from_settings
     if not connect_from_settings():
         return 0
@@ -100,6 +155,8 @@ def run_session(app, t: dict, first_profile=None) -> int:
         log.info("Abrindo %s como %s", profile.name, user.name if user else "-")
         w = MainWindow(profile, user)
         w.show()
+        from finora.ui.update_check import check_in_background
+        check_in_background(w)
         code = app.exec()
         if not w.next_action:
             return code

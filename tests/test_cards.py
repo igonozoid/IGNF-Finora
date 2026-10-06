@@ -133,3 +133,34 @@ def test_editar_compra_muda_de_fatura_e_cartao_sem_configuracao(ctx, session, pr
     (j,) = entries.create(s, ctx["eid"], EntryData(kind="expense", description="X", amount=D("10"),
                                                    due_date=date(2026, 10, 10), account_id=old))
     assert entries.get(s, j).status == "pending" and cards.list_statements(s, old, TODAY) == []
+
+
+def test_compras_da_fatura_e_faturas_do_periodo(ctx):
+    s = ctx["s"]
+    ctx["buy"]("Padaria", "20", date(2026, 10, 12))
+    ctx["buy"]("Mercado", "300", date(2026, 10, 10))
+    ctx["buy"]("Depois do fechamento", "50", date(2026, 10, 26))
+    assert [e.description for e in cards.statement_entries(s, ctx["card"], date(2026, 11, 5))] == ["Mercado", "Padaria"]
+    sts = cards.due_between(s, ctx["eid"], date(2026, 11, 1), date(2026, 11, 30), TODAY)
+    assert [(st.account, st.due, st.charges) for st in sts] == [("Itaú", date(2026, 11, 5), D("320.00"))]
+
+
+def test_saldo_em_contas_nao_desconta_o_cartao_duas_vezes(ctx):
+    s, eid = ctx["s"], ctx["eid"]
+    ctx["buy"]("Notebook", "3000", date(2026, 10, 10), repeat="installments", times=3)   # 1.000 por fatura
+    lst = accounts.list_accounts(s, eid)
+    assert accounts.total_balance(lst) == D("100.00")             # só o banco; o cartão não entra
+    assert next(a for a in lst if a.name == "Itaú").balance == D("-3000.00")   # dívida aparece no cartão
+    flow = reports.cash_flow(s, eid, 30, TODAY)
+    assert flow.start_balance == D("100.00")
+    assert flow.outflow == D("1000.00")                           # só a fatura que vence no período
+    assert flow.end_balance == D("-900.00")
+    assert dashboard.kpis(s, eid, TODAY).balance == D("100.00")
+
+
+def test_faturas_futuras_e_sem_meses_vazios(ctx):
+    ctx["buy"]("TV", "1200", date(2026, 10, 20), repeat="installments", times=3)
+    sts = cards.list_statements(ctx["s"], ctx["card"], TODAY, back=6)
+    assert [st.due for st in sts] == [date(2027, 1, 5), date(2026, 12, 5), date(2026, 11, 5)]   # nada vazio
+    assert [st.status(TODAY) for st in sts] == ["future", "future", "open"]
+    assert sts[0].status_label(TODAY) == "Futura"

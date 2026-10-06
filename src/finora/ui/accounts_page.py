@@ -1,15 +1,18 @@
 """Tela de Contas: cartões com saldo + formulário de nova conta/edição (mockup "Contas")."""
+from datetime import date
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QFrame, QLabel, QLineEdit, QComboBox, QCheckBox, QScrollArea, QSizePolicy,
+    QWidget, QFrame, QLabel, QLineEdit, QComboBox, QCheckBox, QProgressBar, QScrollArea, QSizePolicy, QSpinBox,
     QGridLayout, QHBoxLayout, QVBoxLayout,
 )
 
 from finora.core import money
 from finora.core.db import Session
-from finora.services import accounts
+from finora.services import accounts, cards
 from finora.services.setup import Profile
 from finora.ui import theme
+from finora.ui.card_statements import open_statements
 from finora.ui.widgets import button, field_label, icon_label, lock_icon, show_upgrade, upgrade_box
 
 KIND_ICONS = {
@@ -31,8 +34,9 @@ def _repolish(w: QWidget):
 class AccountCard(QFrame):
     edit = Signal(int)
     toggle = Signal(int, bool)
+    statements = Signal(int)
 
-    def __init__(self, a: accounts.AccountView, t: dict, selected: bool = False):
+    def __init__(self, a: accounts.AccountView, t: dict, selected: bool = False, card: dict | None = None):
         super().__init__(objectName="card")
         self.setProperty("inactive", not a.is_active)
         self.setProperty("selected", selected)
@@ -59,7 +63,7 @@ class AccountCard(QFrame):
         top.addWidget(cur)
         lay.addLayout(top)
 
-        info = QLabel(a.kind_label)
+        info = QLabel(f"{a.kind_label} · {a.card_info}" if a.kind == "card" else a.kind_label)
         info.setProperty("role", "field")
         lay.addWidget(info)
         lay.addSpacing(theme.SP_S)
@@ -69,8 +73,24 @@ class AccountCard(QFrame):
         big.setPointSize(13)
         bal.setFont(big)
         if a.kind == "card":
-            bal.setToolTip("No cartão, o saldo negativo é o que você está devendo.")
+            bal.setToolTip("No cartão, o saldo negativo é o que você está devendo\n"
+                           "(inclui parcelas das próximas faturas).")
         lay.addWidget(bal)
+        if card:                       # cartão com fechamento/vencimento: fatura atual e limite
+            st = card["statement"]
+            fat = QLabel(f"Fatura {st.label}: {money.fmt(st.charges, a.currency)} · {st.status_label(card['today'])}")
+            fat.setProperty("role", "field")
+            lay.addWidget(fat)
+            if card["free"] is not None and a.credit_limit:
+                used = max(0, min(100, int((a.credit_limit - card["free"]) * 100 / a.credit_limit)))
+                bar = QProgressBar(textVisible=False, maximum=100, value=used)
+                bar.setFixedHeight(5)
+                bar.setToolTip(f"{used}% do limite usado")
+                lay.addWidget(bar)
+                free = QLabel(f"Limite disponível {money.fmt(card['free'], a.currency)} "
+                              f"de {money.fmt(a.credit_limit, a.currency)}")
+                free.setProperty("role", "field")
+                lay.addWidget(free)
         lay.addSpacing(theme.SP_S)
 
         actions = QHBoxLayout()
@@ -82,6 +102,11 @@ class AccountCard(QFrame):
         tg.setToolTip("Inativar esconde a conta das listas, sem apagar nada." if a.is_active
                       else "Volta a mostrar a conta nas listas.")
         tg.clicked.connect(lambda: self.toggle.emit(a.id, not a.is_active))
+        if card:
+            fb = button("Faturas", "link", t, "fa6s.file-invoice-dollar")
+            fb.setToolTip("Ver as faturas, as compras de cada uma e pagar")
+            fb.clicked.connect(lambda: self.statements.emit(a.id))
+            actions.addWidget(fb)
         actions.addWidget(ed)
         actions.addWidget(tg)
         actions.addStretch(1)
@@ -98,6 +123,7 @@ class AccountsPage(QWidget):
         self.t = t
         self.editing: accounts.AccountView | None = None
         self._items: list[accounts.AccountView] = []
+        self._cards: dict[int, dict] = {}   # cartões configurados: fatura atual e limite livre
         self._cols = 0
 
         # Barra superior
@@ -193,6 +219,32 @@ class AccountsPage(QWidget):
             g.addWidget(w)
         fl.addLayout(g)
 
+        # Só para cartão: fechamento, vencimento e limite
+        self.card_box = QWidget()
+        cg = QGridLayout(self.card_box)
+        cg.setContentsMargins(0, theme.SP_S, 0, 0)
+        cg.setHorizontalSpacing(theme.SP_M)
+        cg.setVerticalSpacing(3)
+        self.closing_spin = QSpinBox(minimum=0, maximum=31, specialValueText="—")
+        self.due_spin = QSpinBox(minimum=0, maximum=31, specialValueText="—")
+        self.limit_edit = QLineEdit(placeholderText="Opcional")
+        for w in (self.closing_spin, self.due_spin, self.limit_edit):
+            w.setFont(theme.mono_font())
+        self.limit_edit.setAlignment(Qt.AlignRight)
+        cg.addWidget(field_label("Fecha dia", self.t, "Dia em que a fatura fecha. Compras feitas nesse dia\n"
+                                                      "ou depois já vão para a fatura seguinte."), 0, 0)
+        cg.addWidget(field_label("Vence dia", self.t, "Dia de pagar a fatura."), 0, 1)
+        cg.addWidget(self.closing_spin, 1, 0)
+        cg.addWidget(self.due_spin, 1, 1)
+        cg.addWidget(field_label("Limite", self.t, "Limite total do cartão. Serve para mostrar quanto ainda\n"
+                                                   "dá para gastar."), 2, 0, 1, 2)
+        cg.addWidget(self.limit_edit, 3, 0, 1, 2)
+        self.card_hint = QLabel("Informe o fechamento e o vencimento para as compras irem para a fatura certa.",
+                                wordWrap=True)
+        self.card_hint.setProperty("role", "field")
+        cg.addWidget(self.card_hint, 4, 0, 1, 2)
+        fl.addWidget(self.card_box)
+
         if not accounts.multi_currency():
             msg = "Contas em outra moeda fazem parte das edições Plus e Pro."
             self.currency_lbl.layout().insertWidget(1, lock_icon(msg, self.t))
@@ -228,6 +280,7 @@ class AccountsPage(QWidget):
         self.form_slot.addStretch(1)
 
     def _kind_changed(self):
+        self.card_box.setVisible(self.kind_box.currentData() == "card")
         if self.kind_box.currentData() == "card":
             self.balance_lbl.label.setText("Fatura inicial")
             tip = ("Quanto você devia no cartão quando começou a usar o Finora.\n"
@@ -274,6 +327,9 @@ class AccountsPage(QWidget):
         self.kind_box.setCurrentIndex(0)
         self._set_currency(self.profile.currency)
         self.balance_edit.setText("0,00")
+        self.closing_spin.setValue(0)
+        self.due_spin.setValue(0)
+        self.limit_edit.clear()
         self._error(None)
         self._mark_invalid(False)
         self._update_lock()
@@ -295,6 +351,10 @@ class AccountsPage(QWidget):
         self._set_currency(a.currency)
         ob = abs(a.opening_balance) if a.kind == "card" else a.opening_balance
         self.balance_edit.setText(money.fmt(ob, a.currency).replace(money.symbol(a.currency) + " ", ""))
+        self.closing_spin.setValue(a.closing_day or 0)
+        self.due_spin.setValue(a.due_day or 0)
+        self.limit_edit.setText("" if a.credit_limit is None else
+                                money.fmt(a.credit_limit, a.currency).split(" ", 1)[1])
         self._error(None)
         self._update_lock()
         self._open = True
@@ -317,8 +377,14 @@ class AccountsPage(QWidget):
             self._mark_invalid(True)
             self._error("Valor inválido. Use o formato 1.234,56.")
             return
+        try:
+            limit = money.parse(self.limit_edit.text()) if self.limit_edit.text().strip() else None
+        except ValueError:
+            self._error("Limite inválido. Use o formato 1.234,56.")
+            return
         data = dict(name=self.name_edit.text(), kind=self.kind_box.currentData(), opening_balance=value,
-                    currency=self.currency_box.currentData())
+                    currency=self.currency_box.currentData(), closing_day=self.closing_spin.value() or None,
+                    due_day=self.due_spin.value() or None, credit_limit=limit)
         try:
             with Session() as s:
                 if self.editing:
@@ -358,12 +424,21 @@ class AccountsPage(QWidget):
         self.refresh()
 
     def refresh(self):
+        today = date.today()
         with Session() as s:
             self._items = accounts.list_accounts(s, self.profile.id, self.show_inactive.isChecked())
-        active = [a for a in self._items if a.is_active]
-        self.total_lbl.setText(f"Saldo total ({len(active)} {'conta' if len(active) == 1 else 'contas'})")
+            self._cards = {}
+            for a in self._items:
+                if a.kind == "card" and a.closing_day and a.due_day:
+                    self._cards[a.id] = {"statement": cards.current(s, a.id, today), "today": today,
+                                         "free": cards.available_limit(s, a.id)}
+        n = len(accounts.money_accounts(self._items))
+        has_card = any(a.kind == "card" and a.is_active for a in self._items)
+        self.total_lbl.setText(f"Saldo em contas ({n} {'conta' if n == 1 else 'contas'}"
+                               + (", sem cartões)" if has_card else ")"))
         self.total_val.setText(money.fmt(accounts.total_balance(self._items), self.profile.currency))
-        self.total_lbl.setToolTip("Soma dos saldos das contas ativas. Cartões entram negativos (o que você deve).")
+        self.total_lbl.setToolTip("Soma das contas ativas, sem os cartões de crédito.\n"
+                                  "O que você deve no cartão aparece nas faturas (A pagar).")
         self._layout_cards(force=True)
         if self.editing is None:
             self._update_lock()
@@ -383,11 +458,18 @@ class AccountsPage(QWidget):
             self.grid.setColumnStretch(c, 1)
         editing_id = self.editing.id if self.editing else None
         for i, a in enumerate(self._items):
-            card = AccountCard(a, self.t, selected=a.id == editing_id)
+            card = AccountCard(a, self.t, selected=a.id == editing_id, card=self._cards.get(a.id))
+            card.statements.connect(self._open_statements)
             card.edit.connect(self._edit)
             card.toggle.connect(self._toggle)
             self.grid.addWidget(card, i // cols, i % cols)
         self.empty_lbl.setVisible(not self._items)
+
+    def _open_statements(self, account_id: int):
+        a = next(x for x in self._items if x.id == account_id)
+        if open_statements(self, account_id, a.currency, self.t):
+            self.message.emit("Pagamento de fatura registrado.")
+            self.refresh()
 
     def resizeEvent(self, e):
         super().resizeEvent(e)

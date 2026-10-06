@@ -23,7 +23,8 @@ from finora.services import entries
 
 ZERO = Decimal("0.00")
 CARD_STATUS = "card"
-STATUS_LABELS = {"open": "Aberta", "closed": "Fechada", "late": "Atrasada", "paid": "Paga", "empty": "Sem gastos"}
+STATUS_LABELS = {"future": "Futura", "open": "Aberta", "closed": "Fechada", "late": "Atrasada", "paid": "Paga",
+                 "empty": "Sem gastos"}
 
 
 def _day(y: int, m: int, d: int) -> date:
@@ -74,6 +75,8 @@ class Statement:
         return max(self.charges - self.paid, ZERO)
 
     def status(self, today: date) -> str:
+        if today < self.opening:
+            return "future"                 # ex.: parcelas que caem em faturas que ainda nem abriram
         if self.charges <= 0:
             return "empty"
         if self.remaining <= 0:
@@ -150,7 +153,7 @@ def list_statements(s: Session, account_id: int, today: date | None = None, back
             continue
         seen.add(due)
         st = _statement(s, acc, closing, due)
-        if due <= open_due or st.charges != 0:
+        if due == open_due or st.charges != 0 or st.paid != 0:   # sem meses vazios na lista
             out.append(st)
         if due >= max(last_due, open_due):
             break
@@ -199,3 +202,23 @@ def available_limit(s: Session, account_id: int) -> Decimal | None:
         return None
     bal = next(a.balance for a in accounts.list_accounts(s, acc.entity_id, include_inactive=True) if a.id == acc.id)
     return (Decimal(acc.credit_limit) + bal).quantize(CENT)
+
+
+def statement_entries(s: Session, account_id: int, due: date) -> list[entries.EntryView]:
+    """Compras e estornos de uma fatura, pela data da compra."""
+    acc = s.get(Account, account_id)
+    q = (entries.query(acc.entity_id)
+         .where(Entry.account_id == account_id, Entry.status == CARD_STATUS, Entry.due_date == due)
+         .order_by(Entry.competence_date, Entry.id))
+    return [entries.to_view(r) for r in s.execute(q)]
+
+
+def due_between(s: Session, entity_id: int, first: date, last: date, today: date | None = None) -> list[Statement]:
+    """Faturas (com gastos) que vencem entre `first` e `last`, de todos os cartões ativos."""
+    out = []
+    for acc in s.scalars(select(Account).where(Account.entity_id == entity_id, Account.kind == "card",
+                                               Account.is_active)):
+        if is_configured(acc):
+            out += [st for st in list_statements(s, acc.id, today, back=14)
+                    if first <= st.due <= last and st.charges > 0]
+    return sorted(out, key=lambda x: x.due)

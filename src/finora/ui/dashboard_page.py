@@ -1,6 +1,6 @@
 """Dashboard: 4 indicadores, entradas x saídas (6 meses), saldos, vencimentos e maiores despesas."""
 import math
-from datetime import date
+from datetime import date, timedelta
 
 from PySide6.QtCharts import QBarCategoryAxis, QBarSeries, QBarSet, QChart, QChartView, QValueAxis
 from PySide6.QtCore import QMargins, Qt, Signal
@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 
 from finora.core import money
 from finora.core.db import Session
-from finora.services import accounts, dashboard
+from finora.services import accounts, cards, dashboard
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.accounts_page import KIND_ICONS
@@ -176,6 +176,7 @@ class FlowChart(QChartView):
 class DashboardPage(QWidget):
     message = Signal(str)
     open_entry = Signal(int)
+    open_statement = Signal(int, object)     # (cartão, vencimento da fatura)
 
     def __init__(self, profile: Profile, t: dict, parent=None):
         super().__init__(parent)
@@ -184,8 +185,9 @@ class DashboardPage(QWidget):
         self.t = t
 
         cur = profile.currency
-        self.k_balance = KpiCard("fa6s.wallet", "Saldo em contas", "Soma do saldo de todas as contas ativas.\n"
-                                 "Cartões entram negativos (o que você deve).", t)
+        self.k_balance = KpiCard("fa6s.wallet", "Saldo em contas", "Soma das contas ativas (banco, carteira,\n"
+                                 "investimentos). Cartões de crédito não entram: o que você\n"
+                                 "deve neles aparece em \"A pagar\", pela fatura.", t)
         self.k_rec = KpiCard("fa6s.arrow-down", "A receber (30 dias)",
                              "Dinheiro que deve entrar até daqui a 30 dias, incluindo o que já atrasou.", t)
         self.k_pay = KpiCard("fa6s.arrow-up", "A pagar (30 dias)",
@@ -283,6 +285,7 @@ class DashboardPage(QWidget):
             flow = dashboard.monthly_flow(s, self.profile.id, 6, today)
             accs = accounts.list_accounts(s, self.profile.id)
             due = dashboard.due_soon(s, self.profile.id, 7, today)
+            bills = cards.open_statements(s, self.profile.id, today + timedelta(days=7), today)
             top = dashboard.top_expenses(s, self.profile.id, today.year, today.month)
         t = self.t
 
@@ -323,30 +326,38 @@ class DashboardPage(QWidget):
             self.acc_rows.addWidget(self._muted("Nenhuma conta ativa."))
 
         _clear(self.due_rows)
-        for e in due:
+        # lançamentos e faturas de cartão, na ordem do vencimento
+        items = [(e.due_date, e.description + (f" — {e.contact}" if e.contact else ""),
+                  e.amount if e.kind == "income" else -e.amount, e.is_late(today),
+                  "Clique para abrir o lançamento", lambda i=e.id: self.open_entry.emit(i)) for e in due]
+        items += [(st.due, f"Fatura {st.account} {st.label}", -st.remaining, st.due < today,
+                   "Clique para ver a fatura e pagar",
+                   lambda a=st.account_id, d=st.due: self.open_statement.emit(a, d)) for st in bills]
+        items.sort(key=lambda x: x[0])
+        for when, text, value, is_late, tip, on_click in items[:8]:
             row = ClickRow()
-            row.setToolTip("Clique para abrir o lançamento")
+            row.setToolTip(tip)
             rl = QHBoxLayout(row)
             rl.setContentsMargins(0, 5, 0, 5)
             rl.setSpacing(theme.SP_M)
-            d = QLabel(e.due_date.strftime("%d/%m"))
+            d = QLabel(when.strftime("%d/%m"))
             d.setFont(_mono())
             d.setFixedWidth(44)
-            set_tone(d, "neg" if e.is_late(today) else "mut")
-            if e.is_late(today):
+            set_tone(d, "neg" if is_late else "mut")
+            if is_late:
                 d.setToolTip("Atrasado")
-            desc = QLabel(e.description + (f" — {e.contact}" if e.contact else ""))
+            desc = QLabel(text)
             desc.setMinimumWidth(1)
-            v = QLabel(money.fmt(e.amount if e.kind == "income" else -e.amount, cur))
+            v = QLabel(money.fmt(value, cur))
             v.setFont(_mono())
-            if e.kind == "income":
+            if value > 0:
                 set_tone(v, "pos")
             rl.addWidget(d)
             rl.addWidget(desc, 1)
             rl.addWidget(v)
-            row.clicked.connect(lambda i=e.id: self.open_entry.emit(i))
+            row.clicked.connect(on_click)
             self.due_rows.addWidget(row)
-        if not due:
+        if not items:
             self.due_rows.addWidget(self._muted("Nada vencendo nos próximos 7 dias."))
 
         _clear(self.cat_rows)

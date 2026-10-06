@@ -13,10 +13,11 @@ import qtawesome as qta
 
 from finora.core import money
 from finora.core.db import Session
-from finora.services import accounts, categories, contacts, entries
+from finora.services import accounts, cards, categories, contacts, entries
 from finora.services.entries import EntryData, EntryView
 from finora.services.setup import Profile
 from finora.ui import theme
+from finora.ui.card_statements import open_statements
 from finora.ui.widgets import button, field_label, help_icon, lock_icon, show_upgrade, themed_icon
 
 MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro",
@@ -254,7 +255,8 @@ class EntryForm(QFrame):
         self.due = QDateEdit(calendarPopup=True, displayFormat="dd/MM/yyyy")
         self.due.setFont(theme.mono_font())
         row.addLayout(self._field(None, self.amount, self.amount_lbl), 1)
-        row.addLayout(self._field("Vencimento", self.due, help_text="Data em que a conta vence ou o dinheiro deve entrar."), 1)
+        self.due_lbl = field_label("Vencimento", t, "Data em que a conta vence ou o dinheiro deve entrar.")
+        row.addLayout(self._field(None, self.due, self.due_lbl), 1)
         lay.addLayout(row)
 
         self.account = QComboBox()
@@ -288,7 +290,14 @@ class EntryForm(QFrame):
         prow.addWidget(self.paid)
         prow.addStretch(1)
         prow.addWidget(self.paid_date)
-        lay.addLayout(prow)
+        self.paid_row = QWidget()
+        self.paid_row.setLayout(prow)
+        prow.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.paid_row)
+        self.card_info = QLabel(wordWrap=True)       # "Vai para a fatura nov/2026 (vence 05/11)"
+        self.card_info.setProperty("role", "field")
+        self.card_info.hide()
+        lay.addWidget(self.card_info)
 
         # Repetição (só na criação)
         self.repeat_frame = QWidget()
@@ -333,6 +342,8 @@ class EntryForm(QFrame):
         self.times.valueChanged.connect(self._update_repeat)
         self.amount.textChanged.connect(self._update_repeat)
         self.due.dateChanged.connect(self._update_repeat)
+        self.due.dateChanged.connect(self._card_mode)
+        self.account.currentIndexChanged.connect(self._card_mode)
         self.paid.toggled.connect(self.paid_date.setEnabled)
         self.save_btn.clicked.connect(self._save)
         self.cancel_btn.clicked.connect(self.closed.emit)
@@ -358,12 +369,14 @@ class EntryForm(QFrame):
 
     # ----- dados -----
     def _kind(self) -> str:
-        return self.kind_group.checkedButton().property("kind")
+        b = self.kind_group.checkedButton()
+        return b.property("kind") if b else "expense"   # antes de abrir o formulário pela 1ª vez
 
     def _load_lists(self, keep_account: int | None = None, keep_dest: int | None = None):
         with Session() as s:
             accs = accounts.list_accounts(s, self.profile.id, include_inactive=True)
             self._contacts = contacts.names(s, self.profile.id)
+        self._accounts = {a.id: a for a in accs}
         for box, keep in ((self.account, keep_account), (self.dest, keep_dest)):
             box.clear()
             for a in accs:
@@ -397,6 +410,26 @@ class EntryForm(QFrame):
             self.dest.setCurrentIndex(1 if self.account.currentIndex() == 0 else 0)
         self.desc.setPlaceholderText({"income": "Ex.: Salário", "expense": "Ex.: Conta de luz",
                                       "transfer": "Ex.: Saque para a carteira"}[k])
+        self._card_mode()
+
+    def _card(self):
+        """A conta escolhida é um cartão com fechamento/vencimento (e não é transferência)?"""
+        a = getattr(self, "_accounts", {}).get(self.account.currentData())
+        return a if a and a.kind == "card" and a.closing_day and a.due_day and self._kind() != "transfer" else None
+
+    def _card_mode(self):
+        """No cartão: a data é a da compra, não há "já foi pago" e mostramos em qual fatura ela cai."""
+        card = self._card()
+        self.paid_row.setVisible(card is None)
+        self.card_info.setVisible(card is not None)
+        if card is None:
+            self.due_lbl.label.setText("Vencimento")
+            return
+        self.due_lbl.label.setText("Data da compra")
+        _closing, due = cards.statement_for(self.due.date().toPython(), card.closing_day, card.due_day)
+        verb = "abate da" if self._kind() == "income" else "vai para a"
+        self.card_info.setText(f"No cartão: {verb} fatura {cards.month_label(due)} (vence {due:%d/%m/%Y}). "
+                               "Ela é paga pela fatura, em Contas › Faturas.")
 
     def _update_repeat(self):
         rep = self.repeat.currentData()
@@ -462,7 +495,7 @@ class EntryForm(QFrame):
         self._kind_changed()
         self.desc.setText(e.description)
         self.amount.setText(money.fmt(e.amount, self.profile.currency).split(" ", 1)[1])
-        self.due.setDate(_qdate(e.due_date))
+        self.due.setDate(_qdate(e.competence_date if e.on_card and e.competence_date else e.due_date))
         self.account.setCurrentIndex(max(0, self.account.findData(e.account_id)))
         if e.dest_account_id:
             self.dest.setCurrentIndex(max(0, self.dest.findData(e.dest_account_id)))
@@ -503,7 +536,8 @@ class EntryForm(QFrame):
             account_id=self.account.currentData(), dest_account_id=self.dest.currentData() if k == "transfer" else None,
             category_id=self.category.currentData() if k != "transfer" else None,
             contact=self.contact.currentText() if k != "transfer" else None, document_no=self.doc.text(),
-            paid=self.paid.isChecked(), paid_date=self.paid_date.date().toPython() if self.paid.isChecked() else None,
+            paid=self.paid.isChecked() and self._card() is None,
+            paid_date=self.paid_date.date().toPython() if self.paid.isChecked() else None,
             repeat=self.repeat.currentData() if self.editing is None else "none", times=self.times.value(),
         )
 
@@ -644,6 +678,11 @@ class EntriesPage(QWidget):
         ll.setSpacing(theme.SP_M)
         ll.addLayout(row1)
         ll.addLayout(row2)
+        self.statements_bar = QLabel(wordWrap=True)
+        self.statements_bar.setTextFormat(Qt.RichText)
+        self.statements_bar.linkActivated.connect(self._open_statement_link)
+        self.statements_bar.hide()
+        ll.addWidget(self.statements_bar)
         ll.addWidget(self.table, 1)
         ll.addWidget(self.empty, 1)
         ll.addWidget(bar)
@@ -701,6 +740,9 @@ class EntriesPage(QWidget):
             rows = entries.list_entries(s, self.profile.id, year=self.year, month=self.month,
                                         filter=self.filter, search=self.search.text())
             totals = entries.month_totals(s, self.profile.id, self.year, self.month)
+            first, last = entries.month_range(self.year, self.month)
+            sts = cards.due_between(s, self.profile.id, first, last)
+        self._show_statements(sts)
         late = self.filter == "late"
         self.model.set_rows(rows, show_year=late)
         month_txt = f"{MONTHS[self.month - 1].capitalize()} {self.year}"
@@ -814,6 +856,27 @@ class EntriesPage(QWidget):
                           else f"\"{e.description}\" voltou a ficar em aberto.")
         self.refresh(select_id=e.id)
 
+    def _show_statements(self, sts):
+        """Faturas de cartão que vencem no mês, com link para abrir (elas não são linhas da tabela)."""
+        if not sts:
+            self.statements_bar.hide()
+            return
+        today, cur, acc = date.today(), self.profile.currency, self.t["acc"]
+        parts = [f'<a href="{st.account_id}|{st.due.isoformat()}" style="color:{acc}; text-decoration:none">'
+                 f'Fatura {st.account} {st.label}</a> · vence {st.due:%d/%m} · {money.fmt(st.charges, cur)}'
+                 f' · {st.status_label(today)}' for st in sts]
+        self.statements_bar.setText("Cartão: " + "&nbsp;&nbsp;|&nbsp;&nbsp;".join(parts))
+        self.statements_bar.show()
+
+    def _open_statement_link(self, link: str):
+        acc_id, due = link.split("|")
+        self.open_statement(int(acc_id), date.fromisoformat(due))
+
+    def open_statement(self, account_id: int, due: date | None = None):
+        if open_statements(self, account_id, self.profile.currency, self.t, due):
+            self.message.emit("Pagamento de fatura registrado.")
+        self.refresh()
+
     def _context_menu(self, pos):
         idx = self.table.indexAt(pos)
         if not idx.isValid():
@@ -821,9 +884,13 @@ class EntriesPage(QWidget):
         e: EntryView = idx.data(Qt.UserRole)
         menu = QMenu(self)
         verb = {"income": "recebido", "expense": "pago", "transfer": "feita"}[e.kind]
-        menu.addAction(qta.icon("fa6s.circle-check", color=self.t["pos"]),
-                       "Marcar como em aberto" if e.is_paid else f"Marcar como {verb} hoje",
-                       lambda: self._toggle_paid(e))
+        if e.on_card:
+            menu.addAction(qta.icon("fa6s.file-invoice-dollar", color=self.t["acc"]), "Ver fatura",
+                           lambda: self.open_statement(e.account_id, e.due_date))
+        else:
+            menu.addAction(qta.icon("fa6s.circle-check", color=self.t["pos"]),
+                           "Marcar como em aberto" if e.is_paid else f"Marcar como {verb} hoje",
+                           lambda: self._toggle_paid(e))
         menu.addAction(qta.icon("fa6s.pen", color=self.t["mut"]), "Editar", lambda: self.edit_entry(e))
         menu.addSeparator()
         menu.addAction(qta.icon("fa6s.trash", color=self.t["neg"]), "Excluir", lambda: self._delete(e))

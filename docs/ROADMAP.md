@@ -54,7 +54,7 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 ## Fase B — Completar o básico (Free)
 
 - [x] Editar perfil (nome, moeda) depois do assistente
-- [ ] Cartão de crédito com fechamento, vencimento e fatura
+- [x] Cartão de crédito com fechamento, vencimento e fatura
 - [ ] Relatórios: extrato por conta, por categoria, por contato, inadimplência
 - [ ] Lançamentos: filtro por conta/categoria, ordenar colunas, duplicar, pagar vários de uma vez
 - [ ] Recibo imprimível (do IgnControl)

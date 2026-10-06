@@ -281,6 +281,7 @@ class MainWindow(QMainWindow):
         self.tabs.group.idClicked.connect(self.go_to)
         self.tabs.theme_btn.clicked.connect(self.toggle_theme)
         self.pages[0].open_entry.connect(self.open_entry)
+        self.pages[0].open_statement.connect(self.open_statement)
         self.sidebar.theme_btn.clicked.connect(self.toggle_theme)
         self.header.new_btn.clicked.connect(self.new_entry)
         for i in range(len(NAV)):
@@ -331,6 +332,11 @@ class MainWindow(QMainWindow):
     def open_entry(self, entry_id: int):
         self.go_to(1)
         self.pages[1].open_by_id(entry_id)
+
+    def open_statement(self, account_id: int, due):
+        """Fatura de cartão clicada no Dashboard: abre a janela de faturas e atualiza a tela atual."""
+        self.pages[1].open_statement(account_id, due)
+        self.go_to(self.stack.currentIndex())
 
     def new_entry(self):
         self.go_to(1)

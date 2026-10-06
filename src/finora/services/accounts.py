@@ -109,7 +109,14 @@ def list_accounts(s: Session, entity_id: int, include_inactive: bool = False) ->
 
 
 def total_balance(accounts: list[AccountView]) -> Decimal:
-    return sum((a.balance for a in accounts if a.is_active), Decimal("0.00"))
+    """Dinheiro que você tem: contas ativas SEM cartões de crédito. A dívida do cartão aparece
+    como fatura a pagar (contar as duas coisas seria descontar a mesma dívida duas vezes)."""
+    return sum((a.balance for a in accounts if a.is_active and a.kind != "card"), Decimal("0.00"))
+
+
+def money_accounts(accounts: list[AccountView]) -> list[AccountView]:
+    """Contas ativas que entram no saldo (sem cartões)."""
+    return [a for a in accounts if a.is_active and a.kind != "card"]
 
 
 def _check(s: Session, entity_id: int, name: str, kind: str, exclude_id: int | None = None) -> str:

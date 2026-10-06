@@ -67,7 +67,7 @@ def kpis(s: Session, entity_id: int, today: date | None = None) -> Kpis:
     pay_n += len(statements)
     late_n += sum(1 for st in statements if st.due < today)
     prev = entries.add_months(today.replace(day=1), -1)
-    return Kpis(accounts.total_balance(accs), len(accs), _d(rec), rec_n, _d(pay), pay_n, late_n,
+    return Kpis(accounts.total_balance(accs), len(accounts.money_accounts(accs)), _d(rec), rec_n, _d(pay), pay_n, late_n,
                 month_result(s, entity_id, today.year, today.month),
                 month_result(s, entity_id, prev.year, prev.month))
 

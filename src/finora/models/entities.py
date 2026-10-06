@@ -53,6 +53,16 @@ class Contact(Base):
     is_customer: Mapped[bool] = mapped_column(Boolean, default=False)
     is_supplier: Mapped[bool] = mapped_column(Boolean, default=False)
     is_employee: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Contato ampliado (todos opcionais)
+    phone: Mapped[str | None] = mapped_column(String(30))
+    email: Mapped[str | None] = mapped_column(String(120))
+    zip_code: Mapped[str | None] = mapped_column(String(9))
+    address: Mapped[str | None] = mapped_column(String(200))
+    city: Mapped[str | None] = mapped_column(String(80))
+    state: Mapped[str | None] = mapped_column(String(2))
+    pix_key: Mapped[str | None] = mapped_column(String(120))
+    bank_info: Mapped[str | None] = mapped_column(String(120))     # banco · agência · conta
+    notes: Mapped[str | None] = mapped_column(String(1000))
 
 class Entry(Base):
     __tablename__ = "entries"

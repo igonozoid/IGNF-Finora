@@ -125,3 +125,30 @@ def test_autopreencher_tem_cadeado_na_free(window, dialogs):
     window.go_to(4)
     window.pages[4].form.lookup.click()
     assert any("edições Plus e Pro" in t for t in dialogs.shown)
+
+
+def test_contato_ampliado_com_abas(window):
+    window.go_to(4)
+    page = window.pages[4]
+    page._new()
+    f = page.form
+    f.name.setText("Maria Diarista")
+    f.details["phone"].setText("(19) 99999-1234")
+    f.tab_group.button(1).click()                                       # Endereço
+    assert f.pages.currentIndex() == 1
+    f.details["zip_code"].setText("13010050")
+    f.details["city"].setText("Campinas")
+    f.details["state"].setText("sp")
+    f.tab_group.button(2).click()                                       # Bancário
+    f.details["pix_key"].setText("maria@exemplo.com")
+    f.tab_group.button(3).click()
+    f.notes.setPlainText("Vem às terças")
+    f.save_btn.click()
+    with db.Session() as s:
+        c = next(x for x in contacts.list_contacts(s, window.profile.id) if x.name == "Maria Diarista")
+    assert (c.get("zip_code"), c.get("state"), c.get("pix_key"), c.get("notes")) == (
+        "13010-050", "SP", "maria@exemplo.com", "Vem às terças")
+    assert f.pages.currentIndex() == 0 and f.details["phone"].text() == "(19) 99999-1234"   # reabre em Dados
+    f.details["email"].setText("sem-arroba")
+    f.save_btn.click()
+    assert "E-mail" in f.error.text()

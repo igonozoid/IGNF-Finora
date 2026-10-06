@@ -77,3 +77,28 @@ def test_lancamento_cria_contato_com_papel_e_bloqueia_exclusao(session, profile)
     other = contacts.create(s, eid, name="Sem uso")
     contacts.delete(s, other)
     assert [x.name for x in contacts.list_contacts(s, eid)] == ["Enel"]
+
+
+def test_dados_extras_do_contato(session, profile):
+    s, eid = session, profile.id
+    cid = contacts.create(s, eid, name="Maria", details={
+        "phone": "(19) 99999-1234", "email": "maria@exemplo.com", "zip_code": "13010050", "address": "Rua A, 10",
+        "city": "Campinas", "state": "sp", "pix_key": "maria@exemplo.com", "bank_info": "Itaú · 0412 · 55210-3",
+        "notes": "Vem às terças"})
+    c = contacts.list_contacts(s, eid)[0]
+    assert (c.get("zip_code"), c.get("state"), c.get("phone")) == ("13010-050", "SP", "(19) 99999-1234")
+    assert [x.name for x in contacts.list_contacts(s, eid, search="99999")] == ["Maria"]       # pelo telefone
+    assert [x.name for x in contacts.list_contacts(s, eid, search="exemplo.com")] == ["Maria"] # pelo e-mail
+    contacts.update(s, cid, name="Maria", person_type="PF", document=None, roles=set(),
+                    details={"city": "", "notes": "Agora às quartas"})
+    c = contacts.list_contacts(s, eid)[0]
+    assert c.get("city") == "" and c.get("notes") == "Agora às quartas" and c.get("phone") == "(19) 99999-1234"
+
+
+@pytest.mark.parametrize("details, msg", [
+    ({"email": "maria.exemplo.com"}, "E-mail"), ({"state": "XX"}, "UF"), ({"zip_code": "123"}, "CEP"),
+    ({"idade": "30"}, "desconhecido"),
+])
+def test_dados_extras_invalidos(session, profile, details, msg):
+    with pytest.raises(ValueError, match=msg):
+        contacts.create(session, profile.id, name="X", details=details)

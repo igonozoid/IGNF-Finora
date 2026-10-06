@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
-    QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 import qtawesome as qta
 
@@ -74,6 +74,27 @@ class ContactForm(QFrame):
         lay.addWidget(self.title)
         lay.addWidget(self.sub)
 
+        # Abas: Dados · Endereço · Bancário · Observações (como no mockup)
+        tabs = QHBoxLayout()
+        tabs.setSpacing(0)
+        self.tab_group = QButtonGroup(self, exclusive=True)
+        self.pages = QStackedWidget(objectName="formPages")
+        for i, label in enumerate(("Dados", "Endereço", "Bancário", "Observações")):
+            b = QPushButton(label, objectName="tabItem", checkable=True, checked=(i == 0))
+            b.setCursor(Qt.PointingHandCursor)
+            self.tab_group.addButton(b, i)
+            tabs.addWidget(b)
+        tabs.addStretch(1)
+        tab_line = QFrame(objectName="tabLine")
+        tab_line.setLayout(tabs)
+        lay.addWidget(tab_line)
+        self.tab_group.idClicked.connect(self.pages.setCurrentIndex)
+
+        dados = QWidget()
+        dl = QVBoxLayout(dados)
+        dl.setContentsMargins(0, 0, 0, 0)
+        dl.setSpacing(theme.SP_M)
+
         seg = QHBoxLayout()
         seg.setSpacing(0)
         self.type_group = QButtonGroup(self, exclusive=True)
@@ -85,7 +106,7 @@ class ContactForm(QFrame):
             b.setCursor(Qt.PointingHandCursor)
             self.type_group.addButton(b, i)
             seg.addWidget(b, 1)
-        lay.addLayout(seg)
+        dl.addLayout(seg)
 
         self.doc_lbl = field_label("CPF", t, "Opcional. Ajuda a não cadastrar a mesma pessoa duas vezes.")
         self.doc = QLineEdit(maxLength=18)
@@ -98,14 +119,17 @@ class ContactForm(QFrame):
         if not allowed(current_edition(), "doc_lookup"):
             self.lookup.setToolTip(LOOKUP_MSG)
             doc_row.addWidget(lock_icon(LOOKUP_MSG, t))
-        lay.addWidget(self.doc_lbl)
-        lay.addLayout(doc_row)
+        dl.addWidget(self.doc_lbl)
+        dl.addLayout(doc_row)
 
         self.name = QLineEdit(maxLength=150, placeholderText="Ex.: Enel, Maria (diarista)")
-        lay.addWidget(field_label("Nome", t))
-        lay.addWidget(self.name)
+        dl.addWidget(field_label("Nome", t))
+        dl.addWidget(self.name)
+        self.details: dict[str, QLineEdit] = {}
+        self._detail(dl, "phone", "Telefone / WhatsApp", "(11) 98888-1234")
+        self._detail(dl, "email", "E-mail", "nome@exemplo.com")
 
-        lay.addWidget(field_label("Papéis", t, "Um mesmo contato pode ter vários papéis.\n"
+        dl.addWidget(field_label("Papéis", t, "Um mesmo contato pode ter vários papéis.\n"
                                                "Os lançamentos marcam o papel sozinhos: despesa = Eu pago, "
                                                "receita = Me paga."))
         chips = QHBoxLayout()
@@ -119,7 +143,48 @@ class ContactForm(QFrame):
             self.role_btns[k] = b
             chips.addWidget(b)
         chips.addStretch(1)
-        lay.addLayout(chips)
+        dl.addLayout(chips)
+        dl.addStretch(1)
+        self.pages.addWidget(dados)
+
+        endereco = QWidget()
+        el = QVBoxLayout(endereco)
+        el.setContentsMargins(0, 0, 0, 0)
+        el.setSpacing(theme.SP_M)
+        self._detail(el, "zip_code", "CEP", "13010-050", mono=True)
+        self._detail(el, "address", "Endereço", "Rua, número, complemento")
+        city_row = QHBoxLayout()
+        city_row.setSpacing(theme.SP_M)
+        cbox, sbox = QVBoxLayout(), QVBoxLayout()
+        self._detail(cbox, "city", "Cidade", "")
+        self._detail(sbox, "state", "UF", "SP")
+        self.details["state"].setMaximumWidth(60)
+        city_row.addLayout(cbox, 1)
+        city_row.addLayout(sbox)
+        el.addLayout(city_row)
+        el.addStretch(1)
+        self.pages.addWidget(endereco)
+
+        banco = QWidget()
+        bl = QVBoxLayout(banco)
+        bl.setContentsMargins(0, 0, 0, 0)
+        bl.setSpacing(theme.SP_M)
+        self._detail(bl, "pix_key", "Chave Pix", "CPF, e-mail, telefone ou chave aleatória")
+        self._detail(bl, "bank_info", "Banco · agência · conta", "Ex.: Itaú · 0412 · 55210-3")
+        hint = QLabel("Útil para pagar o contato ou para conferir um recebimento.", wordWrap=True)
+        hint.setProperty("role", "field")
+        bl.addWidget(hint)
+        bl.addStretch(1)
+        self.pages.addWidget(banco)
+
+        obs = QWidget()
+        ol = QVBoxLayout(obs)
+        ol.setContentsMargins(0, 0, 0, 0)
+        self.notes = QPlainTextEdit(placeholderText="Anotações sobre este contato (opcional)")
+        self.notes.setMinimumHeight(120)
+        ol.addWidget(self.notes)
+        self.pages.addWidget(obs)
+        lay.addWidget(self.pages)
 
         self.error = QLabel(wordWrap=True)
         self.error.setProperty("role", "error")
@@ -145,6 +210,27 @@ class ContactForm(QFrame):
         self.delete_btn.clicked.connect(self._delete)
         for e in (self.name, self.doc):
             e.returnPressed.connect(self._save)
+
+    def _detail(self, layout, key: str, label: str, placeholder: str, mono: bool = False):
+        edit = QLineEdit(maxLength=contacts.DETAILS[key], placeholderText=placeholder)
+        if mono:
+            edit.setFont(theme.mono_font())
+        edit.returnPressed.connect(self._save)
+        layout.addWidget(field_label(label, self.t))
+        layout.addWidget(edit)
+        self.details[key] = edit
+
+    def _details_data(self) -> dict:
+        data = {k: e.text() for k, e in self.details.items()}
+        data["notes"] = self.notes.toPlainText()
+        return data
+
+    def _fill_details(self, c: ContactView | None):
+        for k, e in self.details.items():
+            e.setText(c.get(k) if c else "")
+        self.notes.setPlainText(c.get("notes") if c else "")
+        self.tab_group.button(0).setChecked(True)
+        self.pages.setCurrentIndex(0)
 
     def _ptype(self) -> str:
         return self.type_group.checkedButton().property("ptype")
@@ -176,6 +262,7 @@ class ContactForm(QFrame):
         self.name.clear()
         for b in self.role_btns.values():
             b.setChecked(False)
+        self._fill_details(None)
         self.delete_btn.hide()
         self.cancel_btn.show()
         self._error(None)
@@ -195,12 +282,13 @@ class ContactForm(QFrame):
         self.name.setText(c.name)
         for k, b in self.role_btns.items():
             b.setChecked(k in c.roles)
+        self._fill_details(c)
         self.delete_btn.show()
         self._error(None)
 
     def _save(self):
         data = dict(name=self.name.text(), person_type=self._ptype(), document=self.doc.text(),
-                    roles={k for k, b in self.role_btns.items() if b.isChecked()})
+                    roles={k for k, b in self.role_btns.items() if b.isChecked()}, details=self._details_data())
         try:
             with Session() as s:
                 if self.current is None:

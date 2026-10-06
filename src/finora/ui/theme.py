@@ -108,6 +108,8 @@ QWidget#sidebar[mode="rail"] QPushButton#themeToggle {{ text-align: center; padd
 
 /* Abas no topo */
 QFrame#tabBar {{ background: {t['panel']}; border-bottom: 1px solid {t['line']}; }}
+QFrame#tabLine {{ border: none; border-bottom: 1px solid {t['line']}; }}
+QStackedWidget#formPages {{ background: transparent; }}
 QFrame#tabChip {{ border-right: 1px solid {t['line']}; }}
 QPushButton#tabItem {{
     border: none; border-radius: 0; padding: 7px 9px; background: transparent; color: {t['mut']};

@@ -59,7 +59,7 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 - [x] Lançamentos: filtro por conta/categoria, ordenar colunas, duplicar, pagar vários de uma vez
 - [x] Recibo imprimível (do IgnControl)
 - [x] Busca global (Ctrl K) e seletor de período no cabeçalho (do mockup)
-- [ ] Contatos ampliados (endereço, dados bancários)
+- [x] Contatos ampliados (endereço, dados bancários)
 - [ ] Fontes IBM Plex embutidas
 
 ## Fase C — Recursos das edições pagas (hoje só com cadeado)

@@ -1,4 +1,5 @@
 """Relatórios em lista: extrato por conta, por categoria, por contato e inadimplência."""
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -11,7 +12,7 @@ from PySide6.QtWidgets import (
 
 from finora.core import money
 from finora.core.db import Session
-from finora.services import accounts, reports
+from finora.services import accounts, export, reports
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.widgets import help_icon, set_tone
@@ -26,6 +27,7 @@ class TableReport(QWidget):
     open_entry = Signal(int)
     open_statement = Signal(int, object)
     COLUMNS: list[tuple[str, int | None, bool]] = []      # (título, largura ou None = estica, é valor?)
+    TITLE = ""
 
     def __init__(self, profile: Profile, t: dict):
         super().__init__()
@@ -63,6 +65,7 @@ class TableReport(QWidget):
         self.lay.addWidget(self.empty, 1)
         self.lay.addWidget(self.footer)
         self._targets: list = []
+        self._rows: list[dict] = []
         self.table.cellDoubleClicked.connect(self._double)
 
     # ----- ajuda para montar a barra -----
@@ -82,15 +85,17 @@ class TableReport(QWidget):
 
     # ----- tabela -----
     def fill(self, rows: list[dict], empty_text: str):
-        """rows: {"cells": [...], "tones": {col: tone}, "bold": bool, "muted": bool, "target": (tipo, ...)}"""
+        """rows: {"cells": [...], "tones": {col: tone}, "bold": bool, "muted": bool, "target": (tipo, ...)}
+        Célula Decimal vira dinheiro; int vira texto. Os valores crus vão para a exportação."""
+        self._rows = rows
         self.table.setRowCount(len(rows))
         self._targets = []
         bold = QFont()
         bold.setBold(True)
         for r, row in enumerate(rows):
             self._targets.append(row.get("target"))
-            for c, text in enumerate(row["cells"]):
-                item = QTableWidgetItem(text)
+            for c, value in enumerate(row["cells"]):
+                item = QTableWidgetItem(self.cell_text(value))
                 is_value = self.COLUMNS[c][2]
                 if is_value:
                     f = theme.mono_font()
@@ -123,12 +128,34 @@ class TableReport(QWidget):
     def fmt(self, v: Decimal) -> str:
         return money.fmt(v, self.profile.currency)
 
+    def cell_text(self, value) -> str:
+        if value is None:
+            return ""
+        return self.fmt(value) if isinstance(value, Decimal) else str(value)
+
+    # ----- exportar -----
+    def subtitle(self) -> str:
+        return self.period.currentText() if hasattr(self, "period") else ""
+
+    def export_sheet(self) -> export.Sheet:
+        sheet = export.Sheet(self.TITLE, self.subtitle(), [c[0].capitalize() for c in self.COLUMNS],
+                             currency=self.profile.currency)
+        for row in self._rows:
+            sheet.add(row["cells"], "bold" if row.get("bold") else "detail" if row.get("muted") else "")
+        text = re.sub(r"<[^>]+>", "", self.footer.text()).replace("&nbsp;", " ")
+        sheet.footer = " ".join(text.split())
+        return sheet
+
     def apply_theme(self, t: dict):
         self.t = t
 
 
 # ---------- extrato por conta ----------
 class AccountStatementView(TableReport):
+    TITLE = "Extrato por conta"
+
+    def subtitle(self) -> str:
+        return f"{self.account.currentText()} · {self.period.currentText()}"
     COLUMNS = [("DATA", 70, False), ("DESCRIÇÃO", None, False), ("CATEGORIA", 170, False),
                ("ENTRADA", 120, True), ("SAÍDA", 120, True), ("SALDO", 130, True)]
 
@@ -166,12 +193,11 @@ class AccountStatementView(TableReport):
         first, last = reports.period_range(self.period.currentData())
         with Session() as s:
             st = reports.account_statement(s, acc_id, first, last)
-        rows = [{"cells": [first.strftime("%d/%m"), "Saldo anterior", "", "", "", self.fmt(st.opening)],
+        rows = [{"cells": [first.strftime("%d/%m"), "Saldo anterior", "", None, None, st.opening],
                  "bold": True, "tones": {5: "neg" if st.opening < 0 else None}}]
         for line in st.lines:
             rows.append({"cells": [line.day.strftime("%d/%m"), line.description, line.category,
-                                   self.fmt(line.inflow) if line.inflow else "",
-                                   self.fmt(-line.outflow) if line.outflow else "", self.fmt(line.balance)],
+                                   line.inflow or None, -line.outflow if line.outflow else None, line.balance],
                          "tones": {3: "pos", 1: None, 5: "neg" if line.balance < 0 else None},
                          "target": ("entry", line.entry_id)})
         self.fill(rows, "")
@@ -181,6 +207,7 @@ class AccountStatementView(TableReport):
 
 # ---------- por categoria ----------
 class ByCategoryView(TableReport):
+    TITLE = "Por categoria"
     COLUMNS = [("CATEGORIA", None, False), ("TIPO", 90, False), ("QTD.", 60, True), ("TOTAL", 130, True),
                ("% DO TIPO", 90, True)]
 
@@ -200,8 +227,8 @@ class ByCategoryView(TableReport):
         for r in data:
             label = r.category if r.group == r.category else f"{r.group} › {r.category}"
             share = (r.total * 100 / totals[r.kind]) if totals[r.kind] else Decimal(0)
-            rows.append({"cells": [label, "Receita" if r.kind == "income" else "Despesa", str(r.count),
-                                   self.fmt(r.total if r.kind == "income" else -r.total),
+            rows.append({"cells": [label, "Receita" if r.kind == "income" else "Despesa", r.count,
+                                   r.total if r.kind == "income" else -r.total,
                                    f"{share:.1f}%".replace(".", ",")],
                          "tones": {3: "pos" if r.kind == "income" else None}})
         self.fill(rows, "Nenhum lançamento com categoria neste período.")
@@ -211,6 +238,7 @@ class ByCategoryView(TableReport):
 
 # ---------- por contato ----------
 class ByContactView(TableReport):
+    TITLE = "Por contato"
     COLUMNS = [("CONTATO", None, False), ("QTD.", 60, True), ("ME PAGOU", 130, True), ("EU PAGUEI", 130, True),
                ("SALDO", 130, True)]
 
@@ -224,8 +252,8 @@ class ByContactView(TableReport):
         first, last = reports.period_range(self.period.currentData())
         with Session() as s:
             data = reports.by_contact(s, self.profile.id, first, last)
-        rows = [{"cells": [r.contact, str(r.count), self.fmt(r.received) if r.received else "",
-                           self.fmt(-r.paid) if r.paid else "", self.fmt(r.received - r.paid)],
+        rows = [{"cells": [r.contact, r.count, r.received or None, -r.paid if r.paid else None,
+                           r.received - r.paid],
                  "tones": {2: "pos", 4: "neg" if r.received < r.paid else "pos" if r.received > r.paid else None}}
                 for r in data]
         self.fill(rows, "Nenhum lançamento com contato neste período.")
@@ -236,6 +264,10 @@ class ByContactView(TableReport):
 
 # ---------- inadimplência ----------
 class OverdueView(TableReport):
+    TITLE = "Inadimplência"
+
+    def subtitle(self) -> str:
+        return f"Posição em {date.today():%d/%m/%Y}"
     COLUMNS = [("VENC.", 80, False), ("DESCRIÇÃO", None, False), ("CONTATO", 160, False), ("ATRASO", 90, True),
                ("VALOR", 130, True)]
 
@@ -256,12 +288,12 @@ class OverdueView(TableReport):
             if not items:
                 return []
             total = sum((i.amount for i in items), Decimal(0))
-            out = [{"cells": ["", f"{title} ({len(items)})", "", "", self.fmt(-total if kind == "expense" else total)],
+            out = [{"cells": ["", f"{title} ({len(items)})", "", "", -total if kind == "expense" else total],
                     "bold": True}]
             for i in items:
                 target = (("entry", i.entry_id) if i.entry_id else ("statement", i.card_account_id, i.due))
                 out.append({"cells": [i.due.strftime("%d/%m/%y"), i.description, i.contact, f"{i.days} dias",
-                                      self.fmt(-i.amount if kind == "expense" else i.amount)],
+                                      -i.amount if kind == "expense" else i.amount],
                             "tones": {0: "neg", 3: "neg" if i.days > 30 else None,
                                       4: "pos" if kind == "income" else None},
                             "target": target})

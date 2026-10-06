@@ -14,7 +14,7 @@ import qtawesome as qta
 from finora.core import money
 from finora.core.db import Session
 from finora.core.licensing import allowed, current_edition
-from finora.services import reports
+from finora.services import export, reports
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.dashboard_page import KpiCard
@@ -66,12 +66,12 @@ def export_buttons(parent: QWidget, t: dict) -> QHBoxLayout:
     row = QHBoxLayout()
     row.setSpacing(theme.SP_S)
     parent.export_btns = []
-    for label, icon in (("Excel", "fa6s.file-excel"), ("PDF", "fa6s.file-pdf")):
+    for label, icon, kind in (("Excel", "fa6s.file-excel", "xlsx"), ("PDF", "fa6s.file-pdf", "pdf")):
         b = button(label, "secondary", t, icon, "fg")
         b.setProperty("fullText", label)
         parent.export_btns.append(b)
         if _feature("export"):
-            b.clicked.connect(lambda: parent.message.emit("Exportação chega numa próxima versão."))
+            b.clicked.connect(lambda _=False, k=kind: _export(parent, k))
         else:
             b.setToolTip(LOCK_MSG["export"])
             b.clicked.connect(lambda: show_upgrade(parent, LOCK_MSG["export"]))
@@ -79,6 +79,13 @@ def export_buttons(parent: QWidget, t: dict) -> QHBoxLayout:
     if not _feature("export"):
         row.addWidget(lock_icon(LOCK_MSG["export"], t))
     return row
+
+
+def _export(view: QWidget, kind: str):
+    from finora.ui import exporting
+    path = exporting.run(view, view.export_sheet(), kind)
+    if path:
+        view.message.emit(f"Salvo em {path}")
 
 
 def compact_exports(view: QWidget, narrow: bool):
@@ -238,6 +245,22 @@ class DreView(QWidget):
         self.note.setText(self.note.text() + "AV % = quanto cada linha representa das receitas do período. "
                           "Passe o mouse sobre um valor para ver os centavos.")
         self._resize_columns()
+
+    def export_sheet(self) -> export.Sheet | None:
+        rep = self.model.rep
+        if rep is None:
+            return None
+        sheet = export.Sheet("DRE pessoal",
+                             f"{self.period.currentText()} · regime de {self.regime.currentText().lower()}",
+                             ["Demonstração do resultado"] + self.model.headers[1:-2] + ["Total", "AV %"],
+                             currency=self.profile.currency)
+        for row in rep.rows:
+            share = rep.share(row)
+            style = {"total": "bold", "result": "result", "detail": "detail"}.get(row.style, "")
+            sheet.add([row.label, *row.values, row.total, "" if share is None else f"{share}%".replace(".", ",")],
+                      style)
+        sheet.footer = "AV % = quanto cada linha representa das receitas do período."
+        return sheet
 
     def _resize_columns(self):
         hdr = self.table.horizontalHeader()
@@ -487,6 +510,13 @@ class FlowView(QWidget):
             self.alert.hide()
         self.chart.set_flow(flow, self.t)
         self.model.set_flow(flow, self.t)
+
+    def export_sheet(self) -> export.Sheet:
+        sheet = export.Sheet("Fluxo de caixa", self.days.currentText(),
+                             ["Data", "O que entra e sai", "Entradas", "Saídas", "Saldo"], currency=self.profile.currency)
+        for day, text, inc, out, bal, tip in self.model.rows:
+            sheet.add([day, "; ".join(tip.splitlines()) if tip else text, inc or None, -out if out else None, bal])
+        return sheet
 
     def apply_theme(self, t: dict):
         self.t = t

@@ -67,7 +67,7 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 Estratégia: construir tudo completo e depois "capar" a Free com `licensing.allowed()` (cadeado + convite).
 Ordem de implementação:
 
-- [ ] Exportar Excel/PDF: lançamentos e todos os relatórios
+- [x] Exportar Excel/PDF: lançamentos e todos os relatórios
 - [ ] Importar OFX (extrato do banco) sem duplicar
 - [ ] Conciliação: casar linhas do extrato com lançamentos, sugerir, criar o que falta (mockup: Conciliação)
 - [ ] Centros de custo: cadastro, campo no lançamento, relatório por centro de custo (mockup + IgnControl)

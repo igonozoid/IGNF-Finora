@@ -14,7 +14,8 @@ import qtawesome as qta
 
 from finora.core import money
 from finora.core.db import Session
-from finora.services import accounts, cards, categories, contacts, entries
+from finora.core.licensing import allowed, current_edition
+from finora.services import accounts, cards, categories, contacts, entries, export
 from finora.services.entries import EntryData, EntryView
 from finora.services.setup import Profile
 from finora.ui import theme
@@ -42,6 +43,9 @@ def _repolish(w):
 
 
 # ---------- tabela ----------
+EXPORT_LOCK = "Exportar para Excel e PDF é um recurso da edição Plus."
+
+
 class EntriesModel(QAbstractTableModel):
     def __init__(self, t: dict):
         super().__init__()
@@ -652,6 +656,17 @@ class EntriesPage(QWidget):
         row1.addWidget(self.ofx_btn)
         self.ofx_lock = lock_icon("Importar extrato OFX é um recurso da edição Plus.", t)
         row1.addWidget(self.ofx_lock)
+        self.export_btn = button("Exportar", "secondary", t, "fa6s.file-export", "fg")
+        self.export_btn.setToolTip("Salvar a lista que está na tela em Excel ou PDF")
+        row1.addWidget(self.export_btn)
+        if allowed(current_edition(), "export"):
+            menu = QMenu(self.export_btn)
+            menu.addAction("Excel (.xlsx)", lambda: self._export("xlsx"))
+            menu.addAction("PDF", lambda: self._export("pdf"))
+            self.export_btn.setMenu(menu)
+        else:
+            self.export_btn.clicked.connect(lambda: show_upgrade(self, EXPORT_LOCK))
+            row1.addWidget(lock_icon(EXPORT_LOCK, t))
 
         # Linha 2: filtros
         self.filter_group = QButtonGroup(self, exclusive=True)
@@ -915,6 +930,38 @@ class EntriesPage(QWidget):
             msg += f" {skipped} ficaram de fora (já pagos ou compras no cartão)."
         self.message.emit(msg)
         self.refresh()
+
+    def export_sheet(self) -> export.Sheet:
+        """A lista como está na tela (mês, filtros, busca e ordem)."""
+        parts = [f"{MONTHS[self.month - 1].capitalize()} de {self.year}"]
+        if self.filter != "all":
+            parts.append(entries.FILTERS[self.filter])
+        for box in (self.account_filter, self.category_filter):
+            if box.currentData():
+                parts.append(box.currentText().strip())
+        if self.search.text().strip():
+            parts.append(f'busca "{self.search.text().strip()}"')
+        sheet = export.Sheet("Lançamentos", " · ".join(parts),
+                             ["Vencimento", "Pago em", "Descrição", "Contato", "Categoria", "Conta", "Valor",
+                              "Situação", "Documento"], currency=self.profile.currency)
+        today = date.today()
+        for e in self.model.rows:
+            sheet.add([e.due_date, e.paid_date,
+                       e.description + (f" ({e.installment})" if e.installment else ""), e.contact or "",
+                       "Transferência" if e.kind == "transfer" else (e.category or "Sem categoria"),
+                       f"{e.account} → {e.dest_account}" if e.kind == "transfer" else e.account,
+                       -e.amount if e.kind == "expense" else e.amount, e.status_label(today), e.document_no or ""])
+        total = {k: sum((e.amount for e in self.model.rows if e.kind == k), Decimal(0)) for k in ("income", "expense")}
+        cur = self.profile.currency
+        sheet.footer = (f"{len(self.model.rows)} lançamentos · Receitas {money.fmt(total['income'], cur)} · "
+                        f"Despesas {money.fmt(-total['expense'], cur)}")
+        return sheet
+
+    def _export(self, kind: str):
+        from finora.ui import exporting
+        path = exporting.run(self, self.export_sheet(), kind)
+        if path:
+            self.message.emit(f"Salvo em {path}")
 
     def _current(self) -> EntryView | None:
         idx = self.table.currentIndex()

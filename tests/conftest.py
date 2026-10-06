@@ -33,3 +33,14 @@ def isolated_settings(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "ORG", "IGNF-pytest")   # Registro usado só pelo teste de migração
     monkeypatch.setattr(licensing, "_cache", None)
     yield
+
+
+@pytest.fixture
+def plus(monkeypatch):
+    """Simula uma licença Plus ativada (recursos pagos liberados). Peça antes de `window`."""
+    from datetime import date
+    from finora.core import licensing
+    from finora.core.license_key import License
+    lic = License("plus", "Teste", date(2026, 1, 1), None, 1)
+    monkeypatch.setattr(licensing, "current_license", lambda today=None: lic)
+    monkeypatch.setattr(licensing, "stored_license", lambda: lic)

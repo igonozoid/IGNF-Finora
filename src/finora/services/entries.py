@@ -72,7 +72,7 @@ class EntryView:
     amount: Decimal
     due_date: date
     paid_date: date | None
-    status: str                 # pending | paid
+    status: str                 # pending | paid | card (compra lançada no cartão de crédito)
     account_id: int
     account: str
     dest_account_id: int | None
@@ -83,19 +83,26 @@ class EntryView:
     document_no: str | None
     installment: str | None
     series_id: str | None
+    competence_date: date | None = None   # data da compra (cartão) / competência
 
     @property
     def is_paid(self) -> bool:
         return self.status == "paid"
 
+    @property
+    def on_card(self) -> bool:
+        return self.status == "card"
+
     def is_late(self, today: date) -> bool:
-        return not self.is_paid and self.due_date < today
+        return self.status == "pending" and self.due_date < today
 
     @property
     def is_recurring(self) -> bool:
         return self.series_id is not None and self.installment is None
 
     def status_label(self, today: date) -> str:
+        if self.on_card:
+            return "Estorno" if self.kind == "income" else "No cartão"
         if self.is_paid:
             return {"income": "Recebido", "expense": "Pago", "transfer": "Transferido"}[self.kind]
         if self.is_late(today):
@@ -129,7 +136,7 @@ def to_view(row) -> EntryView:
     e, acc, dest, cat, ct = row
     return EntryView(e.id, e.kind, e.description or "", Decimal(e.amount), e.due_date, e.paid_date, e.status,
                      e.account_id, acc, e.dest_account_id, dest, e.category_id, cat, ct, e.document_no,
-                     e.installment, e.series_id)
+                     e.installment, e.series_id, e.competence_date)
 
 
 def list_entries(s: Session, entity_id: int, *, year: int, month: int, filter: str = "all",
@@ -161,12 +168,15 @@ def get(s: Session, entry_id: int) -> EntryView:
 
 
 def month_totals(s: Session, entity_id: int, year: int, month: int) -> Totals:
+    """Em aberto no mês. Faturas de cartão a pagar que vencem no mês entram em "a pagar"."""
+    from finora.services import cards
     first, last = month_range(year, month)
     base = select(func.coalesce(func.sum(Entry.amount), 0)).where(
         Entry.entity_id == entity_id, Entry.status == "pending", Entry.due_date.between(first, last))
     rec = s.scalar(base.where(Entry.kind == "income"))
-    pay = s.scalar(base.where(Entry.kind == "expense"))
-    return Totals(Decimal(rec).quantize(CENT), Decimal(pay).quantize(CENT))
+    pay = Decimal(s.scalar(base.where(Entry.kind == "expense")))
+    pay += sum((st.remaining for st in cards.open_statements(s, entity_id, last) if st.due >= first), Decimal(0))
+    return Totals(Decimal(rec).quantize(CENT), pay.quantize(CENT))
 
 
 # ---------- gravação ----------
@@ -215,6 +225,22 @@ def _validate(s: Session, entity_id: int, d: EntryData) -> None:
         raise ValueError(f"Escolha de 2 a {MAX_REPEAT} vezes.")
 
 
+def _set_dates(s: Session, e: Entry, d: EntryData, when: date, paid_first: bool) -> None:
+    """Datas e situação. Compra/estorno num cartão configurado vai direto para a fatura certa."""
+    from finora.services import cards
+    acc = s.get(Account, d.account_id)
+    if d.kind != "transfer" and cards.is_configured(acc):
+        _closing, due = cards.statement_for(when, acc.closing_day, acc.due_day)
+        e.competence_date, e.due_date = when, due
+        e.status, e.paid_date = cards.CARD_STATUS, due
+    elif paid_first and d.paid:
+        e.due_date = e.competence_date = when
+        e.status, e.paid_date = "paid", d.paid_date or when
+    else:
+        e.due_date = e.competence_date = when
+        e.status, e.paid_date = "pending", None
+
+
 def _apply(e: Entry, d: EntryData, entity_id: int, contact_id: int | None) -> None:
     transfer = d.kind == "transfer"
     e.kind = d.kind
@@ -242,14 +268,9 @@ def create(s: Session, entity_id: int, d: EntryData) -> list[int]:
             e = Entry(entity_id=entity_id)
             _apply(e, d, entity_id, contact_id)
             e.amount = amounts[i]
-            e.due_date = occurrence(d.due_date, d.repeat, i) if n > 1 else d.due_date
-            e.competence_date = e.due_date
+            _set_dates(s, e, d, occurrence(d.due_date, d.repeat, i) if n > 1 else d.due_date, i == 0)
             e.series_id = series
             e.installment = f"{i + 1}/{n}" if d.repeat == "installments" else None
-            if i == 0 and d.paid:
-                e.status, e.paid_date = "paid", d.paid_date or d.due_date
-            else:
-                e.status, e.paid_date = "pending", None
             s.add(e)
             s.flush()
             ids.append(e.id)
@@ -268,6 +289,11 @@ def _following(s: Session, e: Entry) -> list[Entry]:
     return list(s.scalars(q))
 
 
+def _open(x: Entry) -> bool:
+    """Ainda pode mudar junto com a série: em aberto, ou compra no cartão (a fatura é que se paga)."""
+    return x.status != "paid"
+
+
 def update(s: Session, entry_id: int, d: EntryData, scope: str = "one") -> int:
     """Altera o lançamento. Com scope='following', descrição/valor/conta/categoria/contato valem também
     para os próximos ainda não pagos da série (as datas deles não mudam). Retorna quantos mudaram."""
@@ -276,16 +302,14 @@ def update(s: Session, entry_id: int, d: EntryData, scope: str = "one") -> int:
     _validate(s, e.entity_id, d)
     contact_id = None if d.kind == "transfer" else contacts.get_or_create(s, e.entity_id, d.contact, d.kind)
     try:
-        targets = [e] + ([x for x in _following(s, e) if x.id != e.id and x.status == "pending"]
+        targets = [e] + ([x for x in _following(s, e) if x.id != e.id and _open(x)]
                          if scope == "following" else [])
         for x in targets:
             _apply(x, d, e.entity_id, contact_id)
             x.amount = d.amount
-        e.due_date = e.competence_date = d.due_date
-        if d.paid:
-            e.status, e.paid_date = "paid", d.paid_date or d.due_date
-        else:
-            e.status, e.paid_date = "pending", None
+            if x is not e:   # os próximos mantêm a própria data; só recalcula a fatura se mudou de conta
+                _set_dates(s, x, d, x.competence_date, False)
+        _set_dates(s, e, d, d.due_date, True)
         s.commit()
     except Exception:
         s.rollback()
@@ -296,7 +320,7 @@ def update(s: Session, entry_id: int, d: EntryData, scope: str = "one") -> int:
 def delete(s: Session, entry_id: int, scope: str = "one") -> int:
     """Exclui o lançamento (ou ele e os próximos ainda não pagos da série). Retorna quantos saíram."""
     e = s.get(Entry, entry_id)
-    targets = [e] + ([x for x in _following(s, e) if x.id != e.id and x.status == "pending"]
+    targets = [e] + ([x for x in _following(s, e) if x.id != e.id and _open(x)]
                      if scope == "following" else [])
     for x in targets:
         s.delete(x)
@@ -306,6 +330,8 @@ def delete(s: Session, entry_id: int, scope: str = "one") -> int:
 
 def set_paid(s: Session, entry_id: int, paid: bool, when: date | None = None) -> None:
     e = s.get(Entry, entry_id)
+    if e.status == "card":
+        raise ValueError("Compras no cartão são pagas pela fatura (em Contas › Faturas).")
     e.status, e.paid_date = ("paid", when or date.today()) if paid else ("pending", None)
     s.commit()
 
@@ -313,4 +339,4 @@ def set_paid(s: Session, entry_id: int, paid: bool, when: date | None = None) ->
 def in_series(s: Session, entry_id: int) -> int:
     """Quantos lançamentos pendentes vêm depois deste na série (0 se não é série)."""
     e = s.get(Entry, entry_id)
-    return len([x for x in _following(s, e) if x.id != e.id and x.status == "pending"])
+    return len([x for x in _following(s, e) if x.id != e.id and _open(x)])

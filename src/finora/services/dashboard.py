@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, aliased
 
 from finora.core.money import CENT
 from finora.models import Category, Entry
-from finora.services import accounts, entries, reports
+from finora.services import accounts, cards, entries, reports
 from finora.services.entries import EntryView
 
 ZERO = Decimal("0.00")
@@ -62,6 +62,10 @@ def kpis(s: Session, entity_id: int, today: date | None = None) -> Kpis:
     pay, pay_n = total("expense")
     late_n = s.scalar(select(func.count(Entry.id)).where(
         Entry.entity_id == entity_id, Entry.status == "pending", Entry.kind == "expense", Entry.due_date < today))
+    statements = cards.open_statements(s, entity_id, horizon, today)     # faturas de cartão a pagar
+    pay = Decimal(pay or 0) + sum((st.remaining for st in statements), ZERO)
+    pay_n += len(statements)
+    late_n += sum(1 for st in statements if st.due < today)
     prev = entries.add_months(today.replace(day=1), -1)
     return Kpis(accounts.total_balance(accs), len(accs), _d(rec), rec_n, _d(pay), pay_n, late_n,
                 month_result(s, entity_id, today.year, today.month),
@@ -73,9 +77,9 @@ def monthly_flow(s: Session, entity_id: int, months: int = 6, today: date | None
     today = today or date.today()
     start = entries.add_months(today.replace(day=1), -(months - 1))
     end = entries.month_range(today.year, today.month)[1]
-    q = (select(Entry.due_date, Entry.kind, Entry.amount)
+    q = (select(Entry.competence_date, Entry.kind, Entry.amount)
          .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
-                Entry.due_date.between(start, end)))
+                Entry.competence_date.between(start, end)))
     sums: dict[tuple, Decimal] = {}
     for due, kind, amount in s.execute(q):  # soma em Python: funciona em qualquer banco
         key = (due.year, due.month, kind)
@@ -107,6 +111,6 @@ def top_expenses(s: Session, entity_id: int, year: int, month: int, n: int = 5) 
          .outerjoin(Category, Entry.category_id == Category.id)
          .outerjoin(group, Category.parent_id == group.id)
          .where(Entry.entity_id == entity_id, Entry.kind == "expense", Entry.status != "canceled",
-                Entry.due_date.between(first, last), _not_investment())
+                Entry.competence_date.between(first, last), _not_investment())
          .group_by(name).order_by(func.sum(Entry.amount).desc()).limit(n))
     return [(label, _d(v)) for label, v in s.execute(q)]

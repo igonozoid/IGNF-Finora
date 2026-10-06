@@ -38,29 +38,44 @@ def test_migracoes_batem_com_os_modelos(tmp_path):
     eng.dispose()
 
 
-def test_banco_de_antes_do_alembic_e_reconhecido(tmp_path):
-    """Como o banco do usuário: criado com create_all, sem tabela alembic_version."""
-    eng = _engine(tmp_path / "antigo.db")
-    Base.metadata.create_all(eng)
-    assert db.init_db(eng, tmp_path / "bk") is None
-    assert _revision(eng) == db.BASELINE
+def _pre_alembic(path, drop_series=False):
+    """Banco como era antes do Alembic: o esquema da revisão 0001, sem a tabela alembic_version."""
+    from alembic import command
+    eng = _engine(path)
+    with eng.begin() as conn:
+        command.upgrade(db._alembic(conn), db.BASELINE)
+        conn.exec_driver_sql("DROP TABLE alembic_version")
+    eng.dispose()
+    if drop_series:                                               # ainda mais antigo: antes da etapa 4
+        con = sqlite3.connect(path)
+        con.execute("DROP INDEX ix_entries_series_id")
+        con.execute("ALTER TABLE entries DROP COLUMN series_id")
+        con.commit()
+        con.close()
+    return _engine(path)
+
+
+def test_banco_de_antes_do_alembic_e_reconhecido_e_atualizado(tmp_path):
+    """Como o banco do usuário: sem alembic_version. É marcado como 0001 e recebe as migrações seguintes."""
+    eng = _pre_alembic(tmp_path / "antigo.db")
+    safety = db.init_db(eng, tmp_path / "bk")
+    _, head, _ = db.schema_state(eng)
+    assert _revision(eng) == head
+    assert safety and "antes-de-atualizar-0001" in safety          # guardou cópia antes de migrar
+    cols = {c["name"] for c in inspect(eng).get_columns("accounts")}
+    assert {"closing_day", "due_day", "credit_limit"} <= cols
     eng.dispose()
 
 
 def test_banco_bem_antigo_ganha_colunas_que_faltam(tmp_path):
-    path = tmp_path / "bem-antigo.db"
-    eng = _engine(path)
-    Base.metadata.create_all(eng)
-    eng.dispose()
-    con = sqlite3.connect(path)                                   # simula o banco de antes da etapa 4
-    con.execute("DROP INDEX ix_entries_series_id")
-    con.execute("ALTER TABLE entries DROP COLUMN series_id")
-    con.commit()
-    con.close()
-    eng = _engine(path)
+    eng = _pre_alembic(tmp_path / "bem-antigo.db", drop_series=True)
     db.init_db(eng, tmp_path / "bk")
     cols = {c["name"] for c in inspect(eng).get_columns("entries")}
-    assert "series_id" in cols and _revision(eng) == db.BASELINE
+    _, head, _ = db.schema_state(eng)
+    assert "series_id" in cols and _revision(eng) == head
+    with eng.connect() as conn:
+        diffs = compare_metadata(MigrationContext.configure(conn, opts={"compare_type": True}), Base.metadata)
+    assert diffs == []                                            # terminou igual aos modelos
     eng.dispose()
 
 

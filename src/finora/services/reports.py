@@ -86,7 +86,8 @@ def _movements(s: Session, entity_id: int, first: date, last: date, regime: str)
     q = (select(when, Entry.kind, Entry.amount, Category.dre_group, Category.name)
          .select_from(Entry).outerjoin(Category, Entry.category_id == Category.id)
          .where(Entry.entity_id == entity_id, Entry.kind != "transfer", when.between(first, last)))
-    q = q.where(Entry.status == "paid") if regime == "cash" else q.where(Entry.status != "canceled")
+    # Caixa: o que saiu do bolso. Compra no cartão sai no vencimento da fatura (paid_date = vencimento).
+    q = q.where(Entry.status.in_(("paid", "card"))) if regime == "cash" else q.where(Entry.status != "canceled")
     return s.execute(q)
 
 
@@ -178,6 +179,13 @@ def cash_flow(s: Session, entity_id: int, days: int = 30, today: date | None = N
             overdue += 1
             due = today
         by_day.setdefault(due, []).append((kind, Decimal(amount), desc or ""))
+
+    from finora.services import cards
+    for st in cards.open_statements(s, entity_id, end, today):    # fatura do cartão = 1 saída no vencimento
+        due = max(st.due, today)
+        if st.due < today:
+            overdue += 1
+        by_day.setdefault(due, []).append(("expense", st.remaining, f"Fatura {st.account} {st.label}"))
 
     out, bal = [], start
     for i in range(days):

@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from sqlalchemy import ForeignKey, String, Numeric, Boolean
+from sqlalchemy import ForeignKey, String, Numeric, Boolean, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
 
@@ -19,6 +19,10 @@ class Account(Base):
     currency: Mapped[str] = mapped_column(String(3), default="BRL")
     opening_balance: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Só para cartão de crédito (kind="card"): dia de fechamento e de vencimento da fatura, e limite.
+    closing_day: Mapped[int | None] = mapped_column(Integer)
+    due_day: Mapped[int | None] = mapped_column(Integer)
+    credit_limit: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
 
 class Category(Base):
     __tablename__ = "categories"

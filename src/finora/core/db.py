@@ -3,7 +3,6 @@ from pathlib import Path
 from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.orm import sessionmaker
 from finora.core.paths import DATA_DIR
-from finora.models.base import Base
 
 DB_FILE = DATA_DIR / "finora.db"
 BACKUP_DIR = DATA_DIR / "backups"   # backups automáticos e cópias de segurança antes de restaurar
@@ -74,20 +73,20 @@ def init_db(eng=None, backup_dir: Path | None = None) -> str | None:
     return safety
 
 
+# Colunas que entraram ANTES do Alembic (até a revisão 0001). Tudo o que veio depois é migração.
+_PRE_ALEMBIC = {"entries": {"series_id": "VARCHAR(32)"}}
+
+
 def _legacy_add_missing_columns(conn):
-    """Só para bancos de antes do Alembic: cria colunas que entraram nos modelos depois
-    (ex.: entries.series_id). Só adiciona colunas que aceitam vazio; nunca altera nem apaga."""
-    import finora.models  # noqa: F401 — registra os modelos
+    """Só para bancos de antes do Alembic: completa o que a revisão 0001 já tinha (ex.: entries.series_id),
+    para o banco ficar igual à 0001 antes de receber as migrações seguintes. Nunca altera nem apaga."""
     insp = inspect(conn)
-    for table in Base.metadata.sorted_tables:
-        if not insp.has_table(table.name):
+    for table, cols in _PRE_ALEMBIC.items():
+        if not insp.has_table(table):
             continue
-        have = {c["name"] for c in insp.get_columns(table.name)}
-        for col in table.columns:
-            if col.name in have or not col.nullable:
-                continue
-            conn.exec_driver_sql(
-                f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col.type.compile(conn.dialect)}')
-            for idx in table.indexes:
-                if [c.name for c in idx.columns] == [col.name]:
-                    idx.create(conn, checkfirst=True)
+        have = {c["name"] for c in insp.get_columns(table)}
+        for name, ddl in cols.items():
+            if name not in have:
+                conn.exec_driver_sql(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {ddl}')
+    if "series_id" not in {i["column_names"][0] for i in insp.get_indexes("entries") if i["column_names"]}:
+        conn.exec_driver_sql('CREATE INDEX IF NOT EXISTS ix_entries_series_id ON entries (series_id)')

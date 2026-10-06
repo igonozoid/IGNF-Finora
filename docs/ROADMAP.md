@@ -74,7 +74,7 @@ Ordem de implementação:
 - [x] Orçado x realizado: orçamento mensal por categoria e por centro de custo, com alerta de estouro
 - [x] Anexos de comprovantes nos lançamentos (guardados dentro do banco: vão no backup e no modo rede)
 - [x] Multimoeda: moedas, cotações com histórico por data (manual ou PTAX), contas em outra moeda, transferência com câmbio
-- [ ] Autopreencher CPF/CNPJ (consulta pública de CNPJ)
+- [x] Autopreencher CNPJ (BrasilAPI) e endereço pelo CEP; CPF não tem consulta pública (LGPD)
 - [ ] Backup automático (ao fechar e agendado) para uma pasta de nuvem (OneDrive, Google Drive, Dropbox)
 - [ ] Do IgnControl: fechamento de período (trava lançamentos até uma data)
 - [ ] Do IgnControl: previsão de caixa dia a dia (pior saldo projetado) e relatório analítico

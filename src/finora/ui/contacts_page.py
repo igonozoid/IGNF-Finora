@@ -1,7 +1,7 @@
 """Tela de Contatos: lista com filtros por papel e busca + cadastro lateral (mockup "Contatos")."""
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
+    QApplication, QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 import qtawesome as qta
@@ -9,7 +9,7 @@ import qtawesome as qta
 from finora.core import documents
 from finora.core.db import Session
 from finora.core.licensing import allowed, current_edition
-from finora.services import contacts
+from finora.services import contacts, doc_lookup
 from finora.services.contacts import ContactView
 from finora.services.setup import Profile
 from finora.ui import theme
@@ -18,7 +18,8 @@ from finora.ui.widgets import button, field_label, lock_icon, show_upgrade
 PANEL_W = 320
 STACK_BELOW = 760   # abaixo dessa largura, o cadastro ocupa o lugar da lista
 FILTERS = [("all", "Todos")] + [(k, label) for k, (_c, label, _h) in contacts.ROLES.items()]
-LOOKUP_MSG = "Autopreencher pelo CPF/CNPJ (dados da Receita Federal) é um recurso das edições Plus e Pro."
+LOOKUP_MSG = ("Autopreencher pelo CNPJ (dados públicos da Receita Federal) e o endereço pelo CEP é um recurso das "
+              "edições Plus e Pro.")
 
 
 class ContactRow(QWidget):
@@ -54,6 +55,16 @@ class ContactRow(QWidget):
             n.setMinimumWidth(18)
             n.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             lay.addWidget(n)
+
+
+class _busy:
+    """Cursor de espera durante a consulta na internet."""
+
+    def __enter__(self):
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+
+    def __exit__(self, *_exc):
+        QApplication.restoreOverrideCursor()
 
 
 class ContactForm(QFrame):
@@ -112,6 +123,7 @@ class ContactForm(QFrame):
         self.doc = QLineEdit(maxLength=18)
         self.doc.setFont(theme.mono_font())
         self.lookup = button("Autopreencher", "secondary", t, "fa6s.wand-magic-sparkles", "acc")
+        self.lookup.setToolTip("Busca nome, telefone, e-mail e endereço do CNPJ na Receita Federal.")
         doc_row = QHBoxLayout()
         doc_row.setSpacing(6)
         doc_row.addWidget(self.doc, 1)
@@ -152,6 +164,9 @@ class ContactForm(QFrame):
         el.setContentsMargins(0, 0, 0, 0)
         el.setSpacing(theme.SP_M)
         self._detail(el, "zip_code", "CEP", "13010-050", mono=True)
+        self.cep_btn = button("Buscar endereço pelo CEP", "link", t, "fa6s.magnifying-glass-location", "acc")
+        self.cep_btn.clicked.connect(self._lookup_cep)
+        el.addWidget(self.cep_btn, 0, Qt.AlignLeft)
         self._detail(el, "address", "Endereço", "Rua, número, complemento")
         city_row = QHBoxLayout()
         city_row.setSpacing(theme.SP_M)
@@ -247,6 +262,56 @@ class ContactForm(QFrame):
     def _lookup(self):
         if not allowed(current_edition(), "doc_lookup"):
             show_upgrade(self, LOOKUP_MSG)
+            return
+        if self._ptype() == "PF":
+            self._error("CPF não tem consulta pública (são dados pessoais). Preencha os dados à mão.")
+            return
+        try:
+            with _busy():
+                data = doc_lookup.cnpj(self.doc.text())
+        except ValueError as e:
+            self._error(str(e))
+            return
+        self.doc.setText(documents.fmt(documents.digits(self.doc.text())))
+        self.name.setText(data.trade_name or data.name)
+        filled = self._fill_empty(data.details)
+        note = f"Dados da Receita: {data.name}"
+        if data.status and data.status.upper() != "ATIVA":
+            note += f" — situação {data.status}"
+        if filled:
+            note += f". Preenchi: {', '.join(filled)}."
+        self._error(None)
+        self.sub.setText(note)
+
+    def _lookup_cep(self):
+        if not allowed(current_edition(), "doc_lookup"):
+            show_upgrade(self, LOOKUP_MSG)
+            return
+        try:
+            with _busy():
+                addr = doc_lookup.cep(self.details["zip_code"].text())
+        except ValueError as e:
+            self._error(str(e))
+            return
+        self._error(None)
+        self.details["zip_code"].setText(addr.zip_code)
+        for key, value in (("address", addr.address), ("city", addr.city), ("state", addr.state)):
+            if value:
+                self.details[key].setText(value)
+        self.details["address"].setFocus()
+        self.details["address"].end(False)
+
+    def _fill_empty(self, details: dict) -> list[str]:
+        """Põe os dados nos campos ainda vazios (não apaga o que você já digitou). Devolve o que preencheu."""
+        labels = {"phone": "telefone", "email": "e-mail", "zip_code": "CEP", "address": "endereço",
+                  "city": "cidade", "state": "UF"}
+        filled = []
+        for key, value in details.items():
+            edit = self.details.get(key)
+            if edit is not None and value and not edit.text().strip():
+                edit.setText(value)
+                filled.append(labels.get(key, key))
+        return filled
 
     def _error(self, msg: str | None):
         self.error.setText(msg or "")

@@ -152,3 +152,27 @@ def test_contato_ampliado_com_abas(window):
     f.details["email"].setText("sem-arroba")
     f.save_btn.click()
     assert "E-mail" in f.error.text()
+
+
+def test_autopreencher_cnpj_e_cep(plus, window, monkeypatch):
+    from finora.services import doc_lookup
+    monkeypatch.setattr(doc_lookup, "cnpj", lambda n: doc_lookup.CompanyData(
+        "ENERGIA PAULISTA S.A.", "ENEL", "BAIXADA", {"phone": "(11) 3333-4444", "city": "Sao Paulo", "state": "SP"}))
+    monkeypatch.setattr(doc_lookup, "cep", lambda n: doc_lookup.AddressData("13015-002", "Rua A, Centro",
+                                                                            "Campinas", "SP"))
+    window.go_to("contacts")
+    page = window.page("contacts")
+    page._new()
+    f = page.form
+    f.lookup.click()                                   # PF: CPF não tem consulta pública
+    assert "CPF não tem consulta" in f.error.text()
+    f.type_group.button(1).click()                     # PJ
+    f.doc.setText("11222333000181")
+    f.details["city"].setText("Jundiaí")               # o que já foi digitado não é apagado
+    f.lookup.click()
+    assert f.name.text() == "ENEL" and f.doc.text() == "11.222.333/0001-81"
+    assert f.details["phone"].text() == "(11) 3333-4444" and f.details["city"].text() == "Jundiaí"
+    assert "situação BAIXADA" in f.sub.text()
+    f.details["zip_code"].setText("13015002")
+    f.cep_btn.click()
+    assert (f.details["address"].text(), f.details["city"].text()) == ("Rua A, Centro", "Campinas")

@@ -9,6 +9,8 @@ from finora.models import Account, Entry
 
 
 def test_chaves_estrangeiras_ligadas(session):
+    if session.bind.dialect.name != "sqlite":
+        pytest.skip("só o SQLite precisa ligar as chaves estrangeiras em cada conexão")
     assert session.execute(text("PRAGMA foreign_keys")).scalar() == 1
 
 

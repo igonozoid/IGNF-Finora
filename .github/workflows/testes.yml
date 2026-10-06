@@ -40,3 +40,42 @@ jobs:
 
       - name: Rodar os testes
         run: python -m pytest -q --durations=5
+
+  servidor:
+    name: regras no MariaDB (Finora Servidor)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: finora_test
+          MARIADB_USER: finora
+          MARIADB_PASSWORD: finora
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      PYTHONUTF8: "1"
+      FINORA_DATA_DIR: ${{ github.workspace }}/.dados-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Instalar o Finora e as dependências de teste
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Criar o banco de migração
+        run: |
+          mysql -h127.0.0.1 -uroot -proot -e "CREATE DATABASE finora_mig CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON finora_mig.* TO 'finora'@'%';"
+      - name: Migrações do zero no MariaDB
+        run: |
+          python -c "from sqlalchemy import create_engine; from finora.core import db; db.init_db(create_engine('mysql+pymysql://finora:finora@127.0.0.1:3306/finora_mig?charset=utf8mb4')); print('ok')"
+      - name: Regras de negócio no MariaDB
+        env:
+          FINORA_TEST_DB_URL: mysql+pymysql://finora:finora@127.0.0.1:3306/finora_test?charset=utf8mb4
+        run: python -m pytest -q tests --ignore=tests/ui

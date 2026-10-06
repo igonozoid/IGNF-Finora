@@ -1,3 +1,4 @@
+import os
 from decimal import Decimal
 
 import pytest
@@ -9,8 +10,42 @@ from finora.models import Base
 from finora.services import setup
 
 
+# Para rodar as regras contra o banco do servidor (MariaDB/PostgreSQL), aponte para um banco de TESTE vazio:
+#   FINORA_TEST_DB_URL=mysql+pymysql://usuario:senha@127.0.0.1:3306/finora_test pytest tests --ignore=tests/ui
+TEST_DB_URL = os.environ.get("FINORA_TEST_DB_URL")
+
+
+@pytest.fixture(scope="session")
+def _server_engine():
+    if not TEST_DB_URL:
+        yield None
+        return
+    eng = create_engine(TEST_DB_URL)
+    Base.metadata.drop_all(eng)
+    Base.metadata.create_all(eng)
+    yield eng
+    eng.dispose()
+
+
+def _wipe(eng):
+    """Esvazia todas as tabelas entre um teste e outro (bem mais rápido que recriar)."""
+    with eng.begin() as conn:
+        if eng.dialect.name in ("mysql", "mariadb"):
+            conn.exec_driver_sql("SET FOREIGN_KEY_CHECKS=0")
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(table.delete())
+        if eng.dialect.name in ("mysql", "mariadb"):
+            conn.exec_driver_sql("SET FOREIGN_KEY_CHECKS=1")
+
+
 @pytest.fixture
-def session():
+def session(_server_engine):
+    if _server_engine is not None:
+        with Session(_server_engine) as s:
+            yield s
+            s.rollback()
+        _wipe(_server_engine)
+        return
     engine = db.sqlite_pragmas(create_engine("sqlite://"))
     Base.metadata.create_all(engine)
     with Session(engine) as s:

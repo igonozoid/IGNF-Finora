@@ -57,7 +57,7 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 - [x] Cartão de crédito com fechamento, vencimento e fatura
 - [ ] Relatórios: extrato por conta, por categoria, por contato, inadimplência
 - [x] Lançamentos: filtro por conta/categoria, ordenar colunas, duplicar, pagar vários de uma vez
-- [ ] Recibo imprimível (do IgnControl)
+- [x] Recibo imprimível (do IgnControl)
 - [ ] Busca global (Ctrl K) e seletor de período no cabeçalho (do mockup)
 - [ ] Contatos ampliados (endereço, dados bancários)
 - [ ] Fontes IBM Plex embutidas

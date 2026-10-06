@@ -88,3 +88,15 @@ def get_license_key() -> str:
 
 def set_license_key(key: str) -> None:
     _s().setValue("license/key", key)
+
+
+def get_receipt_defaults() -> tuple[str, str]:
+    """(cidade, seu CPF/CNPJ) usados no último recibo."""
+    s = _s()
+    return str(s.value("receipt/city", "")), str(s.value("receipt/my_doc", ""))
+
+
+def set_receipt_defaults(city: str, my_doc: str) -> None:
+    s = _s()
+    s.setValue("receipt/city", city)
+    s.setValue("receipt/my_doc", my_doc)

@@ -19,6 +19,7 @@ from finora.services.entries import EntryData, EntryView
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.card_statements import open_statements
+from finora.ui.receipt_dialog import ReceiptDialog
 from finora.ui.widgets import button, field_label, help_icon, lock_icon, show_upgrade, themed_icon
 
 MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro",
@@ -962,6 +963,10 @@ class EntriesPage(QWidget):
         self.form.open_edit(e)
         self._show_form(True)
 
+    def issue_receipt(self, e: EntryView):
+        """Recibo para imprimir ou salvar em PDF (receita: você assina; despesa: o contato assina)."""
+        ReceiptDialog(self, e.id, self.t).exec()
+
     def duplicate_entry(self, e: EntryView):
         """Abre um lançamento novo já preenchido com os dados deste (nada é salvo até clicar Salvar)."""
         self.form.open_copy(e)
@@ -1069,6 +1074,9 @@ class EntriesPage(QWidget):
                            lambda: self._toggle_paid(e))
         menu.addAction(qta.icon("fa6s.pen", color=self.t["mut"]), "Editar", lambda: self.edit_entry(e))
         menu.addAction(qta.icon("fa6s.clone", color=self.t["mut"]), "Duplicar", lambda: self.duplicate_entry(e))
+        if e.kind != "transfer" and not e.on_card:
+            menu.addAction(qta.icon("fa6s.receipt", color=self.t["mut"]), "Emitir recibo…",
+                           lambda: self.issue_receipt(e))
         menu.addSeparator()
         menu.addAction(qta.icon("fa6s.trash", color=self.t["neg"]), "Excluir", lambda: self._delete(e))
         menu.exec(self.table.viewport().mapToGlobal(pos))

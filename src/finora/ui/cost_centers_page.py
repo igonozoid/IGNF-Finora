@@ -242,6 +242,9 @@ class CostCentersPage(QWidget):
         self.left.setVisible(not (narrow and self._open))
         self.panel_scroll.setFixedWidth(max(PANEL_W, self.width() - 28) if narrow else PANEL_W)
         self.cancel_btn.setVisible(narrow or self.editing is not None)
+        # pouco espaço para a tabela: a barra de consumo sai (o % do status continua)
+        table_w = self.width() - (0 if narrow else PANEL_W + theme.SP_L) - 28
+        self.table.setColumnHidden(C_BAR, table_w < 640)
 
     def _error(self, msg: str | None):
         self.error.setText(msg or "")

@@ -14,12 +14,11 @@ considerado maduro, em fases. Cada item vira um passo pequeno, testado e com com
 - **Versão "web" (futuro, mensalidade)**: é **o mesmo app desktop**, só que com o banco **remoto** (nuvem),
   na hospedagem própria (HostGator: PHP + MySQL). Não é um site.
 - **Versão mobile (futuro)**: app **simplificado** que conecta ao servidor web.
-- **A decidir — como o app fala com o banco remoto**: celular não deve (nem consegue com segurança) falar
-  direto com o MySQL, então o mobile exige uma **API** no servidor web (PHP, que a HostGator roda). O desktop
-  poderia conectar direto no MySQL remoto, mas isso põe a senha do banco em cada instalação e a HostGator
-  só libera MySQL remoto para IPs cadastrados. **Recomendação**: o desktop também usar a API — e o
-  **Finora Servidor** (rede local, Fase E) falar o **mesmo protocolo** (HTTP/JSON). Assim um app só tem três
-  modos de dados: este PC, rede local (Finora Servidor) e nuvem (API PHP), e o mobile reaproveita a API.
+- **Decidido (06/10/2026) — servidor de banco**: na rede local, o **Finora Servidor** sobe um **MariaDB
+  portátil** num PC e os outros PCs conectam direto nele (o código já é compatível: SQLAlchemy + Alembic).
+  A nuvem segue a mesma ideia com o MySQL/MariaDB da HostGator. Trocas aceitas: as permissões são conferidas
+  em cada PC (não no servidor) e a senha do banco fica em cada instalação. O **mobile**, quando vier, vai
+  precisar de uma API própria no servidor web.
 
 ### Distribuição
 - **App portátil, sem instalador** (instalador fica para depois, se fizer sentido).
@@ -78,7 +77,7 @@ Ordem de implementação:
 - [x] Backup automático ao fechar numa pasta de nuvem (OneDrive, Google Drive, Dropbox), últimos 14 dias
 - [x] Do IgnControl: fechamento de período (trava lançamentos até uma data)
 - [x] Do IgnControl: previsão de caixa dia a dia (pior saldo projetado) e relatório analítico
-- [x] App de licenças: pasta `../IGNF-Finora-Licencas` (git local; falta criar o repositório privado no GitHub)
+- [x] App de licenças: repositório privado `igonozoid/IGNF-Finora-Licencas` (pasta `../IGNF-Finora-Licencas`)
 
 Do IgnControl **não** trazemos: estoque, vendas, RH, rural, agenda de tarefas e cofre de senhas — fogem de
 finanças pessoais. Podem virar módulos opcionais no futuro.
@@ -93,11 +92,10 @@ finanças pessoais. Podem virar módulos opcionais no futuro.
 - [x] Limites por edição (usuários e entidades) checados em `core/licensing.allowed()`
 - [ ] **Rede local**: escolher "este PC" ou "rede" no primeiro uso/Configurações.
   - Não usar o arquivo SQLite em pasta compartilhada (corrompe com 2 PCs gravando).
-  - **Decidido: "Finora Servidor"** — um PC (Windows ou Linux) roda o Finora em modo servidor, dono do
-    banco; os outros PCs falam com ele pela rede. Mais simples para o cliente (não instala banco à parte) e
-    as permissões ficam garantidas no servidor.
-  - Os `services/` passam a poder rodar no servidor; a UI fala com eles localmente (modo "este PC") ou
-    pela rede (modo LAN).
+  - **Finora Servidor**: um PC (Windows ou Linux) roda um MariaDB portátil cuidado pelo Finora (iniciar,
+    parar, criar o banco e o usuário, mostrar o endereço para os outros PCs). Os outros PCs apontam para ele
+    em Configurações › Onde ficam os dados.
+  - Levar os dados deste PC para o servidor (cópia completa) e backup do servidor para um arquivo .db.
 - [ ] Indicador de conexão na barra de status (mockup: "Conectado · …", "usuários online")
 
 ## Fase D — Distribuição
@@ -112,5 +110,5 @@ finanças pessoais. Podem virar módulos opcionais no futuro.
 ## Futuro (a estudar)
 
 - [ ] Modo nuvem: o mesmo app desktop com o banco remoto (HostGator, PHP + MySQL), por mensalidade
-- [ ] API no servidor web (PHP), com o mesmo protocolo do Finora Servidor (ver "A decidir" acima)
+- [ ] API no servidor web para o app mobile
 - [ ] App mobile simplificado, conectado à API do servidor web

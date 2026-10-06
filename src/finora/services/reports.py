@@ -332,6 +332,42 @@ def by_contact(s: Session, entity_id: int, first: date, last: date) -> list[Cont
     return sorted(out, key=lambda x: -(x.received + x.paid))
 
 
+# ---------- por centro de custo ----------
+@dataclass(frozen=True)
+class CostCenterTotal:
+    name: str
+    budget: Decimal | None             # orçamento do período (mensal x nº de meses)
+    spent: Decimal
+    received: Decimal
+    count: int
+
+
+def by_cost_center(s: Session, entity_id: int, first: date, last: date) -> list[CostCenterTotal]:
+    """Gastos e receitas de cada centro de custo no período (competência). Lançamentos sem centro entram
+    numa linha "Sem centro de custo" no fim, para o total bater."""
+    from finora.models import CostCenter
+    q = (select(Entry.cost_center_id, Entry.kind, Entry.amount)
+         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
+                Entry.competence_date.between(first, last)))
+    acc: dict[int | None, list] = {}
+    for cc, kind, amount in s.execute(q):
+        item = acc.setdefault(cc, [ZERO, ZERO, 0])
+        item[0 if kind == "expense" else 1] += Decimal(amount)
+        item[2] += 1
+    months = (last.year - first.year) * 12 + last.month - first.month + 1
+    out = []
+    for c in s.scalars(select(CostCenter).where(CostCenter.entity_id == entity_id)):
+        spent, received, n = acc.pop(c.id, [ZERO, ZERO, 0])
+        if n or c.is_active:
+            budget = (Decimal(c.budget) * months).quantize(CENT) if c.budget else None
+            out.append(CostCenterTotal(c.name, budget, spent.quantize(CENT), received.quantize(CENT), n))
+    out.sort(key=lambda x: (-x.spent, x.name.lower()))
+    if None in acc:
+        spent, received, n = acc[None]
+        out.append(CostCenterTotal("Sem centro de custo", None, spent.quantize(CENT), received.quantize(CENT), n))
+    return out
+
+
 # ---------- inadimplência (atrasados) ----------
 AGING = [(30, "Até 30 dias"), (60, "31 a 60 dias"), (90, "61 a 90 dias"), (None, "Mais de 90 dias")]
 

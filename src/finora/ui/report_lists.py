@@ -262,6 +262,36 @@ class ByContactView(TableReport):
         self.footer.setText(f"Recebido <b>{self.fmt(rec)}</b> &nbsp;·&nbsp; Pago <b>{self.fmt(-paid)}</b>")
 
 
+# ---------- por centro de custo ----------
+class ByCostCenterView(TableReport):
+    TITLE = "Por centro de custo"
+    COLUMNS = [("CENTRO DE CUSTO", None, False), ("QTD.", 60, True), ("ORÇADO", 120, True),
+               ("GASTO", 120, True), ("DIFERENÇA", 120, True), ("RECEBIDO", 120, True)]
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.period = self.period_box()
+        self.bar.addWidget(self.period)
+        self.finish_bar("Quanto foi gasto (e recebido) em cada centro de custo no período, pago ou não.\n"
+                        "Orçado = orçamento mensal do centro x meses do período. Diferença negativa = estourou.")
+
+    def refresh(self):
+        first, last = reports.period_range(self.period.currentData())
+        with Session() as s:
+            data = reports.by_cost_center(s, self.profile.id, first, last)
+        rows = []
+        for r in data:
+            diff = (r.budget - r.spent) if r.budget is not None else None
+            rows.append({"cells": [r.name, r.count, r.budget, -r.spent if r.spent else None, diff,
+                                   r.received or None],
+                         "tones": {4: "neg" if diff is not None and diff < 0 else "pos" if diff else None, 5: "pos"},
+                         "muted": r.name == "Sem centro de custo"})
+        self.fill(rows, "Nenhum centro de custo com lançamentos neste período.\n"
+                        "Cadastre em Centros de custo e escolha-o nos lançamentos.")
+        spent = sum((r.spent for r in data if r.name != "Sem centro de custo"), Decimal(0))
+        self.footer.setText(f"Gasto com centro de custo <b>{self.fmt(-spent)}</b>")
+
+
 # ---------- inadimplência ----------
 class OverdueView(TableReport):
     TITLE = "Inadimplência"

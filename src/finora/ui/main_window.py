@@ -19,6 +19,7 @@ from finora.ui import theme
 from finora.ui.accounts_page import AccountsPage
 from finora.ui.categories_page import CategoriesPage
 from finora.ui.contacts_page import ContactsPage
+from finora.ui.cost_centers_page import CostCentersPage
 from finora.ui.dashboard_page import DashboardPage
 from finora.ui.entries_page import MONTHS, EntriesPage
 from finora.ui.header_tools import GlobalSearch, PeriodChip
@@ -38,6 +39,8 @@ NAV = [
      "Aqui você vai cadastrar onde seu dinheiro fica: conta no banco, dinheiro na carteira, cartão de crédito…"),
     ("categories", "fa6s.tags", "Categorias", "Para onde vai cada real",
      "Aqui você vai organizar seus gastos e ganhos em grupos, como Moradia, Alimentação e Lazer."),
+    ("cost_centers", "fa6s.diagram-project", "Centros de custo", "Orçado x realizado de cada centro",
+     "Aqui você separa os gastos por Casa, Carro, Viagem… e acompanha o orçamento de cada um."),
     ("contacts", "fa6s.address-book", "Contatos", "Pessoas e empresas com quem você troca dinheiro",
      "Aqui você vai cadastrar quem te paga e quem você paga, para encontrar tudo mais rápido."),
     ("reconcile", "fa6s.scale-balanced", "Conciliação", "Extrato do banco x seus lançamentos",
@@ -50,7 +53,7 @@ NAV = [
 
 KEYS = [n[0] for n in NAV]
 SHOW_NEW_ENTRY = {"dashboard", "entries", "accounts"}
-PERIOD_PAGES = {"dashboard", "entries"}       # telas que usam o mês do cabeçalho
+PERIOD_PAGES = {"dashboard", "entries", "cost_centers"}       # telas que usam o mês do cabeçalho
 
 
 class Sidebar(QWidget):
@@ -259,7 +262,7 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         t = theme.tokens(settings.get_theme(theme.DEFAULT_THEME))
         built = {"dashboard": DashboardPage, "entries": EntriesPage, "accounts": AccountsPage,
-                 "categories": CategoriesPage, "contacts": ContactsPage, "reconcile": ReconcilePage,
+                 "categories": CategoriesPage, "cost_centers": CostCentersPage, "contacts": ContactsPage, "reconcile": ReconcilePage,
                  "reports": ReportsPage,
                  "settings": SettingsPage}
         self.pages = [built[key](profile, t) if key in built else PlaceholderPage(icon, label, text)
@@ -375,6 +378,7 @@ class MainWindow(QMainWindow):
         self.header.period.set(year, month)
         self.page("entries").set_period(year, month)
         self.page("dashboard").set_period(year, month)
+        self.page("cost_centers").set_period(year, month)
         if self.current_key() == "dashboard":
             self.go_to("dashboard")
 

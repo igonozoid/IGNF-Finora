@@ -15,7 +15,7 @@ import qtawesome as qta
 from finora.core import money
 from finora.core.db import Session
 from finora.core.licensing import allowed, current_edition
-from finora.services import accounts, cards, categories, contacts, entries, export
+from finora.services import accounts, cards, categories, contacts, cost_centers, entries, export
 from finora.services.entries import EntryData, EntryView
 from finora.services.setup import Profile
 from finora.ui import theme
@@ -306,6 +306,12 @@ class EntryForm(QFrame):
         self.category_box = self._field("Categoria", self.category,
                                         help_text="Grupo do gasto ou do ganho. É o que monta a sua DRE pessoal.")
         lay.addLayout(self.category_box)
+        self.cost_center = QComboBox()
+        self.cc_box = self._field("Centro de custo", self.cost_center,
+                                  help_text="Outro jeito de agrupar além da categoria: Casa, Carro, Viagem…\n"
+                                            "Cadastre em Centros de custo (opcional).")
+        lay.addLayout(self.cc_box)
+        self._has_cc = False
         self.contact = QComboBox(editable=True)
         self.contact.lineEdit().setPlaceholderText("Opcional")
         self.contact.setInsertPolicy(QComboBox.NoInsert)
@@ -422,6 +428,21 @@ class EntryForm(QFrame):
         self.contact.clear()
         self.contact.addItems(self._contacts)
         self.contact.setCurrentText(current)
+        self._load_cost_centers(self.cost_center.currentData())
+
+    def _load_cost_centers(self, keep: int | None = None):
+        """Só aparece nas edições pagas e quando há centros de custo cadastrados."""
+        items = []
+        if allowed(current_edition(), "cost_centers"):
+            with Session() as s:
+                items = cost_centers.choices(s, self.profile.id, keep)
+        self.cost_center.clear()
+        self.cost_center.addItem("Nenhum", None)
+        for cid, name in items:
+            self.cost_center.addItem(name, cid)
+        self.cost_center.setCurrentIndex(max(0, self.cost_center.findData(keep)) if keep else 0)
+        self._has_cc = bool(items)
+        self._set_visible(self.cc_box, self._has_cc and self._kind() != "transfer")
 
     def _load_categories(self, keep: int | None = None):
         with Session() as s:
@@ -437,6 +458,7 @@ class EntryForm(QFrame):
         transfer = k == "transfer"
         self._set_visible(self.dest_box, transfer)
         self._set_visible(self.category_box, not transfer)
+        self._set_visible(self.cc_box, not transfer and self._has_cc)
         self._set_visible(self.contact_box, not transfer)
         self.account_lbl.label.setText("Da conta" if transfer else "Conta")
         self.paid.setText({"income": "Já foi recebido", "expense": "Já foi pago", "transfer": "Já foi feita"}[k])
@@ -504,6 +526,7 @@ class EntryForm(QFrame):
             pick = self._last_account if self._last_account in ids else min(ids)
             self.account.setCurrentIndex(ids.index(pick))
         self.category.setCurrentIndex(0)  # não herdar a categoria do último lançamento editado
+        self.cost_center.setCurrentIndex(0)
         self._kind_changed()
         self.desc.clear()
         self.amount.clear()
@@ -533,6 +556,7 @@ class EntryForm(QFrame):
         if e.dest_account_id:
             self.dest.setCurrentIndex(max(0, self.dest.findData(e.dest_account_id)))
         self._load_categories(e.category_id)
+        self._load_cost_centers(e.cost_center_id)
         self.desc.setText(e.description)
         self.amount.setText(money.fmt(e.amount, self.profile.currency).split(" ", 1)[1])
         self.contact.setCurrentText(e.contact or "")
@@ -554,6 +578,7 @@ class EntryForm(QFrame):
         self._load_categories(e.category_id)
         if e.category_id is None:
             self.category.setCurrentIndex(0)
+        self._load_cost_centers(e.cost_center_id)
         self.contact.setCurrentText(e.contact or "")
         self.doc.setText(e.document_no or "")
         self.paid.setChecked(e.is_paid)
@@ -587,6 +612,7 @@ class EntryForm(QFrame):
             kind=k, description=self.desc.text(), amount=value, due_date=self.due.date().toPython(),
             account_id=self.account.currentData(), dest_account_id=self.dest.currentData() if k == "transfer" else None,
             category_id=self.category.currentData() if k != "transfer" else None,
+            cost_center_id=self.cost_center.currentData() if k != "transfer" else None,
             contact=self.contact.currentText() if k != "transfer" else None, document_no=self.doc.text(),
             paid=self.paid.isChecked() and self._card() is None,
             paid_date=self.paid_date.date().toPython() if self.paid.isChecked() else None,

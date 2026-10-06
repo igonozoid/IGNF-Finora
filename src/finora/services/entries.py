@@ -15,7 +15,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from finora.core.money import CENT
-from finora.models import Account, Category, Contact, Entry
+from finora.models import Account, Category, Contact, CostCenter, Entry
 from finora.services import contacts
 
 KINDS = {"expense": "Despesa", "income": "Receita", "transfer": "Transferência"}
@@ -84,6 +84,8 @@ class EntryView:
     installment: str | None
     series_id: str | None
     competence_date: date | None = None   # data da compra (cartão) / competência
+    cost_center_id: int | None = None
+    cost_center: str | None = None
 
     @property
     def is_paid(self) -> bool:
@@ -123,20 +125,21 @@ class Totals:
 def query(entity_id: int):
     dest = aliased(Account)
     return (
-        select(Entry, Account.name, dest.name, Category.name, Contact.name)
+        select(Entry, Account.name, dest.name, Category.name, Contact.name, CostCenter.name)
         .join(Account, Entry.account_id == Account.id)
         .outerjoin(dest, Entry.dest_account_id == dest.id)
         .outerjoin(Category, Entry.category_id == Category.id)
         .outerjoin(Contact, Entry.contact_id == Contact.id)
+        .outerjoin(CostCenter, Entry.cost_center_id == CostCenter.id)
         .where(Entry.entity_id == entity_id, Entry.status != "canceled")
     )
 
 
 def to_view(row) -> EntryView:
-    e, acc, dest, cat, ct = row
+    e, acc, dest, cat, ct, cc = row
     return EntryView(e.id, e.kind, e.description or "", Decimal(e.amount), e.due_date, e.paid_date, e.status,
                      e.account_id, acc, e.dest_account_id, dest, e.category_id, cat, ct, e.document_no,
-                     e.installment, e.series_id, e.competence_date)
+                     e.installment, e.series_id, e.competence_date, e.cost_center_id, cc)
 
 
 def list_entries(s: Session, entity_id: int, *, year: int, month: int, filter: str = "all",
@@ -204,6 +207,7 @@ class EntryData:
     paid_date: date | None = None
     repeat: str = "none"
     times: int = 1
+    cost_center_id: int | None = None
 
 
 def _validate(s: Session, entity_id: int, d: EntryData) -> None:
@@ -226,6 +230,10 @@ def _validate(s: Session, entity_id: int, d: EntryData) -> None:
             raise ValueError("Categoria inválida.")
         if cat.kind != d.kind:
             raise ValueError("Essa categoria é de " + ("receita." if cat.kind == "income" else "despesa."))
+    if d.cost_center_id is not None and d.kind != "transfer":
+        cc = s.get(CostCenter, d.cost_center_id)
+        if cc is None or cc.entity_id != entity_id:
+            raise ValueError("Centro de custo inválido.")
     if not d.description.strip():
         raise ValueError("Escreva uma descrição (ex.: Conta de luz).")
     if d.repeat not in REPEATS:
@@ -257,6 +265,7 @@ def _apply(e: Entry, d: EntryData, entity_id: int, contact_id: int | None) -> No
     e.account_id = d.account_id
     e.dest_account_id = d.dest_account_id if transfer else None
     e.category_id = None if transfer else d.category_id
+    e.cost_center_id = None if transfer else d.cost_center_id
     e.contact_id = None if transfer else contact_id
     e.document_no = (d.document_no or "").strip() or None
 

@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QPushButton
 
 from finora.core import db, logs, settings
 from finora.services import accounts, categories, setup
-from finora.ui.main_window import NAV, SHOW_NEW_ENTRY
+from finora.ui.main_window import KEYS, NAV, SHOW_NEW_ENTRY
 
 
 def test_todas_as_telas_abrem(window, qtbot):
@@ -36,8 +36,9 @@ def test_tres_formatos_de_menu(window):
     assert window.sidebar.isVisible() and window.sidebar.width() == 52 and not window.tabs.isVisible()
     window.set_nav("tabs")
     assert not window.sidebar.isVisible() and window.tabs.isVisible()
-    window.tabs.group.button(4).click()
-    assert window.current_key() == "contacts" and window.sidebar.group.checkedId() == 4
+    i = KEYS.index("contacts")
+    window.tabs.group.button(i).click()
+    assert window.current_key() == "contacts" and window.sidebar.group.checkedId() == i
     window.set_nav("sidebar")
     assert window.sidebar.width() == 200 and settings.get_nav() == "sidebar"
 

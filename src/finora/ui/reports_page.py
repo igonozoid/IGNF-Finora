@@ -31,11 +31,13 @@ REPORTS = [
     ("flow", "Fluxo de caixa", "fa6s.water", None),
     ("statement", "Extrato por conta", "fa6s.list", None),
     ("category", "Por categoria", "fa6s.tags", None),
+    ("cost_center", "Por centro de custo", "fa6s.diagram-project", "cost_centers"),
     ("contact", "Por contato", "fa6s.address-book", None),
     ("overdue", "Inadimplência", "fa6s.hourglass-half", None),
     ("budget", "Orçado x realizado", "fa6s.bullseye", "budget"),
 ]
 LOCK_MSG = {"budget": "Orçado x realizado é um recurso da edição Plus.",
+            "cost_centers": "Relatório por centro de custo é um recurso da edição Plus.",
             "export": "Exportar para Excel e PDF é um recurso da edição Plus."}
 
 
@@ -535,6 +537,7 @@ class ReportsPage(QWidget):
         from finora.ui import report_lists as rl
         self.views = {"dre": DreView(profile, t), "flow": FlowView(profile, t),
                       "statement": rl.AccountStatementView(profile, t), "category": rl.ByCategoryView(profile, t),
+                      "cost_center": rl.ByCostCenterView(profile, t),
                       "contact": rl.ByContactView(profile, t), "overdue": rl.OverdueView(profile, t)}
         self.stack = QStackedWidget()
         for v in self.views.values():

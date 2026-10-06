@@ -9,6 +9,8 @@ class Entity(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120))
     currency: Mapped[str] = mapped_column(String(3), default="BRL")
+    # Fechamento de período: lançamentos com competência até esta data não mudam mais (None = aberto).
+    locked_through: Mapped[date | None]
 
 class Account(Base):
     __tablename__ = "accounts"

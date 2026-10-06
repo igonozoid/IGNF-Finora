@@ -16,7 +16,7 @@ from finora.core import money
 from finora.core.db import Session
 from finora.core.licensing import allowed, current_edition
 from finora.services import (
-    accounts, attachments, budgets, cards, categories, contacts, cost_centers, entries, export,
+    accounts, attachments, budgets, cards, categories, contacts, cost_centers, entries, export, period_lock,
 )
 from finora.services.entries import EntryData, EntryView
 from finora.services.setup import Profile
@@ -629,6 +629,14 @@ class EntryForm(QFrame):
         elif e.is_recurring:
             self.series_info.setText("Lançamento que se repete.")
         self.series_info.setVisible(bool(e.series_id))
+        with Session() as s:
+            lock = period_lock.locked_through(s, self.profile.id)
+        when = e.competence_date or e.due_date
+        if lock and when <= lock:
+            self.series_info.setText(f"Período fechado até {lock:%d/%m/%Y}: este lançamento não pode ser "
+                                     "alterado nem excluído — só dá para marcar o pagamento.")
+            self.series_info.show()
+        self.delete_btn.setEnabled(not (lock and when <= lock))
         self.attach.set_entry(e.id)
         self.delete_btn.show()
         self._error(None)

@@ -148,6 +148,10 @@ def set_rate(s: Session, entity_id: int, currency: str, day: date, rate: Decimal
         raise ValueError(f"Moeda não suportada: {currency}")
     if rate is None or rate <= 0:
         raise ValueError("A cotação precisa ser maior que zero.")
+    from finora.services import period_lock
+    lock = period_lock.locked_through(s, entity_id)
+    if lock and day <= lock:
+        raise ValueError(f"O período até {lock:%d/%m/%Y} está fechado: cadastre cotações de datas depois dele.")
     r = s.scalar(select(ExchangeRate).where(ExchangeRate.entity_id == entity_id, ExchangeRate.currency == currency,
                                             ExchangeRate.day == day))
     if r is None:
@@ -164,6 +168,9 @@ def delete_rate(s: Session, rate_id: int) -> None:
     if r is None:
         return
     entity_id, currency = r.entity_id, r.currency
+    from finora.services import period_lock
+    if period_lock.is_locked(s, entity_id, r.day):
+        raise ValueError("Essa cotação é de um período fechado e não pode ser excluída.")
     s.delete(r)
     s.commit()
     recompute(s, entity_id, currency)

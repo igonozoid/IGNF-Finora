@@ -76,7 +76,7 @@ Ordem de implementação:
 - [x] Multimoeda: moedas, cotações com histórico por data (manual ou PTAX), contas em outra moeda, transferência com câmbio
 - [x] Autopreencher CNPJ (BrasilAPI) e endereço pelo CEP; CPF não tem consulta pública (LGPD)
 - [x] Backup automático ao fechar numa pasta de nuvem (OneDrive, Google Drive, Dropbox), últimos 14 dias
-- [ ] Do IgnControl: fechamento de período (trava lançamentos até uma data)
+- [x] Do IgnControl: fechamento de período (trava lançamentos até uma data)
 - [ ] Do IgnControl: previsão de caixa dia a dia (pior saldo projetado) e relatório analítico
 - [ ] App de licenças (repositório privado)
 

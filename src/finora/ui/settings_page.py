@@ -1,11 +1,11 @@
 """Configurações: backup e restauração, aparência, edição e informações do app."""
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths, Qt, QUrl, Signal
+from PySide6.QtCore import QDate, QStandardPaths, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
+    QCheckBox, QComboBox, QDateEdit, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget,
 )
 
@@ -16,7 +16,7 @@ from finora.core.license_key import LicenseError
 from finora.core.licensing import allowed, current_edition
 from finora.core import money
 from finora.core.db import Session
-from finora.services import backup, setup
+from finora.services import backup, period_lock, setup
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.widgets import button, help_icon, icon_label, set_tone, show_upgrade, upgrade_box
@@ -74,6 +74,7 @@ class SettingsPage(QWidget):
         self.currencies.message.connect(self.message.emit)
         bl.addWidget(self.currencies)
         bl.addWidget(self._backup_section())
+        bl.addWidget(self._lock_section())
         bl.addWidget(self._appearance_section())
         bl.addWidget(self._edition_section())
         bl.addWidget(self._about_section())
@@ -433,6 +434,75 @@ class SettingsPage(QWidget):
         settings.set_auto_backup(on)
         self.message.emit("Backup automático ligado." if on else "Backup automático desligado.")
 
+    # ---------- fechamento de período ----------
+    def _lock_section(self) -> QFrame:
+        box, lay = _section("Fechamento de período", "fa6s.lock", self.t)
+        lay.addWidget(_muted("Conferiu um mês e está tudo certo? Feche-o: lançamentos até a data escolhida não "
+                             "podem mais ser criados, alterados nem excluídos, e a DRE e os relatórios do passado "
+                             "ficam como estão. Pagar depois uma conta antiga continua permitido."))
+        if not allowed(current_edition(), "period_lock"):
+            self.lock_date = None
+            lay.addWidget(upgrade_box("Fechamento de período é um recurso das edições Plus e Pro.", self.t, self,
+                                      compact=True))
+            return box
+        self.lock_status = QLabel(wordWrap=True)
+        lay.addWidget(self.lock_status)
+        row = QHBoxLayout()
+        row.setSpacing(theme.SP_M)
+        self.lock_date = QDateEdit(calendarPopup=True, displayFormat="dd/MM/yyyy")
+        self.lock_date.setFont(theme.mono_font())
+        self.lock_btn = button("Fechar até esta data", "secondary", self.t, "fa6s.lock", "fg")
+        self.unlock_btn = button("Reabrir tudo", "link", self.t, "fa6s.lock-open")
+        row.addWidget(self.lock_date)
+        row.addWidget(self.lock_btn)
+        row.addStretch(1)
+        row.addWidget(self.unlock_btn)
+        lay.addLayout(row)
+        self.lock_btn.clicked.connect(self._lock)
+        self.unlock_btn.clicked.connect(self._unlock)
+        self._refresh_lock()
+        return box
+
+    def _refresh_lock(self):
+        if getattr(self, "lock_date", None) is None:
+            return
+        with Session() as s:
+            lock = period_lock.locked_through(s, self.profile.id)
+        today = date.today()
+        last_month_end = today.replace(day=1) - timedelta(days=1)
+        self.lock_date.setMaximumDate(QDate(today.year, today.month, today.day))
+        self.lock_date.setDate(QDate(last_month_end.year, last_month_end.month, last_month_end.day))
+        if lock:
+            self.lock_status.setText(f"Fechado até {lock:%d/%m/%Y}.")
+            set_tone(self.lock_status, None)
+        else:
+            self.lock_status.setText("Nenhum período fechado: todos os lançamentos podem ser alterados.")
+            set_tone(self.lock_status, "mut")
+        self.unlock_btn.setVisible(lock is not None)
+
+    def _lock(self):
+        day = self.lock_date.date().toPython()
+        if QMessageBox.question(self, "Fechar período",
+                                f"Fechar tudo até {day:%d/%m/%Y}? Dá para reabrir depois, se precisar.") \
+                != QMessageBox.Yes:
+            return
+        try:
+            with Session() as s:
+                period_lock.set_lock(s, self.profile.id, day)
+        except ValueError as e:
+            QMessageBox.warning(self, "Fechar período", str(e))
+            return
+        log.info("Período fechado até %s", day)
+        self.message.emit(f"Período fechado até {day:%d/%m/%Y}.")
+        self._refresh_lock()
+
+    def _unlock(self):
+        with Session() as s:
+            period_lock.set_lock(s, self.profile.id, None)
+        log.info("Período reaberto")
+        self.message.emit("Período reaberto: todos os lançamentos podem ser alterados.")
+        self._refresh_lock()
+
     # ---------- aparência ----------
     def _appearance_section(self) -> QFrame:
         box, lay = _section("Aparência", "fa6s.palette", self.t)
@@ -598,6 +668,7 @@ class SettingsPage(QWidget):
     def refresh(self):
         self._refresh_backup()
         self.currencies.refresh()      # contas novas em outra moeda aparecem aqui
+        self._refresh_lock()
 
     def apply_theme(self, t: dict):
         self.t = t

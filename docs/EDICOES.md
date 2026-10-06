@@ -18,13 +18,15 @@ recursos pagos em `core/licensing.py` (`allowed()`), que aparecem com cadeado e 
 | Backup e restauração local | ✓ | ✓ | ✓ |
 | Recibo imprimível e em PDF | ✓ | ✓ | ✓ |
 | Login, permissões por módulo e histórico de alterações | | ✓ | ✓ |
-| Importação OFX / conciliação | | ✓ | ✓ |
+| Importação OFX | | ✓ | ✓ |
 | Anexos de comprovantes | | ✓ | ✓ |
 | Orçamento (orçado x realizado) | | ✓ | ✓ |
 | Exportação Excel/PDF | | ✓ | ✓ |
-| Backup automático em nuvem | | ✓ | ✓ |
+| Backup automático em pasta de nuvem (OneDrive, Google Drive, Dropbox) | | ✓ | ✓ |
 | Centros de custo | | ✓ | ✓ |
-| Autopreencher CPF/CNPJ | | ✓ | ✓ |
+| Autopreencher pelo CNPJ e endereço pelo CEP | | ✓ | ✓ |
+| Fechamento de período | | ✓ | ✓ |
+| Conciliação com o extrato do banco | | ✓ | ✓ |
 
 ¹ **Rede local (LAN)**: um PC roda o **Finora Servidor** (Windows ou Linux) e os outros PCs, cada um com o
 Finora instalado, se conectam a ele. Não é um arquivo numa pasta compartilhada (o SQLite corrompe nesse uso).

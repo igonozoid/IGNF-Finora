@@ -10,6 +10,10 @@ dev = ["pytest>=8", "pytest-qt>=4.4"]
 [project.scripts]
 finora = "finora.__main__:main"
 
+[tool.setuptools.package-data]
+# vão junto no pacote (e no app empacotado): fontes do mockup e o modelo das migrações
+finora = ["assets/fonts/*", "migrations/*.mako"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 qt_api = "pyside6"

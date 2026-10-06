@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 from finora.core import logs, paths, settings
 from finora.core.db import Session, init_db
 from finora.services import backup, setup
-from finora.ui import locale_br, theme
+from finora.ui import fonts, locale_br, theme
 from finora.ui.error_dialog import show_error
 from finora.ui.first_run import FirstRunWizard
 from finora.ui.main_window import MainWindow
@@ -28,6 +28,9 @@ def main():
     app.setOrganizationName(settings.ORG)
     app.setApplicationName(settings.APP)
     app.setStyle("Fusion")
+    loaded = fonts.load()
+    if not {"IBM Plex Sans", "IBM Plex Mono"} <= loaded:
+        log.warning("Fontes IBM Plex não carregadas (%s); usando as do sistema", ", ".join(sorted(loaded)) or "nenhuma")
     font = QFont()
     font.setFamilies(theme.FONT_UI)
     font.setPointSize(theme.FONT_PT)

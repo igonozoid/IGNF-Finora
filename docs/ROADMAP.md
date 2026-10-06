@@ -60,7 +60,7 @@ contato e por centro de custo. Não trazemos o acesso externo por PWA do desktop
 - [x] Recibo imprimível (do IgnControl)
 - [x] Busca global (Ctrl K) e seletor de período no cabeçalho (do mockup)
 - [x] Contatos ampliados (endereço, dados bancários)
-- [ ] Fontes IBM Plex embutidas
+- [x] Fontes IBM Plex embutidas
 
 ## Fase C — Recursos das edições pagas (hoje só com cadeado)
 

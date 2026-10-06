@@ -17,7 +17,7 @@ from sqlalchemy import create_engine  # noqa: E402
 from finora.core import db  # noqa: E402
 from finora.services import accounts, categories, entries, setup  # noqa: E402
 from finora.services.entries import EntryData  # noqa: E402
-from finora.ui import locale_br, theme  # noqa: E402
+from finora.ui import fonts, locale_br, theme  # noqa: E402
 
 
 class Dialogs:
@@ -102,6 +102,7 @@ def sample(profile):
 @pytest.fixture
 def app_t(qapp):
     qapp.setStyle("Fusion")
+    fonts.load()
     locale_br.install(qapp)
     return theme.apply(qapp, "light")
 

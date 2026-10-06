@@ -70,6 +70,23 @@ def set_cloud_folder(path: str) -> None:
     _s().setValue("backup/cloud", path)
 
 
+def get_last_entity() -> int | None:
+    v = _s().value("session/entity", 0, type=int)
+    return v or None
+
+
+def set_last_entity(entity_id: int) -> None:
+    _s().setValue("session/entity", entity_id)
+
+
+def get_last_email() -> str:
+    return str(_s().value("session/email", ""))
+
+
+def set_last_email(email: str) -> None:
+    _s().setValue("session/email", email)
+
+
 def get_last_backup() -> str:
     """Data/hora (ISO) do último backup manual."""
     return str(_s().value("backup/last", ""))

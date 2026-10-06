@@ -85,12 +85,12 @@ finanças pessoais. Podem virar módulos opcionais no futuro.
 
 ## Fase E — Multiusuário, multiempresa e rede local (Plus/Pro)
 
-- [ ] Usuários, login e troca de usuário (mockup: tela de login)
-- [ ] Várias entidades e escolha de entidade (mockup: "Escolha a entidade"); isolamento por `entity_id`
-- [ ] Permissões por módulo e entidade: nenhum / leitura / total (mockup: Administração › Permissões)
-- [ ] Histórico de alterações / auditoria: quem fez o quê e quando, antes/depois (mockup: Log de auditoria)
-- [ ] Tela Administração (mockup): usuários, permissões, entidades, fechamento de período, auditoria
-- [ ] Limites por edição (usuários e entidades) checados em `core/licensing.allowed()`
+- [x] Usuários, login e troca de usuário (mockup: tela de login)
+- [x] Várias entidades e escolha de entidade (mockup: "Escolha a entidade"); isolamento por `entity_id`
+- [x] Permissões por módulo e entidade: nenhum / leitura / total (mockup: Administração › Permissões)
+- [x] Histórico de alterações / auditoria: quem fez o quê e quando, antes/depois (mockup: Log de auditoria)
+- [x] Tela Administração (mockup): usuários, permissões, entidades, fechamento de período, auditoria
+- [x] Limites por edição (usuários e entidades) checados em `core/licensing.allowed()`
 - [ ] **Rede local**: escolher "este PC" ou "rede" no primeiro uso/Configurações.
   - Não usar o arquivo SQLite em pasta compartilhada (corrompe com 2 PCs gravando).
   - **Decidido: "Finora Servidor"** — um PC (Windows ou Linux) roda o Finora em modo servidor, dono do

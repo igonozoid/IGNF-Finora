@@ -68,15 +68,18 @@ class SettingsPage(QWidget):
         bl = QVBoxLayout(body)
         bl.setContentsMargins(0, 0, 0, 0)
         bl.setSpacing(theme.SP_L)
-        bl.addWidget(self._profile_section())
         from finora.ui.currencies_section import CurrenciesSection
         self.currencies = CurrenciesSection(profile.id, profile.currency, t, MAX_W)
         self.currencies.message.connect(self.message.emit)
-        bl.addWidget(self.currencies)
-        bl.addWidget(self._backup_section())
-        bl.addWidget(self._lock_section())
+        # seções que só quem administra vê (perfil, moedas, backup, fechamento e licença)
+        self.admin_sections = [self._profile_section(), self.currencies, self._backup_section(),
+                               self._lock_section()]
+        for w in self.admin_sections:
+            bl.addWidget(w)
         bl.addWidget(self._appearance_section())
-        bl.addWidget(self._edition_section())
+        edition = self._edition_section()
+        self.admin_sections.append(edition)
+        bl.addWidget(edition)
         bl.addWidget(self._about_section())
         bl.addStretch(1)
         scroll = QScrollArea(objectName="pageScroll", widgetResizable=True, frameShape=QFrame.NoFrame)
@@ -663,6 +666,11 @@ class SettingsPage(QWidget):
         row.addWidget(open_btn)
         lay.addLayout(row)
         return box
+
+    def set_admin(self, is_admin: bool):
+        """Sem acesso de administração: só Aparência e Sobre."""
+        for w in self.admin_sections:
+            w.setVisible(is_admin)
 
     # ---------- página ----------
     def refresh(self):

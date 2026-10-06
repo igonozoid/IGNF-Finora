@@ -70,11 +70,37 @@ def main():
         except Exception:                  # backup nunca impede o app de abrir
             log.exception("Backup automático falhou")
 
-    w = MainWindow(profile); w.show()
-    code = app.exec()
+    code = run_session(app, t, first_profile=profile)
     cloud_backup_on_close()
     log.info("App fechado")
     return code
+
+
+def run_session(app, t: dict, first_profile=None) -> int:
+    """Login (se precisar) → entidade → janela. "Trocar de usuário/entidade" fecha a janela e volta aqui."""
+    from finora.core import current
+    from finora.ui.session_flow import pick_entity, pick_user
+    action, user, profile, code = "user", None, first_profile, 0
+    while True:
+        if action == "user":
+            current.clear()
+            user = pick_user(t)
+            if user is None:
+                return code                      # fechou o login: sai do app
+        chosen = pick_entity(user, t, ask=action == "entity")
+        if chosen is None and (action != "entity" or profile is None):
+            if action == "user":
+                QMessageBox.warning(None, "IGNF Finora", "Seu usuário não tem nenhuma entidade liberada. "
+                                                         "Peça acesso a um administrador.")
+            return code
+        profile = chosen or profile               # cancelou a troca de entidade: continua na mesma
+        log.info("Abrindo %s como %s", profile.name, user.name if user else "-")
+        w = MainWindow(profile, user)
+        w.show()
+        code = app.exec()
+        if not w.next_action:
+            return code
+        action = w.next_action
 
 
 def cloud_backup_on_close() -> None:

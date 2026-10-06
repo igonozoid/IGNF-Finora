@@ -1,22 +1,26 @@
 import sys
 from datetime import date
 
-from PySide6.QtCore import QProcess, Qt, QSize
+from PySide6.QtCore import QProcess, QSize, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QButtonGroup,
+    QApplication, QMainWindow, QMenu, QWidget, QFrame, QLabel, QPushButton, QButtonGroup,
     QStackedWidget, QScrollArea, QHBoxLayout, QVBoxLayout,
 )
 import qtawesome as qta
 
 from finora import __version__
-from finora.core import settings
+from finora.core import current as cur_user, settings
 from finora.core.db import DATA_DIR
 from finora.core.licensing import current_edition
 from finora.core.money import CURRENCIES
+from finora.core.db import Session
+from finora.services import permissions, users
 from finora.services.setup import Profile
+from finora.services.users import UserView
 from finora.ui import theme
 from finora.ui.accounts_page import AccountsPage
+from finora.ui.admin_page import AdminPage
 from finora.ui.categories_page import CategoriesPage
 from finora.ui.contacts_page import ContactsPage
 from finora.ui.cost_centers_page import CostCentersPage
@@ -47,6 +51,8 @@ NAV = [
      "Aqui você importa o extrato do banco e confere se tudo foi lançado."),
     ("reports", "fa6s.file-lines", "Relatórios", "DRE, fluxo de caixa, extratos, orçamento e atrasados",
      "Aqui você vai ver, mês a mês, quanto entrou, quanto saiu e quanto sobrou."),
+    ("admin", "fa6s.shield-halved", "Administração", "Usuários, entidades, permissões e auditoria",
+     "Aqui você cadastra quem usa o app, as entidades e o que cada um pode ver."),
     ("settings", "fa6s.gear", "Configurações", "Preferências, backup e licença",
      "Aqui você vai ajustar o app, fazer cópia de segurança dos seus dados e ativar sua licença."),
 ]
@@ -54,6 +60,16 @@ NAV = [
 KEYS = [n[0] for n in NAV]
 SHOW_NEW_ENTRY = {"dashboard", "entries", "accounts"}
 PERIOD_PAGES = {"dashboard", "entries", "cost_centers"}       # telas que usam o mês do cabeçalho
+
+
+class _Clickable(QFrame):
+    """Quadro que avisa quando é clicado (nome no alto do menu: trocar entidade/usuário)."""
+    clicked = Signal()
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(e)
 
 
 class Sidebar(QWidget):
@@ -70,7 +86,8 @@ class Sidebar(QWidget):
         lay.setContentsMargins(theme.SP_M, 10, theme.SP_M, 0)
         lay.setSpacing(2)
 
-        brand = QFrame(objectName="brand")
+        brand = self.brand = _Clickable(objectName="brand")
+        brand.setCursor(Qt.PointingHandCursor)
         bl = QHBoxLayout(brand)
         bl.setContentsMargins(theme.SP_M, theme.SP_M, theme.SP_M, theme.SP_M)
         bl.setSpacing(theme.SP_M)
@@ -121,12 +138,12 @@ class Sidebar(QWidget):
         self._lay = lay
         self._dark = False
 
-    def set_profile(self, profile: Profile):
+    def set_profile(self, profile: Profile, user_name: str = ""):
         self._name.setText(profile.name)
-        self._name.setToolTip(profile.name)
-        self._sub.setText(f"Pessoal · {profile.currency}")
+        self._name.setToolTip(f"{profile.name} — clique para trocar de entidade ou de usuário")
+        self._sub.setText(f"{user_name or 'Pessoal'} · {profile.currency}")
         self._sub.setToolTip(f"Moeda principal: {CURRENCIES[profile.currency][1]}")
-        self._brand_icon.setToolTip(f"{profile.name} · Pessoal · {profile.currency}")
+        self._brand_icon.setToolTip(f"{profile.name} · {user_name or 'Pessoal'} · {profile.currency}")
 
     def set_mode(self, mode: str):
         self.mode = mode
@@ -166,7 +183,8 @@ class TopTabs(QFrame):
         lay = QHBoxLayout(self)
         lay.setContentsMargins(10, 0, 10, 0)
         lay.setSpacing(0)
-        chip = QFrame(objectName="tabChip")
+        chip = self.chip = _Clickable(objectName="tabChip")
+        chip.setCursor(Qt.PointingHandCursor)
         cl = QHBoxLayout(chip)
         cl.setContentsMargins(2, 0, 10, 0)
         cl.setSpacing(6)
@@ -193,9 +211,9 @@ class TopTabs(QFrame):
         self.theme_btn.setToolTip("Alternar entre tema claro e escuro (Ctrl+T)")
         lay.addWidget(self.theme_btn)
 
-    def set_profile(self, profile: Profile):
+    def set_profile(self, profile: Profile, user_name: str = ""):
         self._name.setText(profile.name)
-        self._name.setToolTip(f"{profile.name} · Pessoal · {profile.currency}")
+        self._name.setToolTip(f"{profile.name} · {user_name or 'Pessoal'} · {profile.currency} — clique para trocar")
 
     def apply_theme(self, name: str, t: dict):
         self._chip_icon.setPixmap(qta.icon("fa6s.coins", color=t["acc"]).pixmap(QSize(14, 14)))
@@ -247,9 +265,10 @@ class Header(QFrame):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, profile: Profile):
+    def __init__(self, profile: Profile, user: UserView | None = None):
         super().__init__()
-        self.profile = profile
+        self.profile, self.user = profile, user
+        self.next_action: str | None = None     # "entity" | "user": o main reabre o fluxo de entrada
         self.setWindowTitle("IGNF Finora — Finanças pessoais")
         self.setMinimumSize(800, 480)
         geo = settings.get_geometry()
@@ -263,7 +282,7 @@ class MainWindow(QMainWindow):
         t = theme.tokens(settings.get_theme(theme.DEFAULT_THEME))
         built = {"dashboard": DashboardPage, "entries": EntriesPage, "accounts": AccountsPage,
                  "categories": CategoriesPage, "cost_centers": CostCentersPage, "contacts": ContactsPage, "reconcile": ReconcilePage,
-                 "reports": ReportsPage,
+                 "reports": ReportsPage, "admin": AdminPage,
                  "settings": SettingsPage}
         self.pages = [built[key](profile, t) if key in built else PlaceholderPage(icon, label, text)
                       for key, icon, label, _sub, text in NAV]
@@ -272,6 +291,7 @@ class MainWindow(QMainWindow):
         cfg.restart_requested.connect(self.restart)
         cfg.nav_requested.connect(self.set_nav)
         cfg.profile_changed.connect(self.set_profile)
+        self.page("admin").entities_changed.connect(self._apply_access)     # "Trocar entidade" passa a valer
         for p in self.pages:
             self.stack.addWidget(p)
             if hasattr(p, "message"):
@@ -310,6 +330,8 @@ class MainWindow(QMainWindow):
         self.page("entries").period_locked.connect(self.header.period.set_locked)
         self.page("reports").open_statement.connect(self.open_statement)
         self.sidebar.theme_btn.clicked.connect(self.toggle_theme)
+        self.sidebar.brand.clicked.connect(lambda: self._session_menu(self.sidebar.brand))
+        self.tabs.chip.clicked.connect(lambda: self._session_menu(self.tabs.chip))
         self.header.new_btn.clicked.connect(self.new_entry)
         for i in range(min(len(NAV), 9)):
             QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self, activated=lambda i=i: self.go_to(i))
@@ -320,7 +342,54 @@ class MainWindow(QMainWindow):
         self.theme_name = settings.get_theme(theme.DEFAULT_THEME)
         self.apply_theme(self.theme_name)
         self.apply_nav(settings.get_nav())
-        self.go_to("dashboard")
+        self._apply_access()
+        self.go_to(self.visible_keys[0])
+
+    # ---------- usuário, entidade e permissões ----------
+    def _apply_access(self):
+        """Esconde o que o usuário não pode ver e trava a gravação onde ele só pode ler."""
+        uid = self.user.id if self.user else None
+        with Session() as s:
+            lv = permissions.levels(s, uid, self.profile.id)
+            self._can_switch_user = users.needs_login(s)
+            self._entity_count = len(permissions.entities_for(s, None if not uid or self.user.is_admin else uid))
+        self.levels = lv
+        cur_user.set_entity(self.profile.id, {m for m, level in lv.items() if level != "full"})
+        self.visible_keys = []
+        for i, (key, *_r) in enumerate(NAV):
+            module = permissions.PAGE_MODULE.get(key)
+            if key == "admin":
+                visible = lv["admin"] != "none" or lv["audit"] != "none"
+            else:
+                visible = module is None or lv[module] != "none"
+            self.sidebar.buttons[i][0].setVisible(visible)
+            self.tabs.buttons[i][0].setVisible(visible)
+            if visible:
+                self.visible_keys.append(key)
+        self.page("admin").set_access(lv["admin"], lv["audit"])
+        self.page("settings").set_admin(lv["admin"] == "full")
+        name = self.user.name if self.user else ""
+        self.sidebar.set_profile(self.profile, name)
+        self.tabs.set_profile(self.profile, name)
+
+    def _session_menu(self, anchor: QWidget):
+        menu = QMenu(self)
+        who = menu.addAction(f"{self.user.name if self.user else self.profile.name} · {self.profile.name}")
+        who.setEnabled(False)
+        menu.addSeparator()
+        ent = menu.addAction("Trocar entidade…", lambda: self.switch("entity"))
+        ent.setEnabled(self._entity_count > 1)
+        if self._entity_count <= 1:
+            ent.setToolTip("Você só tem uma entidade. Crie outras em Administração › Entidades.")
+        usr = menu.addAction("Trocar de usuário…", lambda: self.switch("user"))
+        usr.setVisible(self._can_switch_user)
+        menu.exec(anchor.mapToGlobal(anchor.rect().bottomLeft()))
+
+    def switch(self, action: str):
+        """Fecha esta janela e volta para o login ou para a escolha de entidade (o main reabre)."""
+        self.next_action = action
+        self.close()
+        QApplication.instance().quit()
 
     def page(self, key: str) -> QWidget:
         return self.pages[KEYS.index(key)]
@@ -351,6 +420,8 @@ class MainWindow(QMainWindow):
     def go_to(self, where: str | int):
         """Abre uma tela pela chave ("entries") ou pela posição no menu."""
         index = KEYS.index(where) if isinstance(where, str) else where
+        if NAV[index][0] not in getattr(self, "visible_keys", KEYS):
+            return                                   # sem permissão para essa tela (ex.: atalho Ctrl+N)
         key, _icon, label, subtitle, _text = NAV[index]
         page = self.pages[index]
         if hasattr(page, "refresh"):
@@ -367,7 +438,8 @@ class MainWindow(QMainWindow):
         if key != "entries":
             self.header.period.set_locked(False)
         # O botão só aparece onde lançar faz parte do fluxo; o Ctrl+N vale em todas as telas.
-        self.header.new_btn.setVisible(key in SHOW_NEW_ENTRY)
+        self.header.new_btn.setVisible(key in SHOW_NEW_ENTRY and getattr(self, "levels", {}).get(
+            "financial", "full") == "full")
 
     def open_entry(self, entry_id: int):
         self.go_to("entries")
@@ -425,8 +497,9 @@ class MainWindow(QMainWindow):
     def set_profile(self, profile: Profile):
         """Nome ou moeda mudaram em Configurações: atualiza tudo sem reabrir o app."""
         self.profile = profile
-        self.sidebar.set_profile(profile)
-        self.tabs.set_profile(profile)
+        name = self.user.name if self.user else ""
+        self.sidebar.set_profile(profile, name)
+        self.tabs.set_profile(profile, name)
         for page in self.pages:
             parts = [page] + [getattr(page, n) for n in ("form", "model", "chart") if hasattr(page, n)]
             for view in getattr(page, "views", {}).values():

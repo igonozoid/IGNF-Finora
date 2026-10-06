@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from finora.core.licensing import allowed, current_edition
+from finora.core.licensing import LimitError, allowed, current_edition  # noqa: F401 (LimitError: usado pelas telas)
 from finora.core.money import CURRENCIES
 from finora.models import Account, Entity, Entry
 
@@ -18,8 +18,6 @@ KINDS = {
 }
 
 
-class LimitError(Exception):
-    """A edição atual não permite mais contas ativas."""
 
 
 @dataclass(frozen=True)

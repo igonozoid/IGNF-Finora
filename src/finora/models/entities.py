@@ -1,6 +1,8 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import ForeignKey, String, Numeric, Boolean, Integer, LargeBinary, UniqueConstraint
+from sqlalchemy import (
+    Boolean, DateTime, ForeignKey, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
 
@@ -11,6 +13,9 @@ class Entity(Base):
     currency: Mapped[str] = mapped_column(String(3), default="BRL")
     # Fechamento de período: lançamentos com competência até esta data não mudam mais (None = aberto).
     locked_through: Mapped[date | None]
+    person_type: Mapped[str] = mapped_column(String(2), default="PF")      # PF | PJ
+    document: Mapped[str | None] = mapped_column(String(20))                # CPF/CNPJ (só dígitos)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 class Account(Base):
     __tablename__ = "accounts"
@@ -136,3 +141,47 @@ class ExchangeRate(Base):
     day: Mapped[date]
     rate: Mapped[Decimal] = mapped_column(Numeric(20, 8))
     source: Mapped[str] = mapped_column(String(20), default="manual")     # manual | bcb (PTAX)
+
+
+class User(Base):
+    """Quem usa o app. Sem senha e sendo o único usuário, o app abre direto (como na edição Free)."""
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    email: Mapped[str | None] = mapped_column(String(120), unique=True)      # login
+    password_hash: Mapped[str | None] = mapped_column(String(200))           # None = sem senha
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created: Mapped[datetime] = mapped_column(DateTime)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class UserEntity(Base):
+    """Quais entidades cada usuário pode abrir."""
+    __tablename__ = "user_entities"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), primary_key=True)
+
+
+class Permission(Base):
+    """Nível de acesso de um usuário a um módulo numa entidade: none | read | full."""
+    __tablename__ = "permissions"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), primary_key=True)
+    module: Mapped[str] = mapped_column(String(20), primary_key=True)
+    level: Mapped[str] = mapped_column(String(10), default="full")
+
+
+class AuditLog(Base):
+    """Histórico de alterações: quem fez o quê, quando, com o antes e o depois."""
+    __tablename__ = "audit_log"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user_name: Mapped[str] = mapped_column(String(120), default="")
+    entity_id: Mapped[int | None] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), index=True)
+    table_name: Mapped[str] = mapped_column(String(40))
+    row_id: Mapped[int | None]
+    action: Mapped[str] = mapped_column(String(10))                    # create | update | delete
+    summary: Mapped[str] = mapped_column(String(300))
+    changes: Mapped[str | None] = mapped_column(Text)                  # JSON {campo: [antes, depois]}

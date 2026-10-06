@@ -87,3 +87,25 @@ def test_atualizacao_guarda_copia_antes(tmp_path, monkeypatch):
     assert safety and safety.endswith("antes-de-atualizar-0001-para-9999.db")
     assert (tmp_path / "bk" / "antes-de-atualizar-0001-para-9999.db").exists()
     eng.dispose()
+
+
+def test_banco_com_dados_ganha_admin_e_valores_na_moeda_principal(tmp_path):
+    """Banco antigo com uma entidade e um lançamento: após migrar, há um administrador sem senha com acesso a
+    ela, e o valor na moeda principal (base_amount) é o próprio valor."""
+    eng = _pre_alembic(tmp_path / "com-dados.db")
+    with eng.begin() as conn:
+        conn.exec_driver_sql("INSERT INTO entities (id, name, currency) VALUES (1, 'Rodrigo', 'BRL')")
+        conn.exec_driver_sql("INSERT INTO accounts (id, entity_id, name, kind, currency, opening_balance, is_active)"
+                             " VALUES (1, 1, 'Nubank', 'bank', 'BRL', 0, 1)")
+        conn.exec_driver_sql("INSERT INTO entries (entity_id, kind, account_id, amount, description, "
+                             "competence_date, due_date, status) VALUES (1, 'expense', 1, 42.5, 'Luz', "
+                             "'2026-10-01', '2026-10-01', 'pending')")
+    db.init_db(eng, tmp_path / "bk")
+    with eng.connect() as conn:
+        users = conn.exec_driver_sql("SELECT name, is_admin, password_hash FROM users").all()
+        access = conn.exec_driver_sql("SELECT user_id, entity_id FROM user_entities").all()
+        base = conn.exec_driver_sql("SELECT base_amount FROM entries").scalar()
+        ent = conn.exec_driver_sql("SELECT person_type, is_active FROM entities").one()
+    assert [(u[0], bool(u[1]), u[2]) for u in users] == [("Rodrigo", True, None)]
+    assert access == [(1, 1)] and float(base) == 42.5 and (ent[0], bool(ent[1])) == ("PF", True)
+    eng.dispose()

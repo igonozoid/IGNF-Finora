@@ -40,8 +40,11 @@ def needs_setup(s: Session) -> bool:
     return s.scalar(select(Entity.id).limit(1)) is None
 
 
-def current_profile(s: Session) -> Profile | None:
-    e = s.scalars(select(Entity).order_by(Entity.id).limit(1)).first()
+def current_profile(s: Session, entity_id: int | None = None) -> Profile | None:
+    """A entidade aberta: a indicada, ou a primeira ativa."""
+    e = s.get(Entity, entity_id) if entity_id else None
+    if e is None:
+        e = s.scalars(select(Entity).where(Entity.is_active).order_by(Entity.id).limit(1)).first()
     return Profile(e.id, e.name, e.currency) if e else None
 
 
@@ -104,6 +107,8 @@ def run_first_setup(s: Session, *, name: str, currency: str, account_name: str, 
                       opening_balance=balance, is_active=True))
         if default_categories:
             _add_default_categories(s, e.id)
+        from finora.services import users
+        users.ensure_owner(s, e.id, name)        # quem configurou vira o administrador (sem senha)
         profile = Profile(e.id, e.name, e.currency)
         s.commit()
     except Exception:

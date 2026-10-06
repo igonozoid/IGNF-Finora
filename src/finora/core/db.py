@@ -68,8 +68,23 @@ def init_db(eng=None, backup_dir: Path | None = None) -> str | None:
         from finora.services import backup
         safety = str(backup.backup_to(Path(backup_dir or BACKUP_DIR) / f"{backup.UPDATE_PREFIX}{current}-para-{head}.db",
                                       Path(eng.url.database)))
-    with eng.begin() as conn:
-        command.upgrade(_alembic(conn), "head")
+    with eng.connect() as conn:
+        sqlite = eng.dialect.name == "sqlite"
+        if sqlite:
+            # O SQLite altera tabela recriando-a (copia, apaga a antiga, renomeia). Com as chaves estrangeiras
+            # ligadas, apagar "entities" falharia porque contas e lançamentos apontam para ela. Desliga só
+            # durante a migração (fora de transação, senão o SQLite ignora) e confere tudo no fim.
+            conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            conn.commit()
+        try:
+            with conn.begin():
+                command.upgrade(_alembic(conn), "head")
+                if sqlite and conn.exec_driver_sql("PRAGMA foreign_key_check").first() is not None:
+                    raise RuntimeError("A atualização do banco deixou referências quebradas; nada foi alterado.")
+        finally:
+            if sqlite:
+                conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+                conn.commit()
     return safety
 
 

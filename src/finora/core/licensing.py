@@ -5,6 +5,10 @@ from enum import Enum
 from finora.core import license_key
 
 
+class LimitError(Exception):
+    """A edição atual não permite mais (contas, usuários, entidades…). Mensagem pronta para o usuário."""
+
+
 class Edition(str, Enum):
     FREE = "free"
     PLUS = "plus"

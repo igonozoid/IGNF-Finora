@@ -4,8 +4,8 @@ from tests.ui.conftest import pump
 
 
 def test_exportar_lancamentos_e_relatorios(plus, window, dialogs, tmp_path, qtbot):
-    window.go_to(1)
-    page = window.pages[1]
+    window.go_to("entries")
+    page = window.page("entries")
     assert page.export_btn.menu() is not None                    # Plus: menu Excel / PDF
     dialogs.save_path = str(tmp_path / "lanc")                   # sem extensão: o app completa
     page._export("xlsx")
@@ -13,9 +13,9 @@ def test_exportar_lancamentos_e_relatorios(plus, window, dialogs, tmp_path, qtbo
     descr = [ws.cell(r, 3).value for r in range(5, ws.max_row + 1)]
     assert "Salário" in descr and "Mercado" in descr
 
-    window.go_to(5)
+    window.go_to("reports")
     exported = 0
-    for key, view in window.pages[5].views.items():
+    for key, view in window.page("reports").views.items():
         view.refresh()
         pump(qtbot)
         sheet = view.export_sheet()
@@ -29,7 +29,7 @@ def test_exportar_lancamentos_e_relatorios(plus, window, dialogs, tmp_path, qtbo
 
 
 def test_exportar_bloqueado_na_free(window, dialogs):
-    page = window.pages[1]
+    page = window.page("entries")
     assert page.export_btn.menu() is None
     page.export_btn.click()
     assert dialogs.shown, "deveria convidar para o upgrade"

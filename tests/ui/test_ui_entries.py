@@ -8,8 +8,8 @@ from finora.services import accounts
 
 
 def _page(window):
-    window.go_to(1)
-    return window.pages[1]
+    window.go_to("entries")
+    return window.page("entries")
 
 
 def _fill(form, kind="expense", desc="Internet", amount="119,90", day=None, category=None, contact="",

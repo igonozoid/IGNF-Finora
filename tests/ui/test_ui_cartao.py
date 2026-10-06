@@ -10,8 +10,8 @@ from finora.ui.dashboard_page import ClickRow
 
 
 def _create_card(window):
-    window.go_to(2)
-    page = window.pages[2]
+    window.go_to("accounts")
+    page = window.page("accounts")
     page.name_edit.setText("Itaú")
     page.kind_box.setCurrentIndex(page.kind_box.findData("card"))
     assert page.card_box.isVisible()
@@ -25,7 +25,7 @@ def _create_card(window):
 
 def _buy(window, desc, amount, when):
     window.new_entry()
-    form = window.pages[1].form
+    form = window.page("entries").form
     form.account.setCurrentIndex(form.account.findText("Itaú"))
     form.desc.setText(desc)
     form.amount.setText(amount)
@@ -53,7 +53,7 @@ def test_compra_no_cartao_pelo_formulario(window):
         itau = next(a for a in accounts.list_accounts(s, window.profile.id) if a.name == "Itaú")
         st = cards.current(s, itau.id)
     assert st.charges == D("300.00")
-    page = window.pages[1]
+    page = window.page("entries")
     page.year, page.month = st.due.year, st.due.month             # mês do vencimento da fatura
     page.refresh()
     assert page.statements_bar.isVisible() and "Fatura Itaú" in page.statements_bar.text()
@@ -66,11 +66,11 @@ def test_janela_de_faturas_e_pagamento(window, qtbot):
     _buy(window, "Mercado", "300,00", date.today()).save_btn.click()
     with db.Session() as s:
         itau = next(a for a in accounts.list_accounts(s, window.profile.id) if a.name == "Itaú")
-    dlg = StatementsDialog(window, itau.id, "BRL", window.pages[2].t)
+    dlg = StatementsDialog(window, itau.id, "BRL", window.page("accounts").t)
     qtbot.addWidget(dlg)
     assert dlg.current.charges == D("300.00") and dlg.table.rowCount() == 1
     assert not dlg.pay_btn.isHidden()                             # botão "Pagar fatura" disponível
-    pay = PayDialog(dlg, dlg.current, "BRL", window.profile.id, window.pages[2].t)
+    pay = PayDialog(dlg, dlg.current, "BRL", window.profile.id, window.page("accounts").t)
     qtbot.addWidget(pay)
     assert all("Itaú" not in pay.source.itemText(i) for i in range(pay.source.count()))   # cartão não paga cartão
     pay.amount.setText("100,00")
@@ -93,6 +93,6 @@ def test_dashboard_mostra_fatura_que_vence(window):
                 target = purchase
                 break
     _buy(window, "Farmácia", "80,00", target).save_btn.click()
-    window.go_to(0)
-    texts = [r.findChildren(type(window.header.title))[1].text() for r in window.pages[0].findChildren(ClickRow)]
+    window.go_to("dashboard")
+    texts = [r.findChildren(type(window.header.title))[1].text() for r in window.page("dashboard").findChildren(ClickRow)]
     assert any(t.startswith("Fatura Itaú") for t in texts)

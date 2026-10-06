@@ -9,25 +9,25 @@ from finora.ui.main_window import NAV, SHOW_NEW_ENTRY
 
 
 def test_todas_as_telas_abrem(window, qtbot):
-    for i, (_icon, label, *_r) in enumerate(NAV):
+    for i, (key, _icon, label, *_r) in enumerate(NAV):
         window.go_to(i)
         qtbot.wait(10)
         assert window.stack.currentIndex() == i and window.header.title.text() == label
-        assert window.header.new_btn.isVisible() == (i in SHOW_NEW_ENTRY)
+        assert window.header.new_btn.isVisible() == (key in SHOW_NEW_ENTRY)
 
 
 def test_atalhos_de_teclado(window, qtbot):
     qtbot.keyClick(window, Qt.Key_4, Qt.ControlModifier)
-    assert window.stack.currentIndex() == 3
+    assert window.current_key() == "categories"
     qtbot.keyClick(window, Qt.Key_N, Qt.ControlModifier)          # Ctrl+N vale em qualquer tela
-    assert window.stack.currentIndex() == 1 and window.pages[1].form_scroll.isVisible()
+    assert window.current_key() == "entries" and window.page("entries").form_scroll.isVisible()
 
 
 def test_tema_alterna_e_fica_salvo(window):
     assert window.theme_name == "light"
     window.toggle_theme()
     assert window.theme_name == "dark" and settings.get_theme() == "dark"
-    assert window.pages[6].theme_box.currentData() == "dark"
+    assert window.page("settings").theme_box.currentData() == "dark"
     assert window.sidebar.theme_btn.text() == "Tema claro"
 
 
@@ -37,7 +37,7 @@ def test_tres_formatos_de_menu(window):
     window.set_nav("tabs")
     assert not window.sidebar.isVisible() and window.tabs.isVisible()
     window.tabs.group.button(4).click()
-    assert window.stack.currentIndex() == 4 and window.sidebar.group.checkedId() == 4
+    assert window.current_key() == "contacts" and window.sidebar.group.checkedId() == 4
     window.set_nav("sidebar")
     assert window.sidebar.width() == 200 and settings.get_nav() == "sidebar"
 
@@ -106,7 +106,7 @@ def test_busca_global_ctrl_k(window, qtbot):
     entry = next(h for h in hits if h is not None and h.kind == "entry")
     assert entry.title == "Mercado"
     search._activated(search.model.index(hits.index(entry), 0))
-    assert window.stack.currentIndex() == 1 and window.pages[1].form.editing.description == "Mercado"
+    assert window.current_key() == "entries" and window.page("entries").form.editing.description == "Mercado"
     assert search.text() == ""
 
 
@@ -117,26 +117,26 @@ def test_busca_abre_contato_conta_e_categoria(window):
         hits = {h.kind: h for h in svc.search(s, window.profile.id, "en") + svc.search(s, window.profile.id, "Nubank")
                 + svc.search(s, window.profile.id, "Luz")}
     window.open_hit(hits["contact"])
-    assert window.stack.currentIndex() == 4 and window.pages[4].form.title.text() == hits["contact"].title
+    assert window.current_key() == "contacts" and window.page("contacts").form.title.text() == hits["contact"].title
     window.open_hit(hits["account"])
-    assert window.stack.currentIndex() == 2 and window.pages[2].editing.name == "Nubank"
+    assert window.current_key() == "accounts" and window.page("accounts").editing.name == "Nubank"
     window.open_hit(hits["category"])
-    assert window.stack.currentIndex() == 3 and window.pages[3].current.name == "Luz"
+    assert window.current_key() == "categories" and window.page("categories").current.name == "Luz"
 
 
 def test_periodo_no_cabecalho(window):
     from datetime import date
     chip = window.header.period
-    window.go_to(1)
+    window.go_to("entries")
     assert chip.isVisible()
     today = date.today()
     chip.shift(-1)
-    entries_page = window.pages[1]
+    entries_page = window.page("entries")
     assert (entries_page.year, entries_page.month) == (chip.year, chip.month) != (today.year, today.month)
-    assert window.pages[0].period == (chip.year, chip.month)              # Dashboard acompanha
+    assert window.page("dashboard").period == (chip.year, chip.month)              # Dashboard acompanha
     entries_page._shift_month(2)                                          # mudou dentro de Lançamentos
     assert (chip.year, chip.month) == (entries_page.year, entries_page.month)
     entries_page.filter_group.button(3).click()                           # Atrasados: mês não importa
     assert not chip.prev.isEnabled()
-    window.go_to(3)
+    window.go_to("categories")
     assert not chip.isVisible()

@@ -27,26 +27,27 @@ from finora.ui.reports_page import ReportsPage
 from finora.ui.settings_page import SettingsPage
 from finora.ui.widgets import retheme
 
-# (ícone, rótulo, subtítulo do cabeçalho, texto da tela vazia)
+# (chave, ícone, rótulo, subtítulo do cabeçalho, texto da tela vazia). Use as chaves, não a posição.
 NAV = [
-    ("fa6s.gauge", "Dashboard", "Visão geral do mês",
+    ("dashboard", "fa6s.gauge", "Dashboard", "Visão geral do mês",
      "Aqui você vai ver seu saldo, o que entra e sai nos próximos dias e onde seu dinheiro está indo."),
-    ("fa6s.right-left", "Lançamentos", "Contas a pagar e a receber",
+    ("entries", "fa6s.right-left", "Lançamentos", "Contas a pagar e a receber",
      "Aqui você vai registrar receitas, despesas e transferências — inclusive as que se repetem todo mês."),
-    ("fa6s.building-columns", "Contas", "Bancos, carteira, cartões e investimentos",
+    ("accounts", "fa6s.building-columns", "Contas", "Bancos, carteira, cartões e investimentos",
      "Aqui você vai cadastrar onde seu dinheiro fica: conta no banco, dinheiro na carteira, cartão de crédito…"),
-    ("fa6s.tags", "Categorias", "Para onde vai cada real",
+    ("categories", "fa6s.tags", "Categorias", "Para onde vai cada real",
      "Aqui você vai organizar seus gastos e ganhos em grupos, como Moradia, Alimentação e Lazer."),
-    ("fa6s.address-book", "Contatos", "Pessoas e empresas com quem você troca dinheiro",
+    ("contacts", "fa6s.address-book", "Contatos", "Pessoas e empresas com quem você troca dinheiro",
      "Aqui você vai cadastrar quem te paga e quem você paga, para encontrar tudo mais rápido."),
-    ("fa6s.file-lines", "Relatórios", "DRE, fluxo de caixa, extratos e atrasados",
+    ("reports", "fa6s.file-lines", "Relatórios", "DRE, fluxo de caixa, extratos e atrasados",
      "Aqui você vai ver, mês a mês, quanto entrou, quanto saiu e quanto sobrou."),
-    ("fa6s.gear", "Configurações", "Preferências, backup e licença",
+    ("settings", "fa6s.gear", "Configurações", "Preferências, backup e licença",
      "Aqui você vai ajustar o app, fazer cópia de segurança dos seus dados e ativar sua licença."),
 ]
 
-SHOW_NEW_ENTRY = {0, 1, 2}  # Dashboard, Lançamentos, Contas
-PERIOD_PAGES = {0, 1}       # telas que usam o mês do cabeçalho
+KEYS = [n[0] for n in NAV]
+SHOW_NEW_ENTRY = {"dashboard", "entries", "accounts"}
+PERIOD_PAGES = {"dashboard", "entries"}       # telas que usam o mês do cabeçalho
 
 
 class Sidebar(QWidget):
@@ -96,7 +97,7 @@ class Sidebar(QWidget):
 
         self.group = QButtonGroup(self, exclusive=True)
         self.buttons = []
-        for i, (icon, label, *_rest) in enumerate(NAV):
+        for i, (_key, icon, label, *_rest) in enumerate(NAV):
             b = QPushButton(label, objectName="navItem", checkable=True)
             b.setCursor(Qt.PointingHandCursor)
             b.setIconSize(QSize(14, 14))
@@ -172,7 +173,7 @@ class TopTabs(QFrame):
         lay.addSpacing(4)
         self.group = QButtonGroup(self, exclusive=True)
         self.buttons = []
-        for i, (icon, label, *_rest) in enumerate(NAV):
+        for i, (_key, icon, label, *_rest) in enumerate(NAV):
             b = QPushButton(label, objectName="tabItem", checkable=True)
             b.setCursor(Qt.PointingHandCursor)
             b.setIconSize(QSize(11, 11))
@@ -254,18 +255,16 @@ class MainWindow(QMainWindow):
         self.tabs = TopTabs(profile)
         self.stack = QStackedWidget()
         t = theme.tokens(settings.get_theme(theme.DEFAULT_THEME))
-        self.pages = [PlaceholderPage(icon, label, text) for icon, label, _sub, text in NAV]
-        self.pages[0] = DashboardPage(profile, t)
-        self.pages[1] = EntriesPage(profile, t)
-        self.pages[2] = AccountsPage(profile, t)
-        self.pages[3] = CategoriesPage(profile, t)
-        self.pages[4] = ContactsPage(profile, t)
-        self.pages[5] = ReportsPage(profile, t)
-        self.pages[6] = SettingsPage(profile, t)
-        self.pages[6].theme_requested.connect(self.set_theme)
-        self.pages[6].restart_requested.connect(self.restart)
-        self.pages[6].nav_requested.connect(self.set_nav)
-        self.pages[6].profile_changed.connect(self.set_profile)
+        built = {"dashboard": DashboardPage, "entries": EntriesPage, "accounts": AccountsPage,
+                 "categories": CategoriesPage, "contacts": ContactsPage, "reports": ReportsPage,
+                 "settings": SettingsPage}
+        self.pages = [built[key](profile, t) if key in built else PlaceholderPage(icon, label, text)
+                      for key, icon, label, _sub, text in NAV]
+        cfg = self.page("settings")
+        cfg.theme_requested.connect(self.set_theme)
+        cfg.restart_requested.connect(self.restart)
+        cfg.nav_requested.connect(self.set_nav)
+        cfg.profile_changed.connect(self.set_profile)
         for p in self.pages:
             self.stack.addWidget(p)
             if hasattr(p, "message"):
@@ -292,18 +291,18 @@ class MainWindow(QMainWindow):
         self.sidebar.group.idClicked.connect(self.go_to)
         self.tabs.group.idClicked.connect(self.go_to)
         self.tabs.theme_btn.clicked.connect(self.toggle_theme)
-        self.pages[0].open_entry.connect(self.open_entry)
-        self.pages[0].open_statement.connect(self.open_statement)
-        self.pages[5].open_entry.connect(self.open_entry)
+        self.page("dashboard").open_entry.connect(self.open_entry)
+        self.page("dashboard").open_statement.connect(self.open_statement)
+        self.page("reports").open_entry.connect(self.open_entry)
         self.header.search.entity_id = profile.id
         self.header.search.chosen.connect(self.open_hit)
         self.header.period.changed.connect(self.set_period)
-        self.pages[1].period_changed.connect(self.set_period)
-        self.pages[1].period_locked.connect(self.header.period.set_locked)
-        self.pages[5].open_statement.connect(self.open_statement)
+        self.page("entries").period_changed.connect(self.set_period)
+        self.page("entries").period_locked.connect(self.header.period.set_locked)
+        self.page("reports").open_statement.connect(self.open_statement)
         self.sidebar.theme_btn.clicked.connect(self.toggle_theme)
         self.header.new_btn.clicked.connect(self.new_entry)
-        for i in range(len(NAV)):
+        for i in range(min(len(NAV), 9)):
             QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self, activated=lambda i=i: self.go_to(i))
         QShortcut(QKeySequence("Ctrl+T"), self, activated=self.toggle_theme)
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self.new_entry)
@@ -312,7 +311,13 @@ class MainWindow(QMainWindow):
         self.theme_name = settings.get_theme(theme.DEFAULT_THEME)
         self.apply_theme(self.theme_name)
         self.apply_nav(settings.get_nav())
-        self.go_to(0)
+        self.go_to("dashboard")
+
+    def page(self, key: str) -> QWidget:
+        return self.pages[KEYS.index(key)]
+
+    def current_key(self) -> str:
+        return KEYS[self.stack.currentIndex()]
 
     def _fit_to_screen(self):
         """Tamanho do mockup (1366x800), limitado à área livre da tela, centralizado."""
@@ -334,8 +339,10 @@ class MainWindow(QMainWindow):
         sb.addPermanentWidget(QLabel(f"Edição {current_edition().value.capitalize()}"))
         sb.addPermanentWidget(QLabel(f"v{__version__}"))
 
-    def go_to(self, index: int):
-        _icon, label, subtitle, _text = NAV[index]
+    def go_to(self, where: str | int):
+        """Abre uma tela pela chave ("entries") ou pela posição no menu."""
+        index = KEYS.index(where) if isinstance(where, str) else where
+        key, _icon, label, subtitle, _text = NAV[index]
         page = self.pages[index]
         if hasattr(page, "refresh"):
             page.refresh()
@@ -343,50 +350,50 @@ class MainWindow(QMainWindow):
         self.sidebar.group.button(index).setChecked(True)
         self.tabs.group.button(index).setChecked(True)
         self.header.title.setText(label)
-        if index == 0:
+        if key == "dashboard":
             y, m = self.header.period.year, self.header.period.month
             subtitle = f"Visão geral de {MONTHS[m - 1]}" + ("" if y == date.today().year else f" de {y}")
         self.header.subtitle.setText(subtitle)
-        self.header.period.setVisible(index in PERIOD_PAGES)
-        if index != 1:
+        self.header.period.setVisible(key in PERIOD_PAGES)
+        if key != "entries":
             self.header.period.set_locked(False)
         # O botão só aparece onde lançar faz parte do fluxo; o Ctrl+N vale em todas as telas.
-        self.header.new_btn.setVisible(index in SHOW_NEW_ENTRY)
+        self.header.new_btn.setVisible(key in SHOW_NEW_ENTRY)
 
     def open_entry(self, entry_id: int):
-        self.go_to(1)
-        self.pages[1].open_by_id(entry_id)
+        self.go_to("entries")
+        self.page("entries").open_by_id(entry_id)
 
     def set_period(self, year: int, month: int):
         """Mês de referência mudou (no cabeçalho ou dentro de Lançamentos): todos acompanham."""
         self.header.period.set(year, month)
-        self.pages[1].set_period(year, month)
-        self.pages[0].set_period(year, month)
-        if self.stack.currentIndex() == 0:
-            self.go_to(0)
+        self.page("entries").set_period(year, month)
+        self.page("dashboard").set_period(year, month)
+        if self.current_key() == "dashboard":
+            self.go_to("dashboard")
 
     def open_hit(self, hit):
         """Resultado escolhido na busca global."""
         if hit.kind == "entry":
             self.open_entry(hit.id)
         elif hit.kind == "contact":
-            self.go_to(4)
-            self.pages[4].select_contact(hit.id)
+            self.go_to("contacts")
+            self.page("contacts").select_contact(hit.id)
         elif hit.kind == "account":
-            self.go_to(2)
-            self.pages[2]._edit(hit.id)
+            self.go_to("accounts")
+            self.page("accounts")._edit(hit.id)
         elif hit.kind == "category":
-            self.go_to(3)
-            self.pages[3].refresh(select_id=hit.id)
+            self.go_to("categories")
+            self.page("categories").refresh(select_id=hit.id)
 
     def open_statement(self, account_id: int, due):
         """Fatura de cartão clicada no Dashboard: abre a janela de faturas e atualiza a tela atual."""
-        self.pages[1].open_statement(account_id, due)
+        self.page("entries").open_statement(account_id, due)
         self.go_to(self.stack.currentIndex())
 
     def new_entry(self):
-        self.go_to(1)
-        self.pages[1].new_entry()
+        self.go_to("entries")
+        self.page("entries").new_entry()
 
     def apply_theme(self, name: str):
         self.theme_name = name
@@ -398,7 +405,7 @@ class MainWindow(QMainWindow):
         for p in self.pages:
             p.apply_theme(t)
         retheme(self, t)
-        self.pages[6].set_theme_name(name)
+        self.page("settings").set_theme_name(name)
 
     def set_profile(self, profile: Profile):
         """Nome ou moeda mudaram em Configurações: atualiza tudo sem reabrir o app."""
@@ -414,8 +421,8 @@ class MainWindow(QMainWindow):
                     obj.profile = profile
                 if isinstance(getattr(obj, "currency", None), str):
                     obj.currency = profile.currency
-        if self.pages[2].editing is None:
-            self.pages[2]._new()                  # "Nova conta" já vem com a moeda nova
+        if self.page("accounts").editing is None:
+            self.page("accounts")._new()                  # "Nova conta" já vem com a moeda nova
         self.go_to(self.stack.currentIndex())     # redesenha a tela atual com os dados novos
 
     def apply_nav(self, mode: str):
@@ -424,7 +431,7 @@ class MainWindow(QMainWindow):
         self.sidebar.setVisible(mode != "tabs")
         self.sidebar.set_mode("rail" if mode == "rail" else "sidebar")
         self.tabs.setVisible(mode == "tabs")
-        self.pages[6].set_nav_name(mode)
+        self.page("settings").set_nav_name(mode)
 
     def set_nav(self, mode: str):
         self.apply_nav(mode)

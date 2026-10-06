@@ -4,8 +4,8 @@ from finora.services import contacts
 
 # ---------- Contas ----------
 def _accounts(window):
-    window.go_to(2)
-    return window.pages[2]
+    window.go_to("accounts")
+    return window.page("accounts")
 
 
 def _new_account(page, name, kind, balance):
@@ -66,8 +66,8 @@ def _find(tree, name):
 
 
 def test_categorias_criar_e_inativar(window):
-    window.go_to(3)
-    page = window.pages[3]
+    window.go_to("categories")
+    page = window.page("categories")
     assert page.tree.topLevelItemCount() == 9
     page.tree.setCurrentItem(_find(page.tree, "Lazer"))
     page._new_child()
@@ -89,8 +89,8 @@ def test_categorias_criar_e_inativar(window):
 
 # ---------- Contatos ----------
 def test_contatos_lista_filtros_e_cadastro(window):
-    window.go_to(4)
-    page = window.pages[4]
+    window.go_to("contacts")
+    page = window.page("contacts")
     assert {c.name for c in page._items} == {"Empresa X", "Imobiliária", "Enel"}   # vieram dos lançamentos
     page.filter_group.button(1).click()                                  # "Me paga"
     assert [c.name for c in page._items] == ["Empresa X"]
@@ -113,8 +113,8 @@ def test_contatos_lista_filtros_e_cadastro(window):
 
 
 def test_contato_com_lancamentos_nao_e_excluido(window):
-    window.go_to(4)
-    page = window.pages[4]
+    window.go_to("contacts")
+    page = window.page("contacts")
     row = next(i for i, c in enumerate(page._items) if c.name == "Enel")
     page.list.setCurrentRow(row)
     page.form.delete_btn.click()
@@ -122,14 +122,14 @@ def test_contato_com_lancamentos_nao_e_excluido(window):
 
 
 def test_autopreencher_tem_cadeado_na_free(window, dialogs):
-    window.go_to(4)
-    window.pages[4].form.lookup.click()
+    window.go_to("contacts")
+    window.page("contacts").form.lookup.click()
     assert any("edições Plus e Pro" in t for t in dialogs.shown)
 
 
 def test_contato_ampliado_com_abas(window):
-    window.go_to(4)
-    page = window.pages[4]
+    window.go_to("contacts")
+    page = window.page("contacts")
     page._new()
     f = page.form
     f.name.setText("Maria Diarista")

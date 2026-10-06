@@ -121,8 +121,8 @@ def window(qtbot, qapp, app_t, sample, dialogs):
     from finora.ui.main_window import MainWindow
     w = MainWindow(sample)
     w.restart = lambda: dialogs.shown.append("REINICIAR")   # reabrir o app não faz sentido em teste
-    w.pages[6].restart_requested.disconnect()
-    w.pages[6].restart_requested.connect(w.restart)
+    w.page("settings").restart_requested.disconnect()
+    w.page("settings").restart_requested.connect(w.restart)
     w.resize(1366, 800)
     w.show()
     qtbot.waitExposed(w)

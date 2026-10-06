@@ -3,13 +3,13 @@ from finora.ui.receipt_dialog import ReceiptDialog
 
 
 def _entry(window, desc):
-    window.go_to(1)
-    return next(e for e in window.pages[1].model.rows if e.description == desc)
+    window.go_to("entries")
+    return next(e for e in window.page("entries").model.rows if e.description == desc)
 
 
 def test_recibo_de_despesa_e_pdf(window, qtbot, tmp_path):
     aluguel = _entry(window, "Aluguel")
-    dlg = ReceiptDialog(window, aluguel.id, window.pages[1].t)
+    dlg = ReceiptDialog(window, aluguel.id, window.page("entries").t)
     qtbot.addWidget(dlg)
     assert dlg.other_name.text() == "Imobiliária"                     # contato do lançamento
     assert dlg.receipt.payee == "Imobiliária" and dlg.receipt.payer == "Rodrigo"
@@ -25,7 +25,7 @@ def test_recibo_de_despesa_e_pdf(window, qtbot, tmp_path):
 
 def test_recibo_sem_contato_pede_o_nome(window, qtbot):
     mercado = _entry(window, "Mercado")
-    dlg = ReceiptDialog(window, mercado.id, window.pages[1].t)
+    dlg = ReceiptDialog(window, mercado.id, window.page("entries").t)
     qtbot.addWidget(dlg)
     assert not dlg.error.isHidden() and not dlg.print_btn.isEnabled()
     dlg.other_name.setText("Supermercado Bom Preço")
@@ -36,7 +36,7 @@ def test_recibo_sem_contato_pede_o_nome(window, qtbot):
 
 def test_recibo_de_receita_quem_assina_e_voce(window, qtbot):
     salario = _entry(window, "Salário")
-    dlg = ReceiptDialog(window, salario.id, window.pages[1].t)
+    dlg = ReceiptDialog(window, salario.id, window.page("entries").t)
     qtbot.addWidget(dlg)
     assert dlg.receipt.payer == "Empresa X" and dlg.receipt.payee == "Rodrigo"
     assert "Quem assina: Rodrigo" in dlg.signer.text()

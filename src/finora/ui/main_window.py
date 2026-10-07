@@ -377,13 +377,32 @@ class MainWindow(QMainWindow):
         who = menu.addAction(f"{self.user.name if self.user else self.profile.name} · {self.profile.name}")
         who.setEnabled(False)
         menu.addSeparator()
-        ent = menu.addAction("Trocar entidade…", lambda: self.switch("entity"))
-        ent.setEnabled(self._entity_count > 1)
-        if self._entity_count <= 1:
-            ent.setToolTip("Você só tem uma entidade. Crie outras em Administração › Entidades.")
+        menu.addAction("Trocar entidade…", self._switch_entity)
+        if self.levels.get("admin") == "full":
+            menu.addAction("Nova entidade…", self._new_entity)
         usr = menu.addAction("Trocar de usuário…", lambda: self.switch("user"))
         usr.setVisible(self._can_switch_user)
         menu.exec(anchor.mapToGlobal(anchor.rect().bottomLeft()))
+
+    def _switch_entity(self):
+        if self._entity_count > 1:
+            self.switch("entity")
+            return
+        from PySide6.QtWidgets import QMessageBox
+        from finora.services import entity_admin
+        lim = entity_admin.limit()
+        if lim == 1:
+            text = ("Você tem uma entidade só. Na edição Free é uma entidade por instalação; nas edições Plus e Pro "
+                    "você separa pessoa física, empresa, MEI… e troca entre elas por aqui.")
+        else:
+            text = ("Você tem uma entidade só. Crie outra em Administração › Entidades e depois troque por aqui.")
+        QMessageBox.information(self, "Trocar entidade", text)
+
+    def _new_entity(self):
+        self.go_to("admin")
+        admin = self.page("admin")
+        admin.tab_buttons["entities"].click()
+        admin.tabs["entities"]._new()
 
     def switch(self, action: str):
         """Fecha esta janela e volta para o login ou para a escolha de entidade (o main reabre)."""

@@ -123,3 +123,10 @@ def test_trocar_de_entidade_fecha_e_pede_ao_main(plus, window, monkeypatch):
     monkeypatch.setattr(QApplication, "quit", staticmethod(lambda: None))
     window.switch("entity")
     assert window.next_action == "entity"
+
+
+def test_trocar_entidade_com_uma_so_explica(window, dialogs):
+    window._switch_entity()
+    assert window.next_action is None and any("uma entidade só" in m for m in dialogs.shown)
+    window._new_entity()
+    assert window.current_key() == "admin" and window.page("admin").tabs["entities"].title.text() == "Nova entidade"

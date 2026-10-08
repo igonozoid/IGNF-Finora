@@ -4,7 +4,7 @@ from datetime import date
 from PySide6.QtCore import QProcess, QSize, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QMenu, QWidget, QFrame, QLabel, QPushButton, QButtonGroup,
+    QApplication, QMainWindow, QMenu, QMessageBox, QWidget, QFrame, QLabel, QPushButton, QButtonGroup,
     QStackedWidget, QScrollArea, QHBoxLayout, QVBoxLayout,
 )
 import qtawesome as qta
@@ -308,7 +308,7 @@ class MainWindow(QMainWindow):
     def __init__(self, profile: Profile, user: UserView | None = None):
         super().__init__()
         self.profile, self.user = profile, user
-        self.next_action: str | None = None     # "entity" | "user": o main reabre o fluxo de entrada
+        self.next_action: str | None = None     # reservado: hoje a troca de entidade/usuário é na mesma janela
         self.setWindowTitle("IGNF Finora — Finanças pessoais")
         self.setMinimumSize(800, 480)
         geo = settings.get_geometry()
@@ -320,22 +320,8 @@ class MainWindow(QMainWindow):
         self.tabs = TopTabs(profile)
         self.stack = QStackedWidget()
         t = theme.tokens(settings.get_theme(theme.DEFAULT_THEME))
-        built = {"dashboard": DashboardPage, "entries": EntriesPage, "accounts": AccountsPage,
-                 "categories": CategoriesPage, "cost_centers": CostCentersPage, "contacts": ContactsPage, "reconcile": ReconcilePage,
-                 "reports": ReportsPage, "admin": AdminPage,
-                 "settings": SettingsPage}
-        self.pages = [built[key](profile, t) if key in built else PlaceholderPage(icon, label, text)
-                      for key, icon, label, _sub, text in NAV]
-        cfg = self.page("settings")
-        cfg.theme_requested.connect(self.set_theme)
-        cfg.restart_requested.connect(self.restart)
-        cfg.nav_requested.connect(self.set_nav)
-        cfg.profile_changed.connect(self.set_profile)
-        self.page("admin").entities_changed.connect(self._apply_access)     # "Trocar entidade" passa a valer
-        for p in self.pages:
-            self.stack.addWidget(p)
-            if hasattr(p, "message"):
-                p.message.connect(lambda msg: self.statusBar().showMessage(msg, 5000))
+        self.pages = []
+        self._build_pages(profile, t)
 
         right = QWidget()
         rl = QVBoxLayout(right)
@@ -358,17 +344,8 @@ class MainWindow(QMainWindow):
         self.sidebar.group.idClicked.connect(self.go_to)
         self.tabs.group.idClicked.connect(self.go_to)
         self.tabs.theme_btn.clicked.connect(self.toggle_theme)
-        self.page("dashboard").open_entry.connect(self.open_entry)
-        self.page("dashboard").open_statement.connect(self.open_statement)
-        self.page("reports").open_entry.connect(self.open_entry)
-        self.page("reconcile").open_entry.connect(self.open_entry)
-        self.page("entries").import_requested.connect(self.import_ofx)
-        self.header.search.entity_id = profile.id
         self.header.search.chosen.connect(self.open_hit)
         self.header.period.changed.connect(self.set_period)
-        self.page("entries").period_changed.connect(self.set_period)
-        self.page("entries").period_locked.connect(self.header.period.set_locked)
-        self.page("reports").open_statement.connect(self.open_statement)
         self.sidebar.theme_btn.clicked.connect(self.toggle_theme)
         self.sidebar.collapse_btn.clicked.connect(
             lambda: self.set_nav("sidebar" if self.nav_mode == "rail" else "rail"))
@@ -386,6 +363,47 @@ class MainWindow(QMainWindow):
         self.apply_nav(settings.get_nav())
         self._apply_access()
         self.go_to(self.visible_keys[0])
+
+    def _build_pages(self, profile: Profile, t: dict):
+        """Monta as telas da entidade aberta (de novo ao trocar de entidade ou de usuário)."""
+        built = {"dashboard": DashboardPage, "entries": EntriesPage, "accounts": AccountsPage,
+                 "categories": CategoriesPage, "cost_centers": CostCentersPage, "contacts": ContactsPage,
+                 "reconcile": ReconcilePage, "reports": ReportsPage, "admin": AdminPage, "settings": SettingsPage}
+        for old in self.pages:
+            self.stack.removeWidget(old)
+            old.deleteLater()
+        self.pages = [built[key](profile, t) if key in built else PlaceholderPage(icon, label, text)
+                      for key, icon, label, _sub, text in NAV]
+        cfg = self.page("settings")
+        cfg.theme_requested.connect(self.set_theme)
+        cfg.restart_requested.connect(self.restart)
+        cfg.nav_requested.connect(self.set_nav)
+        cfg.profile_changed.connect(self.set_profile)
+        self.page("admin").entities_changed.connect(self._apply_access)     # "Trocar entidade" passa a valer
+        for p in self.pages:
+            self.stack.addWidget(p)
+            if hasattr(p, "message"):
+                p.message.connect(lambda msg: self.statusBar().showMessage(msg, 5000))
+        self.page("dashboard").open_entry.connect(self.open_entry)
+        self.page("dashboard").open_statement.connect(self.open_statement)
+        self.page("reports").open_entry.connect(self.open_entry)
+        self.page("reconcile").open_entry.connect(self.open_entry)
+        self.page("entries").import_requested.connect(self.import_ofx)
+        self.page("entries").period_changed.connect(self.set_period)
+        self.page("entries").period_locked.connect(self.header.period.set_locked)
+        self.page("reports").open_statement.connect(self.open_statement)
+        self.header.search.entity_id = profile.id
+
+    def reload(self, profile: Profile, user: UserView | None):
+        """Troca de entidade/usuário sem fechar a janela: remonta as telas com os dados novos."""
+        self.profile, self.user = profile, user
+        self._build_pages(profile, theme.tokens(self.theme_name))
+        self.apply_theme(self.theme_name)
+        self.apply_nav(self.nav_mode)
+        self._apply_access()
+        self.go_to(self.visible_keys[0])
+        who = f" como {user.name}" if user else ""
+        self.statusBar().showMessage(f"Aberto: {profile.name}{who}", 5000)
 
     # ---------- usuário, entidade e permissões ----------
     def _apply_access(self):
@@ -443,7 +461,6 @@ class MainWindow(QMainWindow):
         if self._entity_count > 1:
             self.switch("entity")
             return
-        from PySide6.QtWidgets import QMessageBox
         from finora.services import entity_admin
         lim = entity_admin.limit()
         if lim == 1:
@@ -460,10 +477,23 @@ class MainWindow(QMainWindow):
         admin.tabs["entities"]._new()
 
     def switch(self, action: str):
-        """Fecha esta janela e volta para o login ou para a escolha de entidade (o main reabre)."""
-        self.next_action = action
-        self.close()
-        QApplication.instance().quit()
+        """Trocar entidade ou usuário: pergunta (lista de entidades / login) e remonta esta mesma janela."""
+        from finora.core import current
+        from finora.ui.session_flow import pick_entity, pick_user
+        t = theme.tokens(self.theme_name)
+        user = self.user
+        if action == "user":
+            previous = (current.current.user_id, current.current.user_name, current.current.is_admin)
+            user = pick_user(t)
+            if user is None:                          # desistiu do login: continua como estava
+                current.set_user(*previous)
+                return
+        profile = pick_entity(user, t, ask=action == "entity")
+        if profile is None:
+            if action == "user":
+                QMessageBox.warning(self, "IGNF Finora", "Esse usuário não tem nenhuma entidade liberada.")
+            return
+        self.reload(profile, user)
 
     def page(self, key: str) -> QWidget:
         return self.pages[KEYS.index(key)]

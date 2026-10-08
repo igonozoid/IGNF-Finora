@@ -117,12 +117,17 @@ def test_login_e_escolha_de_entidade(plus, window, app_t, monkeypatch, qtbot):
     current.clear()
 
 
-def test_trocar_de_entidade_fecha_e_pede_ao_main(plus, window, monkeypatch):
-    monkeypatch.setattr(type(window), "close", lambda self: True)
-    from PySide6.QtWidgets import QApplication
-    monkeypatch.setattr(QApplication, "quit", staticmethod(lambda: None))
-    window.switch("entity")
-    assert window.next_action == "entity"
+def test_trocar_de_entidade_na_mesma_janela(plus, window, monkeypatch):
+    with db.Session() as s:
+        other = entity_admin.create(s, name="Padaria Sol")
+    monkeypatch.setattr(session_dialogs.EntityChooser, "exec", lambda self: (
+        setattr(self, "entity_id", other), QDialog.Accepted)[1])
+    window._apply_access()                                    # agora há 2 entidades
+    window._switch_entity()
+    assert window.profile.name == "Padaria Sol" and window.page("entries").profile.id == other
+    assert window.sidebar._name.text() == "Padaria Sol" and window.isVisible()   # mesma janela
+    window.go_to("accounts")
+    assert [a.name for a in window.page("accounts")._items] == ["Conta principal"]
 
 
 def test_trocar_entidade_com_uma_so_explica(window, dialogs):

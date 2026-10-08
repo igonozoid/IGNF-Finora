@@ -47,6 +47,8 @@ def document(sheet: Sheet) -> QTextDocument:
     doc = QTextDocument()
     if sheet.head is not None and sheet.head.logo:
         doc.addResource(QTextDocument.ImageResource, QUrl(export.LOGO_URL), QImage.fromData(sheet.head.logo))
+    if sheet.chart:
+        doc.addResource(QTextDocument.ImageResource, QUrl(export.CHART_URL), QImage.fromData(sheet.chart))
     doc.setHtml(export.to_html(sheet))
     return doc
 

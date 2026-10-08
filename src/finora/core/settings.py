@@ -162,6 +162,15 @@ def set_tray(on: bool) -> None:
     _s().setValue("ui/tray", on)
 
 
+def get_report_charts() -> bool:
+    """Mostrar o gráfico nos relatórios que têm (e levá-lo para a impressão/PDF)."""
+    return _s().value("reports/charts", True, type=bool)
+
+
+def set_report_charts(on: bool) -> None:
+    _s().setValue("reports/charts", on)
+
+
 def get_print_landscape(report: str) -> bool | None:
     """Retrato ou paisagem escolhido por último para este relatório (None = ainda não escolheu)."""
     v = _s().value(f"print/{report}")

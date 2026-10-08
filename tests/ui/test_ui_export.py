@@ -104,3 +104,22 @@ def test_a_pagar_e_receber_periodo_personalizado(window, qtbot):
     assert "A receber" not in view.footer.text()
     view.first.setDate(date(2101, 1, 1))
     assert "inicial" in view.empty.text()
+
+
+def test_graficos_na_tela_e_na_impressao(window):
+    from finora.core import settings
+    window.go_to("reports")
+    views = window.page("reports").views
+    for key in ("category", "cash_history", "balance_history", "category_months"):
+        view = views[key]
+        if key == "category":
+            view.period.setCurrentIndex(view.period.findData("ytd"))
+        view.refresh()
+        assert view.HAS_CHART and view.chart is not None, key
+        sheet = view.export_sheet()
+        if not view.chart.empty:
+            assert not view.chart_view.isHidden() and sheet.chart[:4] == b"\x89PNG", key
+    view = views["category"]
+    view.chart_check.setChecked(False)                       # desligou: some da tela e da impressão
+    assert view.chart_view.isHidden() and view.export_sheet().chart is None
+    assert not settings.get_report_charts()

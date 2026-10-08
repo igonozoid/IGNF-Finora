@@ -15,7 +15,15 @@ KEEP_UPPER = {"CPF/CNPJ", "CPF", "CNPJ", "DRE", "AV", "UF", "CEP"}
 
 def header(title: str) -> str:
     """'DESCRIÇÃO' -> 'Descrição', mas siglas ficam: 'CPF/CNPJ', 'AV %'."""
-    return " ".join(w if w.rstrip("%.") in KEEP_UPPER else w.capitalize() for w in title.split(" "))
+    words = []
+    for i, w in enumerate(title.split(" ")):
+        if w.rstrip("%.") in KEEP_UPPER:
+            words.append(w)
+        elif i and w.lower() in ("de", "do", "da", "dos", "das", "e", "a", "o"):
+            words.append(w.lower())
+        else:
+            words.append(w.capitalize() if not words else w.lower())
+    return " ".join(words)
 _PERCENT = re.compile(r"^-?[\d.,]+%$")
 
 
@@ -29,6 +37,7 @@ class Sheet:
     currency: str = "BRL"
     footer: str = ""
     head: object = None          # entity_admin.Letterhead: cabeçalho com nome, endereço e logotipo da entidade
+    chart: bytes | None = None   # gráfico (PNG) que vai antes da tabela na impressão/PDF
 
     def add(self, cells: list, style: str = "") -> None:
         assert len(cells) == len(self.headers) and style in STYLES
@@ -126,6 +135,7 @@ def _text(v, currency: str) -> str:
 
 
 LOGO_URL = "finora-logo"
+CHART_URL = "finora-chart"
 
 
 def head_lines(head) -> list[str]:
@@ -177,6 +187,8 @@ def to_html(sheet: Sheet, generated: datetime | None = None) -> str:
         "<html><body style=\"font-family:'IBM Plex Sans',Arial,Helvetica,sans-serif; font-size:8pt; color:#000\">"
         f'{letterhead_html(sheet.head)}<h2 style="margin:6px 0 0 0">{escape(sheet.title)}</h2>'
         f'<p style="color:#555; margin:2px 0 8px 0">{escape(sheet.subtitle)}</p>'
+        + (f'<p align="center" style="margin:0 0 8px 0"><img src="{CHART_URL}" width="520" height="166"></p>'
+           if sheet.chart else "") +
         '<table width="100%" cellspacing="0" cellpadding="3" border="0" style="border-collapse:collapse">'
         f'<thead><tr style="background:#e0e0e0">{head}</tr></thead><tbody>{"".join(body)}</tbody></table>'
         f'{foot}<p style="color:#888; font-size:7pt">Gerado pelo IGNF Finora em '

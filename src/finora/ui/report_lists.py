@@ -29,6 +29,7 @@ class TableReport(QWidget):
     COLUMNS: list[tuple[str, int | None, bool]] = []      # (título, largura ou None = estica, é valor?)
     TITLE = ""
     COMPACT = False          # valores sem o símbolo da moeda (relatórios mês a mês, colunas estreitas)
+    HAS_CHART = False        # o relatório desenha um gráfico (self.chart, montado no refresh)
 
     def __init__(self, profile: Profile, t: dict):
         super().__init__()
@@ -54,6 +55,16 @@ class TableReport(QWidget):
         self.lay.setContentsMargins(0, 0, 0, 0)
         self.lay.setSpacing(10)
         self.lay.addLayout(self.bar)
+        self.chart = None
+        self.chart_view = None
+        if self.HAS_CHART:
+            from PySide6.QtCharts import QChartView
+            from PySide6.QtGui import QPainter
+            self.chart_view = QChartView()
+            self.chart_view.setRenderHint(QPainter.Antialiasing)
+            self.chart_view.setFixedHeight(200)
+            self.chart_view.hide()
+            self.lay.addWidget(self.chart_view)
         self.lay.addWidget(self.table, 1)
         self.lay.addWidget(self.empty, 1)
         self.lay.addWidget(self.footer)
@@ -101,6 +112,13 @@ class TableReport(QWidget):
         from finora.ui.reports_page import export_buttons     # evita import circular
         if help_text:
             self.bar.addWidget(help_icon(help_text, self.t))
+        if self.HAS_CHART:
+            from finora.core import settings
+            self.chart_check = QCheckBox("Gráfico")
+            self.chart_check.setToolTip("Mostrar o gráfico (ele também sai na impressão e no PDF)")
+            self.chart_check.setChecked(settings.get_report_charts())
+            self.chart_check.toggled.connect(self._chart_toggled)
+            self.bar.addWidget(self.chart_check)
         self.bar.addStretch(1)
         self.bar.addLayout(export_buttons(self, self.t))
 
@@ -136,6 +154,25 @@ class TableReport(QWidget):
         self.table.setVisible(bool(rows))
         self.empty.setVisible(not rows)
         self.empty.setText(empty_text)
+        self._show_chart()
+
+    # ----- gráfico -----
+    def _chart_on(self) -> bool:
+        return self.HAS_CHART and hasattr(self, "chart_check") and self.chart_check.isChecked() \
+            and self.chart is not None and not self.chart.empty
+
+    def _show_chart(self):
+        if self.chart_view is None:
+            return
+        if self._chart_on():
+            from finora.ui import report_charts
+            self.chart_view.setChart(report_charts.build(self.chart, self.t))
+        self.chart_view.setVisible(self._chart_on())
+
+    def _chart_toggled(self, on: bool):
+        from finora.core import settings
+        settings.set_report_charts(on)
+        self._show_chart()
 
     def _double(self, row: int, _col: int):
         target = self._targets[row] if row < len(self._targets) else None
@@ -174,10 +211,14 @@ class TableReport(QWidget):
             sheet.add(cells, style)
         text = re.sub(r"<[^>]+>", "", self.footer.text()).replace("&nbsp;", " ")
         sheet.footer = " ".join(text.split())
+        if self._chart_on():
+            from finora.ui import report_charts
+            sheet.chart = report_charts.png(self.chart)
         return sheet
 
     def apply_theme(self, t: dict):
         self.t = t
+        self._show_chart()
 
 
 # ---------- extrato por conta ----------
@@ -238,6 +279,7 @@ class AccountStatementView(TableReport):
 # ---------- por categoria ----------
 class ByCategoryView(TableReport):
     TITLE = "Por categoria"
+    HAS_CHART = True
     COLUMNS = [("CATEGORIA", None, False), ("TIPO", 90, False), ("QTD.", 60, True), ("TOTAL", 130, True),
                ("% DO TIPO", 90, True)]
 
@@ -253,6 +295,12 @@ class ByCategoryView(TableReport):
         with Session() as s:
             data = reports.by_category(s, self.profile.id, first, last)
         totals = {k: sum((r.total for r in data if r.kind == k), Decimal(0)) for k in ("income", "expense")}
+        groups: dict[str, Decimal] = {}
+        for r in data:
+            if r.kind == "expense":
+                groups[r.group] = groups.get(r.group, Decimal(0)) + r.total
+        from finora.ui.report_charts import ChartData
+        self.chart = ChartData("pie", list(groups), [("Despesas", list(groups.values()))], self.profile.currency)
         rows = []
         for r in data:
             label = r.category if r.group == r.category else f"{r.group} › {r.category}"
@@ -609,6 +657,7 @@ class IrpfView(TableReport):
 class CategoryMonthsView(TableReport):
     TITLE = "Comparativo por categoria"
     COMPACT = True
+    HAS_CHART = True
     COLUMNS = [("CATEGORIA", None, False)]
 
     def __init__(self, profile: Profile, t: dict):
@@ -625,6 +674,11 @@ class CategoryMonthsView(TableReport):
                          + [("MÉDIA", 90, True), ("TOTAL", 96, True)])
         with Session() as s:
             data = reports.category_by_month(s, self.profile.id, months)
+        from finora.ui.report_charts import ChartData
+        sums = {k: [sum((r.values[i] for r in data if r.kind == k), Decimal(0)) for i in range(len(months))]
+                for k in ("income", "expense")}
+        self.chart = ChartData("bars", [self.month_title(y, m, many) for y, m in months],
+                               [("Receitas", sums["income"]), ("Despesas", sums["expense"])], self.profile.currency)
         rows, last_kind = [], None
         for r in data:
             if r.kind != last_kind:
@@ -644,6 +698,7 @@ class CategoryMonthsView(TableReport):
 class BalanceHistoryView(TableReport):
     TITLE = "Evolução do patrimônio"
     COMPACT = True
+    HAS_CHART = True
     COLUMNS = [("CONTA", None, False)]
 
     def __init__(self, profile: Profile, t: dict):
@@ -660,6 +715,7 @@ class BalanceHistoryView(TableReport):
         with Session() as s:
             data = reports.balance_history(s, self.profile.id, months)
         rows = []
+        self.chart = None
         for r in data:
             label = r.account + ("" if r.currency == self.profile.currency else f" ({r.currency}, convertido)")
             rows.append({"cells": [label] + list(r.base_values), "muted": r.kind == "card",
@@ -668,6 +724,12 @@ class BalanceHistoryView(TableReport):
             total = [sum((r.base_values[i] for r in data if r.kind != "card"), Decimal(0)) for i in range(len(months))]
             cards_ = [sum((r.base_values[i] for r in data if r.kind == "card"), Decimal(0)) for i in range(len(months))]
             rows.append({"cells": ["Total (sem cartões)"] + total, "bold": True})
+            from finora.ui.report_charts import ChartData
+            series = [("Total (sem cartões)", total)]
+            if any(cards_):
+                series.append(("Patrimônio líquido", [a + b for a, b in zip(total, cards_)]))
+            self.chart = ChartData("line", [self.month_title(y, m, many) for y, m in months], series,
+                                   self.profile.currency)
             if any(cards_):
                 rows.append({"cells": ["Cartões (dívida)"] + cards_, "muted": True})
                 rows.append({"cells": ["Patrimônio líquido"] + [a + b for a, b in zip(total, cards_)], "bold": True})
@@ -683,6 +745,7 @@ class BalanceHistoryView(TableReport):
 # ---------- entradas e saídas por mês ----------
 class CashHistoryView(TableReport):
     TITLE = "Entradas e saídas por mês"
+    HAS_CHART = True
     COLUMNS = [("MÊS", None, False), ("ENTROU", 130, True), ("SAIU", 130, True), ("RESULTADO", 130, True),
                ("ACUMULADO", 130, True)]
 
@@ -699,6 +762,11 @@ class CashHistoryView(TableReport):
         months = reports.period_months(self.period.currentData())
         with Session() as s:
             data = reports.cash_history(s, self.profile.id, months)
+        from finora.ui.report_charts import ChartData
+        many = len({r.year for r in data}) > 1
+        self.chart = ChartData("bars", [self.month_title(r.year, r.month, many) for r in data],
+                               [("Entrou", [r.inflow for r in data]), ("Saiu", [r.outflow for r in data])],
+                               self.profile.currency)
         rows, acc = [], Decimal(0)
         for r in data:
             acc += r.result

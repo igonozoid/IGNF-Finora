@@ -183,3 +183,32 @@ def test_pagar_varios_de_uma_vez(ctx):
     c = entries.create(s, ctx["eid"], _data(ctx, description="Já paga", paid=True))[0]
     assert entries.set_paid_many(s, [a, b, c], date(2026, 10, 12)) == (2, 1)
     assert all(entries.get(s, i).is_paid for i in (a, b)) and entries.get(s, a).paid_date == date(2026, 10, 12)
+
+
+def test_filtros_de_periodo_data_tipo_contato_e_centro(session, profile):
+    from finora.services import contacts, cost_centers
+    s, eid = session, profile.id
+    bank = accounts.list_accounts(s, eid)[0].id
+    cc = cost_centers.create(s, eid, "Casa")
+
+    def add(kind, desc, when, contact=None, ccid=None, paid=False):
+        return entries.create(s, eid, EntryData(kind=kind, description=desc, amount=D("10"), due_date=when,
+                                                account_id=bank, contact=contact, cost_center_id=ccid, paid=paid,
+                                                paid_date=when if paid else None))[0]
+    add("expense", "Jan", date(2026, 1, 10), "Enel", cc)
+    add("income", "Fev", date(2026, 2, 10))
+    add("expense", "Abr", date(2026, 4, 10), "Enel")
+    add("expense", "Out", date(2026, 10, 10), paid=True)
+    add("expense", "2025", date(2025, 12, 10))
+
+    def names(**kw):
+        return [e.description for e in entries.list_entries(s, eid, year=2026, month=10, **kw)]
+    assert names() == ["Out"]                                         # padrão: o mês
+    assert names(period="q1") == ["Jan", "Fev"] and names(period="s1") == ["Jan", "Fev", "Abr"]
+    assert len(names(period="year")) == 4 and len(names(period="all")) == 5
+    assert names(period="year", kind="income") == ["Fev"]
+    enel = next(c.id for c in contacts.list_contacts(s, eid) if c.name == "Enel")
+    assert names(period="all", contact_id=enel) == ["Jan", "Abr"]
+    assert names(period="all", cost_center_id=cc) == ["Jan"]
+    assert names(period="year", date_field="paid") == ["Out"]          # pela data do pagamento
+    assert entries.period_range(2026, 10, "q4") == (date(2026, 10, 1), date(2026, 12, 31))

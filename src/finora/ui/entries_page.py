@@ -733,7 +733,7 @@ class EntriesPage(QWidget):
         self.filter = "all"
 
         # Linha 1: mês, busca, importar
-        self.search = QLineEdit(placeholderText="Filtrar este mês…", clearButtonEnabled=True)
+        self.search = QLineEdit(placeholderText="Filtrar a lista…", clearButtonEnabled=True)
         self.search.setToolTip("Filtra a lista do mês. Para procurar em todos os meses, use a busca do topo (Ctrl K).")
         self.search.setMaximumWidth(220)
         self.search.setMinimumWidth(110)
@@ -787,10 +787,42 @@ class EntriesPage(QWidget):
             box.setMinimumWidth(130)
             box.setMaximumWidth(200)
             fw.addWidget(box)
+        self.more_btn = button("Mais filtros", "secondary", t, "fa6s.filter", "fg")
+        self.more_btn.setCheckable(True)
+        self.more_btn.setToolTip("Período (trimestre, semestre, ano, tudo), data, tipo, contato e centro de custo")
+        fw.addWidget(self.more_btn)
         self.clear_filters = button("Limpar", "link", t, "fa6s.xmark")
-        self.clear_filters.setToolTip("Tirar os filtros de conta e categoria")
+        self.clear_filters.setToolTip("Tirar todos os filtros (volta ao mês, por vencimento)")
         self.clear_filters.hide()
         fw.addWidget(self.clear_filters)
+
+        # Linha "Mais filtros" (como no IgnControl)
+        self.more_w = QWidget()
+        mw = QHBoxLayout(self.more_w)
+        mw.setContentsMargins(0, 0, 0, 0)
+        mw.setSpacing(6)
+        self.period_box = QComboBox()
+        for k, label in entries.PERIODS.items():
+            self.period_box.addItem(label, k)
+        self.period_box.setToolTip("Mês: o mês escolhido no alto da tela. Os outros usam o ano ao lado.")
+        self.year_box = QSpinBox(minimum=2000, maximum=2100, value=self.year)
+        self.year_box.setToolTip("Ano do trimestre, semestre ou ano todo")
+        self.date_box = QComboBox()
+        self.date_box.setMaximumWidth(220)
+        for k, label in entries.DATE_FIELDS.items():
+            self.date_box.addItem(f"Por {label.lower()}", k)
+        self.kind_box = QComboBox()
+        self.kind_box.setMaximumWidth(240)
+        for k, label in entries.KIND_FILTERS.items():
+            self.kind_box.addItem(label, k)
+        self.contact_filter = QComboBox()
+        self.cc_filter = QComboBox()
+        for w in (self.period_box, self.year_box, self.date_box, self.kind_box, self.contact_filter, self.cc_filter):
+            mw.addWidget(w)
+        self.contact_filter.setMaximumWidth(180)
+        self.cc_filter.setMaximumWidth(160)
+        mw.addStretch(1)
+        self.more_w.hide()
         row2.addWidget(self.filters_w)
         self.filters_row = QHBoxLayout()          # usada só em janela estreita
         self.filters_row.setContentsMargins(0, 0, 0, 0)
@@ -863,6 +895,7 @@ class EntriesPage(QWidget):
         ll.addLayout(row1)
         ll.addLayout(row2)
         ll.addLayout(self.filters_row)
+        ll.addWidget(self.more_w)
         self.statements_bar = QLabel(wordWrap=True)
         self.statements_bar.setTextFormat(Qt.RichText)
         self.statements_bar.linkActivated.connect(self._open_statement_link)
@@ -891,6 +924,10 @@ class EntriesPage(QWidget):
         self.account_filter.activated.connect(lambda _i: self.refresh())
         self.category_filter.activated.connect(lambda _i: self.refresh())
         self.clear_filters.clicked.connect(self._clear_filters)
+        self.more_btn.toggled.connect(self.more_w.setVisible)
+        for box in (self.period_box, self.date_box, self.kind_box, self.contact_filter, self.cc_filter):
+            box.activated.connect(lambda _i: self.refresh())
+        self.year_box.valueChanged.connect(lambda _v: self.refresh())
         self.table.selectionModel().selectionChanged.connect(self._selection_changed)
         self.pay_sel.clicked.connect(self._pay_selected)
         if allowed(current_edition(), "ofx"):
@@ -937,11 +974,19 @@ class EntriesPage(QWidget):
             select_id = cur.id if cur else None
         self._fill_filters()
         acc_id, cat_id = self.account_filter.currentData(), self.category_filter.currentData()
-        self.clear_filters.setVisible(bool(acc_id or cat_id))
+        period, date_field = self.period_box.currentData(), self.date_box.currentData()
+        kind, contact_id, cc_id = self.kind_box.currentData(), self.contact_filter.currentData(), self.cc_filter.currentData()
+        extra = period != "month" or date_field != "due" or kind or contact_id or cc_id
+        self.clear_filters.setVisible(bool(acc_id or cat_id or extra))
+        self.more_btn.setText("Mais filtros •" if extra else "Mais filtros")
+        self.year_box.setEnabled(period not in ("month", "all"))
+        year = self.year_box.value() if period not in ("month", "all") else self.year
         with Session() as s:
-            rows = entries.list_entries(s, self.profile.id, year=self.year, month=self.month,
+            rows = entries.list_entries(s, self.profile.id, year=year, month=self.month,
                                         filter=self.filter, search=self.search.text(),
-                                        account_id=acc_id, category_id=cat_id)
+                                        account_id=acc_id, category_id=cat_id, period=period,
+                                        date_field=date_field, kind=kind, contact_id=contact_id,
+                                        cost_center_id=cc_id)
             totals = entries.month_totals(s, self.profile.id, self.year, self.month)
             first, last = entries.month_range(self.year, self.month)
             sts = cards.due_between(s, self.profile.id, first, last)
@@ -949,10 +994,14 @@ class EntriesPage(QWidget):
         late = self.filter == "late"
         with Session() as s:
             self.model.attached = attachments.counts(s, [e.id for e in rows])
-        self.model.set_rows(rows, show_year=late)
+        self.model.set_rows(rows, show_year=late or period not in ("month",))
         self.period_locked.emit(late)
         self.period_changed.emit(self.year, self.month)
         cur = self.profile.currency
+        if period != "month":          # outro período: os totais são do que está na lista
+            rec = sum((e.base_amount for e in rows if e.status == "pending" and e.kind == "income"), Decimal(0))
+            pay = sum((e.base_amount for e in rows if e.status == "pending" and e.kind == "expense"), Decimal(0))
+            totals = entries.Totals(rec, pay)
         self.tot_rec.setText(money.fmt(totals.receivable, cur))
         self.tot_pay.setText(money.fmt(totals.payable, cur))
         self.tot_bal.setText(money.fmt(totals.balance, cur))
@@ -962,8 +1011,8 @@ class EntriesPage(QWidget):
         if not rows:
             if self.search.text().strip():
                 self.empty.setText("Nada encontrado com essa busca.")
-            elif acc_id or cat_id:
-                self.empty.setText("Nada neste mês com esses filtros de conta/categoria.")
+            elif acc_id or cat_id or extra:
+                self.empty.setText("Nada encontrado com esses filtros.")
             elif late:
                 self.empty.setText("Nenhuma conta atrasada. Tudo em dia!")
             else:
@@ -981,9 +1030,24 @@ class EntriesPage(QWidget):
     def _fill_filters(self):
         """Recarrega as listas de conta/categoria (podem ter mudado), mantendo o que estava escolhido."""
         acc_keep, cat_keep = self.account_filter.currentData(), self.category_filter.currentData()
+        ct_keep, cc_keep = self.contact_filter.currentData(), self.cc_filter.currentData()
         with Session() as s:
             accs = accounts.list_accounts(s, self.profile.id)
             tree = categories.tree(s, self.profile.id)
+            people = contacts.list_contacts(s, self.profile.id)
+            centers = cost_centers.list_centers(s, self.profile.id, self.year, self.month)
+        for box, first, items, keep in ((self.contact_filter, "Todos os contatos", [(c.id, c.name) for c in people],
+                                         ct_keep),
+                                        (self.cc_filter, "Todos os centros", [(c.id, c.name) for c in centers],
+                                         cc_keep)):
+            box.blockSignals(True)
+            box.clear()
+            box.addItem(first, None)
+            for i, name in items:
+                box.addItem(name, i)
+            box.setCurrentIndex(max(0, box.findData(keep)))
+            box.blockSignals(False)
+        self.cc_filter.setVisible(bool(centers))
         for box in (self.account_filter, self.category_filter):
             box.blockSignals(True)
             box.clear()
@@ -1001,8 +1065,10 @@ class EntriesPage(QWidget):
             box.blockSignals(False)
 
     def _clear_filters(self):
-        self.account_filter.setCurrentIndex(0)
-        self.category_filter.setCurrentIndex(0)
+        for box in (self.account_filter, self.category_filter, self.period_box, self.date_box, self.kind_box,
+                    self.contact_filter, self.cc_filter):
+            box.setCurrentIndex(0)
+        self.year_box.setValue(self.year)
         self.refresh()
 
     # ----- seleção de vários -----

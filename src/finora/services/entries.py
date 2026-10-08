@@ -149,26 +149,62 @@ def to_view(row) -> EntryView:
                      Decimal(e.dest_amount) if e.dest_amount is not None else None, dest_cur)
 
 
+# Período da lista (como no IgnControl): o mês do cabeçalho, trimestres, semestres, o ano ou tudo
+PERIODS = {"month": "Mês", "q1": "1º trimestre", "q2": "2º trimestre", "q3": "3º trimestre", "q4": "4º trimestre",
+           "s1": "1º semestre", "s2": "2º semestre", "year": "Ano todo", "all": "Todo o período"}
+DATE_FIELDS = {"due": "Vencimento", "competence": "Competência (data da compra)", "paid": "Pagamento"}
+KIND_FILTERS = {"": "Receitas, despesas e transferências", "income": "Só receitas", "expense": "Só despesas",
+                "transfer": "Só transferências"}
+
+
+def period_range(year: int, month: int, period: str) -> tuple[date, date] | None:
+    """Datas do período (None = todo o período)."""
+    if period == "all":
+        return None
+    if period.startswith("q"):
+        q = int(period[1])
+        return date(year, 3 * q - 2, 1), month_range(year, 3 * q)[1]
+    if period.startswith("s"):
+        h = int(period[1])
+        return date(year, 6 * h - 5, 1), month_range(year, 6 * h)[1]
+    if period == "year":
+        return date(year, 1, 1), date(year, 12, 31)
+    return month_range(year, month)
+
+
 def list_entries(s: Session, entity_id: int, *, year: int, month: int, filter: str = "all",
                  search: str = "", today: date | None = None, account_id: int | None = None,
-                 category_id: int | None = None) -> list[EntryView]:
-    """Lançamentos do mês (pelo vencimento). 'Atrasados' ignora o mês; 'Pagos' usa a data do pagamento.
+                 category_id: int | None = None, period: str = "month", date_field: str = "due",
+                 kind: str = "", contact_id: int | None = None, cost_center_id: int | None = None) -> list[EntryView]:
+    """Lançamentos do período (pelo vencimento, por padrão). 'Atrasados' ignora o período; 'Pagos' usa a data do
+    pagamento.
 
+    `period`: month (o mês do cabeçalho), q1..q4, s1/s2, year ou all. `date_field`: due | competence | paid.
     `account_id`: só os dessa conta (inclui transferências que entram nela).
     `category_id`: só os dessa categoria; se for um grupo, inclui as subcategorias dele."""
     today = today or date.today()
-    first, last = month_range(year, month)
+    span = period_range(year, month, period)
+    col = {"competence": Entry.competence_date, "paid": Entry.paid_date}.get(date_field, Entry.due_date)
     q = query(entity_id)
     if filter == "late":
         q = q.where(Entry.status == "pending", Entry.due_date < today)
     elif filter == "paid":
-        q = q.where(Entry.status == "paid", Entry.paid_date.between(first, last))
+        q = q.where(Entry.status == "paid")
+        if span:
+            q = q.where(Entry.paid_date.between(*span))
     else:
-        q = q.where(Entry.due_date.between(first, last))
+        if span:
+            q = q.where(col.between(*span))
         if filter == "receivable":
             q = q.where(Entry.status == "pending", Entry.kind == "income")
         elif filter == "payable":
             q = q.where(Entry.status == "pending", Entry.kind == "expense")
+    if kind in ("income", "expense", "transfer"):
+        q = q.where(Entry.kind == kind)
+    if contact_id:
+        q = q.where(Entry.contact_id == contact_id)
+    if cost_center_id:
+        q = q.where(Entry.cost_center_id == cost_center_id)
     if account_id:
         q = q.where(or_(Entry.account_id == account_id, Entry.dest_account_id == account_id))
     if category_id:

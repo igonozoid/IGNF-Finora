@@ -188,3 +188,17 @@ def test_pagar_varios_selecionados(window, qtbot):
     page.pay_sel.click()
     assert next(e for e in page.model.rows if e.description == "Mercado").is_paid
     assert next(e for e in page.model.rows if e.description == "Conta de luz").is_paid
+
+
+def test_mais_filtros_ano_todo_e_limpar(window, qtbot):
+    page = _page(window)
+    page.more_btn.click()
+    assert not page.more_w.isHidden()
+    page.period_box.setCurrentIndex(page.period_box.findData("all"))
+    page.refresh()
+    assert len(page.model.rows) > 4 and page.clear_filters.isVisible()          # todos os meses do aluguel
+    page.kind_box.setCurrentIndex(page.kind_box.findData("income"))
+    page.refresh()
+    assert {e.kind for e in page.model.rows} == {"income"} and "•" in page.more_btn.text()
+    page.clear_filters.click()
+    assert page.period_box.currentData() == "month" and page.kind_box.currentData() == ""

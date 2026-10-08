@@ -196,3 +196,26 @@ def test_relatorio_analitico_e_menor_saldo_no_fluxo(window, qtbot):
     flow = rp.views["flow"]
     flow.refresh()
     assert flow.alert.text()                         # sempre mostra o ponto mais apertado do caixa
+
+
+def test_metas_no_dashboard(window, monkeypatch):
+    from finora.ui.goals_dialog import GoalsDialog
+    window.go_to("dashboard")
+    page = window.page("dashboard")
+    assert page.goals_btn.text() == "Gerenciar"
+
+    def fake_exec(dlg):
+        dlg.name.setText("Viagem")
+        dlg.target.setText("6.000,00")
+        dlg.has_due.setChecked(True)
+        dlg.saved.setText("1.500,00")
+        dlg.save()
+        assert dlg.error.isHidden() and [g.name for g in dlg.items] == ["Viagem"]
+        assert "faltam R$ 4.500,00" in dlg.progress.text() and not dlg.add_btn.isHidden()
+        return 0
+
+    monkeypatch.setattr(GoalsDialog, "exec", fake_exec)
+    page.goals_btn.click()
+    from PySide6.QtWidgets import QLabel
+    labels = [lbl.text() for lbl in page.goals_box.findChildren(QLabel)]
+    assert "Viagem" in labels and "25%" in labels

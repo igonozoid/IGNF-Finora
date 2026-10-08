@@ -126,6 +126,18 @@ class CategoryRule(Base):
     description: Mapped[str | None] = mapped_column(String(200))  # descrição para o lançamento (vazio = mantém)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+class Goal(Base):
+    """Meta (reserva, viagem…): o progresso é o saldo de uma conta ou o valor guardado informado."""
+    __tablename__ = "goals"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    target: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+    due_date: Mapped[date | None]
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"))
+    saved: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
 class BankLine(Base):
     """Linha de extrato importada (OFX). Fica guardada para a conciliação e para não importar duas vezes."""
     __tablename__ = "bank_lines"

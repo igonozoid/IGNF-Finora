@@ -17,7 +17,7 @@ from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.accounts_page import KIND_ICONS
 from finora.ui.entries_page import MONTHS
-from finora.ui.widgets import help_icon, icon_label, set_tone
+from finora.ui.widgets import button, help_icon, icon_label, set_tone
 
 SHORT = [m[:3].capitalize() for m in MONTHS]
 NARROW = 760  # abaixo dessa largura, os painéis ficam um embaixo do outro
@@ -239,6 +239,16 @@ class DashboardPage(QWidget):
         self.row2.setSpacing(10)
         self.row2.addWidget(chart_box, 2)
         self.row2.addWidget(acc_box, 1)
+        # Metas
+        goals_box, self.goals_lay, ghead = _panel("Metas e objetivos", t, "fa6s.bullseye")
+        self.goals_btn = button("Gerenciar", "link", t, "fa6s.pen")
+        self.goals_btn.clicked.connect(lambda: self.open_goals())
+        ghead.addWidget(self.goals_btn)
+        self.goals_rows = QVBoxLayout()
+        self.goals_rows.setSpacing(theme.SP_M)
+        self.goals_lay.addLayout(self.goals_rows)
+        self.goals_box = goals_box
+
         self.row3 = QBoxLayout(QBoxLayout.LeftToRight)
         self.row3.setSpacing(10)
         self.row3.addWidget(due_box, 1)
@@ -251,6 +261,7 @@ class DashboardPage(QWidget):
         bl.addLayout(self.kpi_grid)
         bl.addLayout(self.row2)
         bl.addLayout(self.row3)
+        bl.addWidget(goals_box)
         bl.addStretch(1)
         scroll = QScrollArea(objectName="pageScroll", widgetResizable=True, frameShape=QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -396,6 +407,49 @@ class DashboardPage(QWidget):
             self.cat_rows.addLayout(box)
         if not top:
             self.cat_rows.addWidget(self._muted("Nenhuma despesa neste mês ainda."))
+        self._fill_goals()
+
+    def _fill_goals(self):
+        from finora.services import goals
+        from finora.ui.goals_dialog import describe
+        _clear(self.goals_rows)
+        with Session() as s:
+            items = goals.list_goals(s, self.profile.id)
+        for g in items:
+            row = ClickRow()
+            row.setCursor(Qt.PointingHandCursor)
+            row.setToolTip("Clique para editar a meta")
+            row.clicked.connect(lambda gid=g.id: self.open_goals(gid))
+            box = QVBoxLayout(row)
+            box.setContentsMargins(0, 2, 0, 2)
+            box.setSpacing(3)
+            line = QHBoxLayout()
+            name = QLabel(g.name)
+            line.addWidget(name, 1)
+            pct = QLabel(f"{g.pct}%")
+            pct.setFont(_mono())
+            line.addWidget(pct)
+            bar = QProgressBar(textVisible=False, maximum=100)
+            bar.setFixedHeight(6)
+            bar.setValue(g.pct)
+            info = QLabel(describe(g, self.profile.currency))
+            info.setProperty("role", "field")
+            box.addLayout(line)
+            box.addWidget(bar)
+            box.addWidget(info)
+            self.goals_rows.addWidget(row)
+        if not items:
+            hint = self._muted("Junte dinheiro com um objetivo: reserva de emergência, viagem, carro… "
+                               "Clique em Gerenciar para criar a primeira meta.")
+            self.goals_rows.addWidget(hint)
+
+    def open_goals(self, select_id: int | None = None):
+        from finora.ui.goals_dialog import GoalsDialog
+        dlg = GoalsDialog(self, self.profile.id, self.profile.currency, self.t, select_id)
+        dlg.exec()
+        if dlg.changed:
+            self.message.emit("Metas atualizadas.")
+        self._fill_goals()
 
     def _muted(self, text: str) -> QLabel:
         lbl = QLabel(text, wordWrap=True)

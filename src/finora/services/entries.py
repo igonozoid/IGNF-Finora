@@ -383,15 +383,17 @@ def update(s: Session, entry_id: int, d: EntryData, scope: str = "one") -> int:
     return len(targets)
 
 
-def delete(s: Session, entry_id: int, scope: str = "one") -> int:
-    """Exclui o lançamento (ou ele e os próximos ainda não pagos da série). Retorna quantos saíram."""
+def delete(s: Session, entry_id: int, scope: str = "one") -> list[int]:
+    """Manda para a lixeira o lançamento (ou ele e os próximos ainda não pagos da série). Nada sai do banco:
+    dá para restaurar (services/trash). Retorna os ids, para o "Desfazer"."""
+    from finora.services import trash
     e = s.get(Entry, entry_id)
     targets = [e] + ([x for x in _following(s, e) if x.id != e.id and _open(x)]
                      if scope == "following" else [])
-    for x in targets:
-        s.delete(x)
+    ids = [x.id for x in targets]
+    trash.move(s, targets)
     s.commit()
-    return len(targets)
+    return ids
 
 
 def set_paid_many(s: Session, entry_ids: list[int], when: date | None = None) -> tuple[int, int]:

@@ -76,6 +76,8 @@ def _summary(obj, action: str, changes: dict) -> str:
             return f"Baixou pagamento {what}"
         if changes.get("status", [None])[0] == "paid":
             return f"Desfez pagamento {what}"
+    if isinstance(obj, Entry) and action == "update" and "deleted_at" in changes:
+        return f"{'Restaurou da lixeira' if obj.deleted_at is None else 'Mandou para a lixeira'} {noun} {what}"[:300]
     if isinstance(obj, Entity) and action == "update" and set(changes) == {"locked_through"}:
         return (f"Fechou o período até {obj.locked_through:%d/%m/%Y}" if obj.locked_through
                 else "Reabriu o período")

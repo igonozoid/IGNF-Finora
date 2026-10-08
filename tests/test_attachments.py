@@ -47,11 +47,13 @@ def test_validacoes(session, profile, tmp_path):
         attachments.add(s, entry, tmp_path / "nao-existe.pdf")
 
 
-def test_excluir_lancamento_apaga_os_anexos(session, profile, tmp_path):
+def test_lixeira_guarda_os_anexos(session, profile, tmp_path):
+    from finora.services import trash
     s = session
     entry = _entry(s, profile.id)
     f = tmp_path / "nota.png"
     f.write_bytes(b"png")
     attachments.add(s, entry, f)
     entries.delete(s, entry)
-    assert attachments.counts(s, [entry]) == {}
+    trash.restore(s, [entry])
+    assert attachments.counts(s, [entry]) == {entry: 1}

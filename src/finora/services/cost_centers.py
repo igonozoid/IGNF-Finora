@@ -113,9 +113,11 @@ def update(s: Session, cc_id: int, name: str, budget: Decimal | None, is_active:
 
 def delete(s: Session, cc_id: int) -> None:
     """Só exclui se nenhum lançamento usa; senão, a saída é inativar."""
-    used = s.scalar(select(func.count(Entry.id)).where(Entry.cost_center_id == cc_id))
+    used = s.scalar(select(func.count(Entry.id)).where(Entry.cost_center_id == cc_id)
+                    .execution_options(include_deleted=True))       # os da lixeira podem voltar
     if used:
-        raise ValueError(f"Esse centro de custo está em {used} {'lançamento' if used == 1 else 'lançamentos'}. "
+        raise ValueError(f"Esse centro de custo está em {used} {'lançamento' if used == 1 else 'lançamentos'} "
+                         "(contando os da lixeira). "
                          "Para não perder o histórico, inative-o em vez de excluir.")
     s.delete(s.get(CostCenter, cc_id))
     s.commit()

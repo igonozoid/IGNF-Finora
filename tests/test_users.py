@@ -105,7 +105,7 @@ def test_auditoria_registra_quem_e_o_que(session, profile):
     log = audit.list_log(s, profile.id)
     texts = [a.summary for a in log]
     assert texts[0] == "Importou extrato OFX (4 linhas)"
-    assert texts[1].startswith("Excluiu lançamento \"Luz de outubro\"")
+    assert texts[1].startswith("Mandou para a lixeira lançamento \"Luz de outubro\"")
     assert any(t.startswith("Alterou lançamento") and "descrição" in t and "valor" in t for t in texts)
     assert any(t.startswith("Baixou pagamento \"Luz\"") for t in texts)
     assert any(t.startswith("Criou lançamento \"Luz\" — R$ 100,00") for t in texts)

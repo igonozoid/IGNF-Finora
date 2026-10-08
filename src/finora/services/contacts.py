@@ -163,10 +163,11 @@ def update(s: Session, contact_id: int, *, name: str, person_type: str, document
 
 def delete(s: Session, contact_id: int) -> None:
     """Só exclui contato sem lançamentos, para não perder o histórico."""
-    used = s.scalar(select(func.count(Entry.id)).where(Entry.contact_id == contact_id))
+    used = s.scalar(select(func.count(Entry.id)).where(Entry.contact_id == contact_id)
+                    .execution_options(include_deleted=True))       # os da lixeira podem voltar
     if used:
         raise ValueError(f"Esse contato aparece em {used} {'lançamento' if used == 1 else 'lançamentos'} "
-                         "e por isso não pode ser excluído.")
+                         "(contando os da lixeira) e por isso não pode ser excluído.")
     s.delete(s.get(Contact, contact_id))
     s.commit()
 

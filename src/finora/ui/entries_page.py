@@ -3,7 +3,7 @@ import calendar
 from datetime import date
 from decimal import Decimal
 
-from PySide6.QtCore import QAbstractTableModel, QDate, QModelIndex, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, QDate, QModelIndex, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QKeySequence, QPen, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QDateEdit, QFrame, QHBoxLayout, QHeaderView,
@@ -24,7 +24,7 @@ from finora.ui import theme
 from finora.ui.attachments_box import AttachmentsBox
 from finora.ui.card_statements import open_statements
 from finora.ui.receipt_dialog import ReceiptDialog
-from finora.ui.widgets import button, field_label, help_icon, lock_icon, show_upgrade, themed_icon
+from finora.ui.widgets import button, field_label, help_icon, icon_label, lock_icon, show_upgrade, themed_icon
 
 MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro",
           "outubro", "novembro", "dezembro"]
@@ -233,8 +233,8 @@ def ask_scope(parent, action: str, following: int) -> str | None:
     return "one" if box.clickedButton() is one else "following" if box.clickedButton() is nxt else None
 
 
-def confirm_delete(parent, e: EntryView) -> str | None:
-    """Pergunta e exclui. Retorna a mensagem para a barra de status, ou None se cancelou."""
+def confirm_delete(parent, e: EntryView) -> tuple[str, list[int]] | None:
+    """Pergunta e manda para a lixeira. Retorna (mensagem, ids para o Desfazer), ou None se cancelou."""
     with Session() as s:
         following = entries.in_series(s, e.id)
     if following:
@@ -243,14 +243,19 @@ def confirm_delete(parent, e: EntryView) -> str | None:
             return None
     else:
         ok = QMessageBox.question(parent, "Excluir lançamento", f"Excluir \"{e.description}\"?\n"
-                                  "Essa ação não pode ser desfeita.",
+                                  "Ele vai para a Lixeira, de onde dá para restaurar.",
                                   QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if ok != QMessageBox.Yes:
             return None
         scope = "one"
-    with Session() as s:
-        n = entries.delete(s, e.id, scope)
-    return f"{n} lançamentos excluídos." if n > 1 else "Lançamento excluído."
+    try:
+        with Session() as s:
+            ids = entries.delete(s, e.id, scope)
+    except ValueError as err:                 # período fechado, sem permissão
+        QMessageBox.warning(parent, "Excluir", str(err))
+        return None
+    n = len(ids)
+    return (f"{n} lançamentos foram para a lixeira." if n > 1 else "Lançamento foi para a lixeira."), ids
 
 
 # ---------- formulário ----------
@@ -258,6 +263,7 @@ class EntryForm(QFrame):
     saved = Signal(str, int)   # mensagem, id para selecionar
     closed = Signal()
     receipt_requested = Signal(object)   # EntryView
+    deleted = Signal(str, list)          # mensagem, ids (para o Desfazer)
 
     def __init__(self, profile: Profile, t: dict):
         super().__init__(objectName="card")
@@ -712,8 +718,8 @@ class EntryForm(QFrame):
         self.saved.emit(msg, sel)
 
     def _delete(self):
-        if self.editing is not None and (msg := confirm_delete(self, self.editing)):
-            self.saved.emit(msg, 0)
+        if self.editing is not None and (done := confirm_delete(self, self.editing)):
+            self.deleted.emit(*done)
 
 
 # ---------- página ----------
@@ -761,6 +767,10 @@ class EntriesPage(QWidget):
                            (lambda k=kind: self._export(k)) if can_export else
                            (lambda: show_upgrade(self, EXPORT_LOCK)))
         self.export_btn.setMenu(menu)
+        self.trash_btn = button("", "secondary", t, "fa6s.trash-can", "fg")
+        self.trash_btn.setToolTip("Lixeira: lançamentos excluídos, para restaurar")
+        self.trash_btn.clicked.connect(self.open_trash)
+        row1.addWidget(self.trash_btn)
 
         # Linha 2: filtros
         self.filter_group = QButtonGroup(self, exclusive=True)
@@ -901,6 +911,25 @@ class EntriesPage(QWidget):
         self.statements_bar.linkActivated.connect(self._open_statement_link)
         self.statements_bar.hide()
         ll.addWidget(self.statements_bar)
+        # "Foi para a lixeira. Desfazer" (some sozinho depois de uns segundos)
+        self._undo_ids: list[int] = []
+        self.undo_bar = QFrame(objectName="card")
+        ub = QHBoxLayout(self.undo_bar)
+        ub.setContentsMargins(theme.SP_M, 2, theme.SP_S, 2)
+        ub.addWidget(icon_label("fa6s.trash-can", t, "mut", 11))
+        self.undo_text = QLabel()
+        ub.addWidget(self.undo_text)
+        undo = button("Desfazer", "link", t, "fa6s.rotate-left")
+        see = button("Ver lixeira", "link")
+        ub.addWidget(undo)
+        ub.addWidget(see)
+        ub.addStretch(1)
+        undo.clicked.connect(self.undo_delete)
+        see.clicked.connect(self.open_trash)
+        self.undo_bar.hide()
+        self.undo_timer = QTimer(self, singleShot=True, interval=20000)
+        self.undo_timer.timeout.connect(self.undo_bar.hide)
+        ll.addWidget(self.undo_bar)
         ll.addWidget(self.table, 1)
         ll.addWidget(self.empty, 1)
         ll.addWidget(self.sel_bar)
@@ -937,6 +966,7 @@ class EntriesPage(QWidget):
         self.table.doubleClicked.connect(lambda idx: self.edit_entry(idx.data(Qt.UserRole)))
         self.table.customContextMenuRequested.connect(self._context_menu)
         self.form.saved.connect(self._saved)
+        self.form.deleted.connect(self._deleted)
         self.form.receipt_requested.connect(self.issue_receipt)
         self.form.attach.changed.connect(self._attachments_changed)
         self.form.closed.connect(self.close_form)
@@ -1238,11 +1268,42 @@ class EntriesPage(QWidget):
             self._delete(e)
 
     def _delete(self, e: EntryView):
-        if msg := confirm_delete(self, e):
-            self.message.emit(msg)
+        if done := confirm_delete(self, e):
             if self.form.editing and self.form.editing.id == e.id:
                 self.close_form()
-            self.refresh()
+            self._deleted(*done)
+
+    def _deleted(self, msg: str, ids: list):
+        self.message.emit(msg)
+        self.close_form()
+        self.refresh()
+        self._undo_ids = list(ids)
+        self.undo_text.setText(f"{msg} ")
+        self.undo_bar.show()
+        self.undo_timer.start()
+
+    def undo_delete(self):
+        from finora.services import trash
+        ids, self._undo_ids = self._undo_ids, []
+        self.undo_bar.hide()
+        try:
+            with Session() as s:
+                n = trash.restore(s, ids)
+        except ValueError as e:
+            QMessageBox.warning(self, "Desfazer", str(e))
+            return
+        self.message.emit("Exclusão desfeita." if n == 1 else f"Exclusão desfeita ({n} lançamentos).")
+        self.refresh(select_id=ids[0] if ids else None)
+
+    def open_trash(self):
+        from finora.ui.trash_dialog import TrashDialog
+        dlg = TrashDialog(self, self.profile.id, self.t)
+        dlg.exec()
+        if dlg.restored:
+            self.message.emit(f"{dlg.restored} {'lançamento restaurado' if dlg.restored == 1 else 'lançamentos restaurados'}"
+                              " da lixeira.")
+        self.undo_bar.hide()
+        self.refresh()
 
     def _toggle_paid(self, e: EntryView):
         with Session() as s:

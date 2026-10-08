@@ -117,6 +117,29 @@ def test_marcar_como_pago_e_excluir(window, dialogs):
     assert next(e for e in page.model.rows if e.description == "Mercado").is_paid
     page._delete(next(e for e in page.model.rows if e.description == "Mercado"))
     assert "Mercado" not in _names(page)
+    assert not page.undo_bar.isHidden()                      # "Foi para a lixeira. Desfazer"
+    page.undo_delete()
+    assert "Mercado" in _names(page) and page.undo_bar.isHidden()
+
+
+def test_lixeira_restaura(window, monkeypatch):
+    from finora.ui.trash_dialog import TrashDialog
+    page = _page(window)
+    page._delete(next(e for e in page.model.rows if e.description == "Mercado"))
+
+    def fake_exec(dlg):
+        assert [i.description for i in dlg.items] == ["Mercado"] and not dlg.restore_btn.isEnabled()
+        dlg.search.setText("nada disso")
+        assert dlg.table.isHidden() and dlg.empty.text() == "Nada encontrado."
+        dlg.search.clear()
+        dlg.table.selectRow(0)
+        dlg.restore_selected()
+        assert dlg.items == [] and dlg.empty.text() == "A lixeira está vazia."
+        return 0
+
+    monkeypatch.setattr(TrashDialog, "exec", fake_exec)
+    page.trash_btn.click()
+    assert "Mercado" in _names(page)
 
 
 def test_formulario_ocupa_a_tela_em_janela_estreita(window, qtbot):

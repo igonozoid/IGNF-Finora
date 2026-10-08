@@ -109,6 +109,9 @@ class Entry(Base):
     installment: Mapped[str | None] = mapped_column(String(10))  # ex.: 4/12
     # Liga lançamentos de uma mesma recorrência/parcelamento (para "editar este e os próximos").
     series_id: Mapped[str | None] = mapped_column(String(32), index=True)
+    # Lixeira (services/trash): excluído não sai do banco; some das telas e dá para restaurar.
+    deleted_at: Mapped[datetime | None] = mapped_column(index=True)
+    deleted_by: Mapped[str | None] = mapped_column(String(80))
 
 class BankLine(Base):
     """Linha de extrato importada (OFX). Fica guardada para a conciliação e para não importar duas vezes."""

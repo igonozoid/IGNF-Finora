@@ -147,8 +147,30 @@ def test_editar_so_este(ctx):
 def test_excluir_este_e_proximos(ctx):
     s = ctx["s"]
     ids = entries.create(s, ctx["eid"], _data(ctx, repeat="monthly", times=4))
-    assert entries.delete(s, ids[1], scope="following") == 3
+    assert entries.delete(s, ids[1], scope="following") == ids[1:]
     assert [e.id for e in _list(ctx)] == [ids[0]]
+
+
+def test_lixeira_some_de_tudo_e_volta(ctx):
+    from sqlalchemy import func, select
+
+    from finora.models import Entry
+    from finora.services import accounts, audit, trash
+    s, eid = ctx["s"], ctx["eid"]
+    ids = entries.create(s, eid, _data(ctx, repeat="monthly", times=2, paid=True, paid_date=date(2026, 10, 5)))
+    bal = accounts.list_accounts(s, eid)[0].balance
+    gone = entries.delete(s, ids[0])
+    assert gone == [ids[0]] and s.get(Entry, ids[0]) is None
+    assert accounts.list_accounts(s, eid)[0].balance != bal                  # saldo sem ele
+    assert s.scalar(select(func.count(Entry.id)).where(Entry.id == ids[0])) == 0   # nem contagem enxerga
+    still = trash.get(s, ids[0])
+    assert still is not None and still.deleted_at is not None              # continua no banco
+    items = trash.list_trash(s, eid)
+    assert [t.id for t in items] == [ids[0]] and trash.count(s, eid) == 1
+    assert trash.restore(s, gone) == 1 and entries.get(s, ids[0]) is not None
+    assert accounts.list_accounts(s, eid)[0].balance == bal and trash.count(s, eid) == 0
+    texts = [a.summary for a in audit.list_log(s, eid)]
+    assert texts[0].startswith("Restaurou da lixeira") and texts[1].startswith("Mandou para a lixeira")
 
 
 def test_marcar_pago(ctx):

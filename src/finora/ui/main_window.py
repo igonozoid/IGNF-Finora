@@ -560,11 +560,15 @@ class MainWindow(QMainWindow):
 
     def show_update(self, release):
         """Versão nova publicada: link na barra de status (abre a página de download)."""
-        link = QLabel(f'<a href="{release.url}">Versão {release.version} disponível — baixar</a>')
-        link.setOpenExternalLinks(True)
-        link.setToolTip("Descompacte numa pasta nova e copie para ela a pasta data desta versão (veja o LEIA-ME).")
+        link = QLabel(f'<a href="#">Versão {release.version} disponível — atualizar</a>')
+        link.linkActivated.connect(lambda _h: self.open_update(release))
+        link.setToolTip("Ver as novidades e atualizar (seus dados ficam como estão)")
         self.statusBar().insertPermanentWidget(0, link)
         self.update_link = link
+
+    def open_update(self, release):
+        from finora.ui.update_dialog import UpdateDialog
+        UpdateDialog(self, release, theme.tokens(self.theme_name)).exec()
 
     def go_to(self, where: str | int):
         """Abre uma tela pela chave ("entries") ou pela posição no menu."""

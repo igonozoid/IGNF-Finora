@@ -214,3 +214,17 @@ def test_ajuda_f1_abre_na_tela_atual(window, dialogs, tmp_path):
     prob.folder = tmp_path                                   # nunca grava nos Documentos de verdade
     prob.generate(open_apps=False)
     assert prob.path is not None and prob.path.parent == tmp_path and prob.path.exists()
+
+
+def test_aviso_de_versao_nova_abre_a_atualizacao(window, monkeypatch):
+    from finora.services import updates
+    from finora.ui.update_dialog import UpdateDialog
+    rel = updates.Release("9.9.9", "https://example.invalid", None, "Novidades", "IGNF-Finora-9.9.9-windows.zip",
+                          "https://example.invalid/x.zip", "a" * 64)
+    opened = []
+    monkeypatch.setattr(UpdateDialog, "exec", lambda self: opened.append(self) or 0)
+    window.show_update(rel)
+    window.update_link.linkActivated.emit("#")
+    dlg = opened[0]
+    assert not dlg.go.isEnabled() and "código" not in dlg.status.text()   # rodando pelo código: só pelo site
+    assert "site" in dlg.status.text()

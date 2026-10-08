@@ -270,11 +270,11 @@ class SettingsPage(QWidget):
         self.cloud_status = QLabel(wordWrap=True)
         self.cloud_status.setProperty("role", "field")
         lay.addWidget(self.cloud_status)
-        self.cloud_box = QWidget()                # altura fixa, calculada ao preencher (ver _fit_list)
-        self.cloud_rows = QVBoxLayout(self.cloud_box)
+        self.cloud_list = QWidget()               # altura fixa, calculada ao preencher (ver _fit_list)
+        self.cloud_rows = QVBoxLayout(self.cloud_list)
         self.cloud_rows.setContentsMargins(0, 0, 0, 0)
         self.cloud_rows.setSpacing(0)
-        lay.addWidget(self.cloud_box)
+        lay.addWidget(self.cloud_list)
         self._fill_cloud_box()
         self.cloud_box.activated.connect(self._cloud_chosen)
         self.cloud_now.clicked.connect(self._cloud_now)
@@ -347,7 +347,7 @@ class SettingsPage(QWidget):
                                   + ("" if items else " Ainda não há cópias lá."))
         for b in items[:5]:
             self.cloud_rows.addWidget(self._local_row(b))
-        _fit_list(self.cloud_box)
+        _fit_list(self.cloud_list)
 
     def _refresh_backup(self):
         last = settings.get_last_backup()

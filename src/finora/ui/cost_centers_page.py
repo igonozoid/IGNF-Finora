@@ -18,7 +18,7 @@ from finora.services.cost_centers import CostCenterView
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.entries_page import MONTHS
-from finora.ui.widgets import button, field_label, help_icon, upgrade_box
+from finora.ui.widgets import button, field_label, help_icon, shared_checkbox, upgrade_box
 
 PANEL_W = 280
 STACK_BELOW = 760
@@ -138,6 +138,8 @@ class CostCentersPage(QWidget):
                                                           "Deixe vazio para só acompanhar, sem limite."))
         fl.addWidget(self.budget_edit)
         fl.addWidget(self.active)
+        self.shared = shared_checkbox()
+        fl.addWidget(self.shared)
         self.error = QLabel(wordWrap=True)
         self.error.setProperty("role", "error")
         self.error.hide()
@@ -256,6 +258,7 @@ class CostCentersPage(QWidget):
         self.name_edit.clear()
         self.budget_edit.clear()
         self.active.setChecked(True)
+        self.shared.setChecked(False)
         self.active.hide()
         self.delete_btn.hide()
         self._error(None)
@@ -274,6 +277,7 @@ class CostCentersPage(QWidget):
         self.name_edit.setText(c.name)
         self.budget_edit.setText(money.fmt(c.budget, self.profile.currency).split(" ", 1)[1] if c.budget else "")
         self.active.setChecked(c.is_active)
+        self.shared.setChecked(c.shared)
         self.active.show()
         self.delete_btn.show()
         self._error(None)
@@ -293,10 +297,12 @@ class CostCentersPage(QWidget):
         try:
             with Session() as s:
                 if self.editing:
-                    cost_centers.update(s, self.editing.id, self.name_edit.text(), budget, self.active.isChecked())
+                    cost_centers.update(s, self.editing.id, self.name_edit.text(), budget, self.active.isChecked(),
+                                        shared=self.shared.isChecked())
                     cc_id, msg = self.editing.id, "Centro de custo atualizado."
                 else:
-                    cc_id = cost_centers.create(s, self.profile.id, self.name_edit.text(), budget)
+                    cc_id = cost_centers.create(s, self.profile.id, self.name_edit.text(), budget,
+                                                shared=self.shared.isChecked())
                     msg = "Centro de custo criado. Escolha-o nos lançamentos."
         except ValueError as e:
             self._error(str(e))

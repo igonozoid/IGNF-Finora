@@ -176,3 +176,39 @@ def test_autopreencher_cnpj_e_cep(plus, window, monkeypatch):
     f.details["zip_code"].setText("13015002")
     f.cep_btn.click()
     assert (f.details["address"].text(), f.details["city"].text()) == ("Rua A, Centro", "Campinas")
+
+
+def test_marcar_contato_categoria_e_centro_como_compartilhados(plus, window):
+    from finora.services import categories, contacts, cost_centers, entity_admin
+    from finora.core import db
+    with db.Session() as s:
+        entity_admin.create(s, name="Padaria Sol")
+    window.go_to("contacts")
+    page = window.page("contacts")
+    page._new()
+    f = page.form
+    assert not f.shared.isHidden()
+    f.name.setText("Contador Silva")
+    f.shared.setChecked(True)
+    f._save()
+    window.go_to("cost_centers")
+    cc = window.page("cost_centers")
+    cc.name_edit.setText("Obra")
+    cc.shared.setChecked(True)
+    cc.save_btn.click()
+    window.go_to("categories")
+    cat = window.page("categories")
+    cat._new_group()
+    cat.name_edit.setText("Família")
+    cat.shared.setChecked(True)
+    cat._save()
+    with db.Session() as s:
+        other = max(e.id for e in entity_admin.list_entities(s))
+        assert "Contador Silva" in [c.name for c in contacts.list_contacts(s, other)]
+        assert "Obra" in [c.name for c in cost_centers.list_centers(s, other, 2026, 10)]
+        assert "Família" in [g.name for g in categories.groups(s, other)]
+
+
+def test_free_nao_mostra_compartilhar(window):
+    window.go_to("contacts")
+    assert window.page("contacts").form.shared.isHidden()

@@ -91,6 +91,21 @@ def button(text: str, variant: str, t: dict | None = None, icon: str | None = No
     return b
 
 
+SHARED_TEXT = "Compartilhado com todas as entidades"
+SHARED_HELP = ("Aparece em todas as entidades (cada uma continua só com os próprios lançamentos).\n"
+               "Útil para um contador, um fornecedor ou um centro de custo usado por várias.")
+
+
+def shared_checkbox(text: str = SHARED_TEXT):
+    """Opção "compartilhado": só nas edições com várias entidades."""
+    from PySide6.QtWidgets import QCheckBox
+    from finora.services import entity_admin
+    chk = QCheckBox(text)
+    chk.setToolTip(SHARED_HELP)
+    chk.setVisible(entity_admin.limit() != 1)
+    return chk
+
+
 def show_upgrade(parent, reason: str) -> None:
     QMessageBox.information(parent, "Recurso das edições pagas", f"{reason}\n\n{UPGRADE_TEXT}")
 

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, aliased
 
 from finora.core.money import CENT
 from finora.models import Account, Category, Contact, CostCenter, Entry
-from finora.services import contacts
+from finora.services import contacts, scope
 
 KINDS = {"expense": "Despesa", "income": "Receita", "transfer": "Transferência"}
 
@@ -237,13 +237,13 @@ def _validate(s: Session, entity_id: int, d: EntryData) -> None:
                              f"({dest.currency}).")
     elif d.category_id is not None:
         cat = s.get(Category, d.category_id)
-        if cat is None or cat.entity_id != entity_id:
+        if not scope.category_visible(s, cat, entity_id):
             raise ValueError("Categoria inválida.")
         if cat.kind != d.kind:
             raise ValueError("Essa categoria é de " + ("receita." if cat.kind == "income" else "despesa."))
     if d.cost_center_id is not None and d.kind != "transfer":
         cc = s.get(CostCenter, d.cost_center_id)
-        if cc is None or cc.entity_id != entity_id:
+        if not scope.visible(cc, entity_id):
             raise ValueError("Centro de custo inválido.")
     if not d.description.strip():
         raise ValueError("Escreva uma descrição (ex.: Conta de luz).")

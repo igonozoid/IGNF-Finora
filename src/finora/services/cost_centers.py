@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from finora.models import CostCenter, Entry
+from finora.services import scope
 from finora.services.entries import month_range
 
 ZERO = Decimal(0)
@@ -22,6 +23,7 @@ class CostCenterView:
     received: Decimal            # receitas do mês ligadas a ele
     count: int                   # lançamentos no mês
     used: int                    # lançamentos no total (não deixa excluir)
+    shared: bool = False         # compartilhado com todas as entidades
 
     @property
     def share(self) -> Decimal | None:
@@ -60,20 +62,20 @@ def list_centers(s: Session, entity_id: int, year: int, month: int,
     used = dict(s.execute(select(Entry.cost_center_id, func.count(Entry.id))
                           .where(Entry.entity_id == entity_id, Entry.cost_center_id.is_not(None))
                           .group_by(Entry.cost_center_id)).all())
-    q = select(CostCenter).where(CostCenter.entity_id == entity_id)
+    q = select(CostCenter).where(scope.cost_centers(entity_id))
     if not include_inactive:
         q = q.where(CostCenter.is_active)
     out = []
     for c in s.scalars(q.order_by(CostCenter.is_active.desc(), func.lower(CostCenter.name))):
         spent, received, count = sums.get(c.id, (ZERO, ZERO, 0))
         out.append(CostCenterView(c.id, c.name, Decimal(c.budget) if c.budget is not None else None, c.is_active,
-                                  spent, received, count, used.get(c.id, 0)))
+                                  spent, received, count, used.get(c.id, 0), bool(c.shared)))
     return out
 
 
 def choices(s: Session, entity_id: int, keep_id: int | None = None) -> list[tuple[int, str]]:
     """Para o formulário do lançamento: os ativos (e o já escolhido, mesmo inativo)."""
-    q = select(CostCenter.id, CostCenter.name, CostCenter.is_active).where(CostCenter.entity_id == entity_id)
+    q = select(CostCenter.id, CostCenter.name, CostCenter.is_active).where(scope.cost_centers(entity_id))
     return [(i, n) for i, n, active in s.execute(q.order_by(func.lower(CostCenter.name))) if active or i == keep_id]
 
 
@@ -83,7 +85,7 @@ def _check(s: Session, entity_id: int, name: str, budget: Decimal | None, exclud
         raise ValueError("Digite o nome do centro de custo.")
     if budget is not None and budget < 0:
         raise ValueError("O orçamento não pode ser negativo.")
-    q = select(CostCenter.id).where(CostCenter.entity_id == entity_id, func.lower(CostCenter.name) == name.lower())
+    q = select(CostCenter.id).where(scope.cost_centers(entity_id), func.lower(CostCenter.name) == name.lower())
     if exclude_id is not None:
         q = q.where(CostCenter.id != exclude_id)
     if s.scalar(q) is not None:
@@ -91,16 +93,19 @@ def _check(s: Session, entity_id: int, name: str, budget: Decimal | None, exclud
     return name, (budget or None)
 
 
-def create(s: Session, entity_id: int, name: str, budget: Decimal | None = None) -> int:
+def create(s: Session, entity_id: int, name: str, budget: Decimal | None = None, shared: bool = False) -> int:
     name, budget = _check(s, entity_id, name, budget)
-    c = CostCenter(entity_id=entity_id, name=name, budget=budget, is_active=True)
+    c = CostCenter(entity_id=entity_id, name=name, budget=budget, is_active=True, shared=bool(shared))
     s.add(c)
     s.commit()
     return c.id
 
 
-def update(s: Session, cc_id: int, name: str, budget: Decimal | None, is_active: bool = True) -> None:
+def update(s: Session, cc_id: int, name: str, budget: Decimal | None, is_active: bool = True,
+           shared: bool | None = None) -> None:
     c = s.get(CostCenter, cc_id)
+    if shared is not None:
+        c.shared = shared
     c.name, c.budget = _check(s, c.entity_id, name, budget, exclude_id=c.id)
     c.is_active = is_active
     s.commit()

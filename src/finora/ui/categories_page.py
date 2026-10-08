@@ -11,7 +11,7 @@ from finora.core.db import Session
 from finora.services import categories, dre
 from finora.services.setup import Profile
 from finora.ui import theme
-from finora.ui.widgets import button, field_label
+from finora.ui.widgets import button, field_label, shared_checkbox
 
 DRE_HELP = ("DRE pessoal é o resumo do mês: quanto entrou, quanto saiu em cada área da vida e quanto sobrou.\n"
             "A linha da DRE diz em qual parte desse resumo os valores desta categoria aparecem.")
@@ -117,6 +117,9 @@ class CategoriesPage(QWidget):
         self.dre_note = QLabel(wordWrap=True)
         self.dre_note.setProperty("role", "field")
         lay.addWidget(self.dre_note)
+        self.shared = shared_checkbox("Grupo compartilhado com todas as entidades (com as subcategorias)")
+        self._can_share = not self.shared.isHidden()          # edições com várias entidades
+        lay.addWidget(self.shared)
 
         self.error = QLabel(wordWrap=True)
         self.error.setProperty("role", "error")
@@ -158,6 +161,9 @@ class CategoriesPage(QWidget):
         for w in self.form_widgets:
             w.setEnabled(True)
         self.dre_box.setEnabled(dre_editable)
+        self.shared.setVisible(self._can_share and parent is None)
+        self.shared.setChecked(bool(getattr(self.current, "shared", False)) if self.mode == "edit" and parent is None
+                               else False)
         self._error(None)
 
     def _show_empty(self):
@@ -208,15 +214,17 @@ class CategoriesPage(QWidget):
         try:
             with Session() as s:
                 if self.mode == "new_group":
-                    new_id = categories.create(s, self.profile.id, name=name, dre_group=self.dre_box.currentData())
+                    new_id = categories.create(s, self.profile.id, name=name, dre_group=self.dre_box.currentData(),
+                                               shared=self.shared.isChecked())
                     msg = f"Grupo \"{name.strip()}\" criado."
                 elif self.mode == "new_child":
                     new_id = categories.create(s, self.profile.id, name=name, parent_id=self.new_parent.id)
                     msg = f"Subcategoria \"{name.strip()}\" criada em {self.new_parent.name}."
                 elif self.current is not None:
                     new_id = self.current.id
-                    categories.update(s, new_id, name=name,
-                                      dre_group=self.dre_box.currentData() if self.current.parent_id is None else None)
+                    is_group = self.current.parent_id is None
+                    categories.update(s, new_id, name=name, dre_group=self.dre_box.currentData() if is_group else None,
+                                      shared=self.shared.isChecked() if is_group else None)
                     msg = f"Categoria \"{name.strip()}\" atualizada."
                 else:
                     return
@@ -283,7 +291,8 @@ class CategoriesPage(QWidget):
 
     def _item(self, c: categories.CategoryView, mono: QFont, muted: QBrush) -> QTreeWidgetItem:
         self._by_id[c.id] = c
-        it = QTreeWidgetItem([c.name + ("" if c.is_active else "  (inativa)"), c.code,
+        it = QTreeWidgetItem([c.name + ("" if c.is_active else "  (inativa)")
+                              + ("  · compartilhada" if c.shared else ""), c.code,
                               c.dre_label if c.parent_id is None else ""])
         it.setData(0, Qt.UserRole, c.id)
         it.setFont(COL_CODE, mono)

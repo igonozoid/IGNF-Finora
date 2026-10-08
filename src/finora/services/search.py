@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from finora.core import documents, money
 from finora.models import Account, Category, Contact, Entity, Entry
-from finora.services import entries
+from finora.services import entries, scope
 from finora.services.accounts import KINDS as ACC_KINDS
 
 KINDS = {"entry": "Lançamento", "contact": "Contato", "account": "Conta", "category": "Categoria"}
@@ -37,7 +37,7 @@ def search(s: Session, entity_id: int, text: str, per_kind: int = 6) -> list[Hit
                        .order_by(Account.name).limit(per_kind)):
         hits.append(Hit("account", a.id, a.name, ACC_KINDS.get(a.kind, a.kind) + ("" if a.is_active else " · inativa")))
 
-    for c in s.scalars(select(Category).where(Category.entity_id == entity_id, func.lower(Category.name).like(like))
+    for c in s.scalars(select(Category).where(scope.categories(entity_id), func.lower(Category.name).like(like))
                        .order_by(Category.code).limit(per_kind)):
         group = s.get(Category, c.parent_id).name if c.parent_id else None
         hits.append(Hit("category", c.id, c.name, f"Subcategoria de {group}" if group else "Grupo de categorias"))
@@ -45,7 +45,7 @@ def search(s: Session, entity_id: int, text: str, per_kind: int = 6) -> list[Hit
     conds = [func.lower(Contact.name).like(like)]
     if digits:
         conds.append(Contact.document.like(f"%{digits}%"))
-    for c in s.scalars(select(Contact).where(Contact.entity_id == entity_id, or_(*conds))
+    for c in s.scalars(select(Contact).where(scope.contacts(entity_id), or_(*conds))
                        .order_by(Contact.name).limit(per_kind)):
         hits.append(Hit("contact", c.id, c.name, documents.fmt(c.document) if c.document else "Contato"))
 

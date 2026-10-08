@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from finora.core import documents
 from finora.models import Contact, Entry
+from finora.services import scope
 
 # papel -> (coluna no modelo, rótulo, explicação)
 ROLES = {
@@ -34,6 +35,7 @@ class ContactView:
     entries: int
     last_date: date | None
     details: dict = field(default_factory=dict, compare=False)     # telefone, e-mail, endereço, banco…
+    shared: bool = False             # compartilhado com todas as entidades
 
     def get(self, key: str) -> str:
         return self.details.get(key) or ""
@@ -53,13 +55,13 @@ def _roles(c: Contact) -> frozenset[str]:
 
 
 def names(s: Session, entity_id: int) -> list[str]:
-    return list(s.scalars(select(Contact.name).where(Contact.entity_id == entity_id).order_by(Contact.name)))
+    return list(s.scalars(select(Contact.name).where(scope.contacts(entity_id)).order_by(Contact.name)))
 
 
 def list_contacts(s: Session, entity_id: int, search: str = "", role: str | None = None) -> list[ContactView]:
     q = (select(Contact, func.count(Entry.id), func.max(Entry.due_date))
-         .outerjoin(Entry, Entry.contact_id == Contact.id)
-         .where(Contact.entity_id == entity_id)
+         .outerjoin(Entry, (Entry.contact_id == Contact.id) & (Entry.entity_id == entity_id))
+         .where(scope.contacts(entity_id))
          .group_by(Contact.id)
          .order_by(func.lower(Contact.name)))
     if role in ROLES:
@@ -72,15 +74,15 @@ def list_contacts(s: Session, entity_id: int, search: str = "", role: str | None
             conds += [Contact.document.like(f"%{d}%"), Contact.phone.like(f"%{d}%")]
         q = q.where(or_(*conds))
     return [ContactView(c.id, c.name, c.person_type, c.document, _roles(c), n, last,
-                        {k: getattr(c, k) for k in DETAILS})
+                        {k: getattr(c, k) for k in DETAILS}, bool(c.shared))
             for c, n, last in s.execute(q)]
 
 
 def counts(s: Session, entity_id: int) -> dict[str, int]:
     """Quantos contatos há no total e em cada papel (para os filtros)."""
-    out = {"all": s.scalar(select(func.count(Contact.id)).where(Contact.entity_id == entity_id))}
+    out = {"all": s.scalar(select(func.count(Contact.id)).where(scope.contacts(entity_id)))}
     for k, (col, *_r) in ROLES.items():
-        out[k] = s.scalar(select(func.count(Contact.id)).where(Contact.entity_id == entity_id, getattr(Contact, col)))
+        out[k] = s.scalar(select(func.count(Contact.id)).where(scope.contacts(entity_id), getattr(Contact, col)))
     return out
 
 
@@ -94,8 +96,8 @@ def _check(s: Session, entity_id: int, name: str, person_type: str, document: st
     doc = documents.digits(document) or None
     if doc and not documents.is_valid(doc, person_type):
         raise ValueError(("CPF" if person_type == "PF" else "CNPJ") + " inválido. Confira os números.")
-    same_name = select(Contact.id).where(Contact.entity_id == entity_id, func.lower(Contact.name) == name.lower())
-    same_doc = select(Contact.id).where(Contact.entity_id == entity_id, Contact.document == doc)
+    same_name = select(Contact.id).where(scope.contacts(entity_id), func.lower(Contact.name) == name.lower())
+    same_doc = select(Contact.id).where(scope.contacts(entity_id), Contact.document == doc)
     if exclude_id is not None:
         same_name = same_name.where(Contact.id != exclude_id)
         same_doc = same_doc.where(Contact.id != exclude_id)
@@ -136,10 +138,10 @@ def _apply_roles(c: Contact, roles: set[str]) -> None:
 
 
 def create(s: Session, entity_id: int, *, name: str, person_type: str = "PF", document: str | None = None,
-           roles: set[str] = frozenset(), details: dict | None = None) -> int:
+           roles: set[str] = frozenset(), details: dict | None = None, shared: bool = False) -> int:
     name, doc = _check(s, entity_id, name, person_type, document)
     extra = clean_details(details)
-    c = Contact(entity_id=entity_id, name=name, person_type=person_type, document=doc, **extra)
+    c = Contact(entity_id=entity_id, name=name, person_type=person_type, document=doc, shared=bool(shared), **extra)
     _apply_roles(c, set(roles))
     s.add(c)
     s.commit()
@@ -147,8 +149,10 @@ def create(s: Session, entity_id: int, *, name: str, person_type: str = "PF", do
 
 
 def update(s: Session, contact_id: int, *, name: str, person_type: str, document: str | None,
-           roles: set[str], details: dict | None = None) -> None:
+           roles: set[str], details: dict | None = None, shared: bool | None = None) -> None:
     c = s.get(Contact, contact_id)
+    if shared is not None:
+        c.shared = shared
     c.name, c.document = _check(s, c.entity_id, name, person_type, document, exclude_id=c.id)
     for key, value in clean_details(details).items():
         setattr(c, key, value)
@@ -173,8 +177,8 @@ def get_or_create(s: Session, entity_id: int, name: str | None, kind: str | None
     name = (name or "").strip()
     if not name:
         return None
-    c = s.scalars(select(Contact).where(Contact.entity_id == entity_id,
-                                        func.lower(Contact.name) == name.lower())).first()
+    c = s.scalars(select(Contact).where(scope.contacts(entity_id), func.lower(Contact.name) == name.lower())
+                  .order_by((Contact.entity_id == entity_id).desc())).first()     # o da entidade antes do compartilhado
     if c is None:
         c = Contact(entity_id=entity_id, person_type="PF", name=name)
         s.add(c)

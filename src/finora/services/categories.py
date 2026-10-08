@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from finora.models import Category
+from finora.services import scope
 from finora.services.dre import GROUPS
 
 
@@ -18,6 +19,8 @@ class CategoryView:
     dre_group: str | None
     is_active: bool
     children: list["CategoryView"] = field(default_factory=list)
+    shared: bool = False             # grupo compartilhado com todas as entidades
+    own: bool = True                 # criada nesta entidade (False = veio compartilhada de outra)
 
     @property
     def dre_label(self) -> str:
@@ -34,10 +37,11 @@ def _code_key(code: str) -> tuple:
 
 def tree(s: Session, entity_id: int, include_inactive: bool = False) -> list[CategoryView]:
     """Grupos na ordem das linhas da DRE; dentro de cada grupo, pelo código."""
-    q = select(Category).where(Category.entity_id == entity_id)
+    q = select(Category).where(scope.categories(entity_id))
     if not include_inactive:
         q = q.where(Category.is_active)
-    rows = [CategoryView(c.id, c.parent_id, c.code, c.name, c.kind, c.dre_group, c.is_active) for c in s.scalars(q)]
+    rows = [CategoryView(c.id, c.parent_id, c.code, c.name, c.kind, c.dre_group, c.is_active, shared=bool(c.shared),
+                         own=c.entity_id == entity_id) for c in s.scalars(q)]
     by_id = {r.id: r for r in rows}
     roots = []
     for r in rows:
@@ -72,8 +76,10 @@ def groups(s: Session, entity_id: int) -> list[CategoryView]:
 
 
 def _next_code(s: Session, entity_id: int, parent: Category | None) -> str:
-    q = select(Category.code).where(Category.entity_id == entity_id)
-    q = q.where(Category.parent_id == parent.id) if parent else q.where(Category.parent_id.is_(None))
+    if parent:                       # dentro de um grupo (inclusive compartilhado): numera entre os irmãos
+        q = select(Category.code).where(Category.parent_id == parent.id)
+    else:
+        q = select(Category.code).where(Category.entity_id == entity_id, Category.parent_id.is_(None))
     last = max((_code_key(c)[-1] for c in s.scalars(q)), default=0)
     return f"{parent.code}.{last + 1}" if parent else str(last + 1)
 
@@ -82,7 +88,7 @@ def _check_name(s: Session, entity_id: int, name: str, parent_id: int | None, ex
     name = name.strip()
     if not name:
         raise ValueError("Dê um nome para a categoria.")
-    q = select(Category.id).where(Category.entity_id == entity_id, func.lower(Category.name) == name.lower())
+    q = select(Category.id).where(scope.categories(entity_id), func.lower(Category.name) == name.lower())
     q = q.where(Category.parent_id == parent_id) if parent_id else q.where(Category.parent_id.is_(None))
     if exclude_id is not None:
         q = q.where(Category.id != exclude_id)
@@ -92,7 +98,7 @@ def _check_name(s: Session, entity_id: int, name: str, parent_id: int | None, ex
 
 
 def create(s: Session, entity_id: int, *, name: str, parent_id: int | None = None,
-           dre_group: str | None = None) -> int:
+           dre_group: str | None = None, shared: bool = False) -> int:
     """Subcategoria herda tipo e linha da DRE do grupo; grupo novo precisa de `dre_group`."""
     parent = s.get(Category, parent_id) if parent_id else None
     if parent is not None and parent.parent_id is not None:
@@ -105,16 +111,20 @@ def create(s: Session, entity_id: int, *, name: str, parent_id: int | None = Non
             raise ValueError("Escolha em qual linha da DRE esta categoria aparece.")
         kind = kind_for(dre_group)
     c = Category(entity_id=entity_id, parent_id=parent_id, code=_next_code(s, entity_id, parent), name=name,
-                 kind=kind, dre_group=dre_group, is_active=True)
+                 kind=kind, dre_group=dre_group, is_active=True, shared=bool(shared) and parent is None)
     s.add(c)
     s.commit()
     return c.id
 
 
-def update(s: Session, category_id: int, *, name: str, dre_group: str | None = None) -> None:
-    """Renomeia. Num grupo principal, trocar a linha da DRE vale também para as subcategorias."""
+def update(s: Session, category_id: int, *, name: str, dre_group: str | None = None,
+           shared: bool | None = None) -> None:
+    """Renomeia. Num grupo principal, trocar a linha da DRE vale também para as subcategorias.
+    `shared` (só grupos): compartilhar o grupo, com as subcategorias, com todas as entidades."""
     c = s.get(Category, category_id)
     c.name = _check_name(s, c.entity_id, name, c.parent_id, exclude_id=c.id)
+    if shared is not None and c.parent_id is None:
+        c.shared = shared
     if c.parent_id is None and dre_group and dre_group != c.dre_group:
         if dre_group not in GROUPS:
             raise ValueError("Linha da DRE inválida.")

@@ -51,6 +51,8 @@ class Category(Base):
     kind: Mapped[str] = mapped_column(String(10))  # income|expense
     dre_group: Mapped[str | None] = mapped_column(String(40))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Compartilhada com todas as entidades (vale para o grupo e as subcategorias dele)
+    shared: Mapped[bool] = mapped_column(Boolean, default=False)
 
 class CostCenter(Base):
     __tablename__ = "cost_centers"
@@ -59,6 +61,7 @@ class CostCenter(Base):
     name: Mapped[str] = mapped_column(String(80))
     budget: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    shared: Mapped[bool] = mapped_column(Boolean, default=False)      # aparece em todas as entidades
 
 class Contact(Base):
     __tablename__ = "contacts"
@@ -70,6 +73,7 @@ class Contact(Base):
     is_customer: Mapped[bool] = mapped_column(Boolean, default=False)
     is_supplier: Mapped[bool] = mapped_column(Boolean, default=False)
     is_employee: Mapped[bool] = mapped_column(Boolean, default=False)
+    shared: Mapped[bool] = mapped_column(Boolean, default=False)      # aparece em todas as entidades
     # Contato ampliado (todos opcionais)
     phone: Mapped[str | None] = mapped_column(String(30))
     email: Mapped[str | None] = mapped_column(String(120))

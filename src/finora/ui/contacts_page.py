@@ -13,7 +13,7 @@ from finora.services import contacts, doc_lookup
 from finora.services.contacts import ContactView
 from finora.services.setup import Profile
 from finora.ui import theme
-from finora.ui.widgets import button, field_label, lock_icon, show_upgrade
+from finora.ui.widgets import button, field_label, lock_icon, shared_checkbox, show_upgrade
 
 PANEL_W = 320
 STACK_BELOW = 760   # abaixo dessa largura, o cadastro ocupa o lugar da lista
@@ -42,6 +42,11 @@ class ContactRow(QWidget):
             sub.setFont(theme.mono_font())
         text.addWidget(sub)
         lay.addLayout(text, 1)
+        if c.shared:
+            sh = QLabel("Compartilhado")
+            sh.setProperty("role", "badge")
+            sh.setToolTip("Aparece em todas as entidades")
+            lay.addWidget(sh, 0, Qt.AlignVCenter)
         if not narrow:
             for k, (_col, label, _h) in contacts.ROLES.items():
                 if k in c.roles:
@@ -156,6 +161,8 @@ class ContactForm(QFrame):
             chips.addWidget(b)
         chips.addStretch(1)
         dl.addLayout(chips)
+        self.shared = shared_checkbox()
+        dl.addWidget(self.shared)
         dl.addStretch(1)
         self.pages.addWidget(dados)
 
@@ -246,6 +253,7 @@ class ContactForm(QFrame):
         self.notes.setPlainText(c.get("notes") if c else "")
         self.tab_group.button(0).setChecked(True)
         self.pages.setCurrentIndex(0)
+        self.shared.setChecked(bool(c and c.shared))
 
     def _ptype(self) -> str:
         return self.type_group.checkedButton().property("ptype")
@@ -353,7 +361,8 @@ class ContactForm(QFrame):
 
     def _save(self):
         data = dict(name=self.name.text(), person_type=self._ptype(), document=self.doc.text(),
-                    roles={k for k, b in self.role_btns.items() if b.isChecked()}, details=self._details_data())
+                    roles={k for k, b in self.role_btns.items() if b.isChecked()}, details=self._details_data(),
+                    shared=self.shared.isChecked())
         try:
             with Session() as s:
                 if self.current is None:

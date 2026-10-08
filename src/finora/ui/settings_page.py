@@ -95,6 +95,7 @@ class SettingsPage(QWidget):
         self.admin_sections.append(self.security)
         bl.addWidget(self.security)
         bl.addWidget(self._appearance_section())
+        bl.addWidget(self._reminders_section())
         edition = self._edition_section()
         self.admin_sections.append(edition)
         bl.addWidget(edition)
@@ -636,6 +637,56 @@ class SettingsPage(QWidget):
         lay.addWidget(self.tabs_icons)
         lay.addWidget(_muted("Dica: o botão « ao lado de \"Tema\" recolhe e expande o menu a qualquer momento."))
         return box
+
+    # ---------- lembretes ----------
+    def _reminders_section(self) -> QFrame:
+        box, lay = _section("Lembretes de vencimento", "fa6s.bell", self.t)
+        self.rem_on = QCheckBox("Avisar as contas a pagar atrasadas e as que estão para vencer")
+        self.rem_on.setChecked(settings.get_reminders())
+        lay.addWidget(self.rem_on)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Avisar com"))
+        self.rem_days = QComboBox()
+        for d, label in ((0, "no dia"), (1, "1 dia"), (2, "2 dias"), (3, "3 dias"), (5, "5 dias"), (7, "7 dias")):
+            self.rem_days.addItem(label, d)
+        self.rem_days.setCurrentIndex(max(0, self.rem_days.findData(settings.get_reminder_days())))
+        row.addWidget(self.rem_days)
+        row.addWidget(QLabel("de antecedência"))
+        row.addStretch(1)
+        self.rem_now = button("Ver agora", "link", self.t, "fa6s.bell")
+        row.addWidget(self.rem_now)
+        lay.addLayout(row)
+        self.tray_on = QCheckBox("Ao fechar a janela, continuar ao lado do relógio (para avisar mesmo fechado)")
+        self.tray_on.setChecked(settings.get_tray())
+        lay.addWidget(self.tray_on)
+        lay.addWidget(_muted("O aviso aparece no canto da tela uma vez por dia; clique nele para ver as contas. "
+                             "Para o Finora abrir junto com o Windows, coloque o atalho dele na pasta Inicializar."))
+        self.rem_on.toggled.connect(self._reminders_changed)
+        self.rem_days.activated.connect(lambda _i: self._reminders_changed())
+        self.tray_on.toggled.connect(self._reminders_changed)
+        self.rem_now.clicked.connect(self._remind_now)
+        return box
+
+    def _reminders_changed(self, *_a):
+        settings.set_reminders(self.rem_on.isChecked())
+        settings.set_reminder_days(self.rem_days.currentData())
+        settings.set_tray(self.tray_on.isChecked())
+        self.rem_days.setEnabled(self.rem_on.isChecked())
+        tray = getattr(self.window(), "tray", None)
+        if tray is not None:
+            tray.refresh_visibility()
+        if self.tray_on.isChecked() and (tray is None or not tray.available):
+            self.message.emit("Este sistema não tem a área ao lado do relógio: a janela vai fechar normalmente.")
+
+    def _remind_now(self):
+        tray = getattr(self.window(), "tray", None)
+        if not self.rem_on.isChecked():
+            self.message.emit("Ligue os lembretes primeiro.")
+            return
+        r = tray.check(force=True) if tray is not None else None
+        if r is not None:
+            self.message.emit(r.text(self.profile.currency).replace("\n", " — ") if not r.empty else
+                              "Nenhuma conta atrasada ou para vencer agora. 👍")
 
     def _tabs_icons(self, on: bool):
         settings.set_tabs_icons(on)

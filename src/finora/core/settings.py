@@ -128,6 +128,40 @@ def set_license_key(key: str) -> None:
     _s().setValue("license/key", key)
 
 
+# ---------- lembretes de vencimento e ícone ao lado do relógio ----------
+def get_reminders() -> bool:
+    return _s().value("reminders/on", True, type=bool)
+
+
+def set_reminders(on: bool) -> None:
+    _s().setValue("reminders/on", on)
+
+
+def get_reminder_days() -> int:
+    return max(0, min(7, _s().value("reminders/days", 1, type=int)))
+
+
+def set_reminder_days(days: int) -> None:
+    _s().setValue("reminders/days", int(days))
+
+
+def get_reminder_last() -> str:
+    return str(_s().value("reminders/last", ""))
+
+
+def set_reminder_last(key: str) -> None:
+    _s().setValue("reminders/last", key)
+
+
+def get_tray() -> bool:
+    """Fechar a janela deixa o Finora ao lado do relógio (continua avisando)."""
+    return _s().value("ui/tray", False, type=bool)
+
+
+def set_tray(on: bool) -> None:
+    _s().setValue("ui/tray", on)
+
+
 def get_print_landscape(report: str) -> bool | None:
     """Retrato ou paisagem escolhido por último para este relatório (None = ainda não escolheu)."""
     v = _s().value(f"print/{report}")

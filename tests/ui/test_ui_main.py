@@ -182,3 +182,18 @@ def test_pin_nas_configuracoes_e_na_entrada(window, app_t, qtbot, dialogs):
     assert dlg.user is not None
     page.pin_off.click()
     assert page.pin_off.isHidden()
+
+
+def test_lembretes_e_ficar_ao_lado_do_relogio(window, monkeypatch):
+    from finora.core import settings
+    page = window.page("settings")
+    r = window.tray.check(force=True)                       # o sample tem contas em aberto
+    assert r is not None and settings.get_reminder_last().endswith(f":{window.profile.id}")
+    assert window.tray.check() is None                      # 1 vez por dia
+    page.rem_on.setChecked(False)
+    assert not settings.get_reminders() and window.tray.check(force=True) is None
+    page.rem_on.setChecked(True)
+    page.tray_on.setChecked(True)
+    assert settings.get_tray()
+    window.tray.open_payable()
+    assert window.current_key() == "entries" and window.page("entries").filter == "payable"

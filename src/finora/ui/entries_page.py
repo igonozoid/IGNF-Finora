@@ -1028,6 +1028,14 @@ class EntriesPage(QWidget):
         self.filter = self.filter_group.button(i).property("filter")
         self.refresh()
 
+    def show_filter(self, key: str):
+        """Abre com um dos filtros de cima (all, receivable, payable, late, paid)."""
+        for b in self.filter_group.buttons():
+            if b.property("filter") == key:
+                b.setChecked(True)
+        self.filter = key
+        self.refresh()
+
     # ----- dados -----
     def refresh(self, select_id: int | None = None):
         if select_id is None:

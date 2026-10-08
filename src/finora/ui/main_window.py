@@ -1,7 +1,7 @@
 import sys
 from datetime import date
 
-from PySide6.QtCore import QProcess, QSize, Qt, Signal
+from PySide6.QtCore import QProcess, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QMenu, QMessageBox, QWidget, QFrame, QLabel, QPushButton, QButtonGroup,
@@ -309,6 +309,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.profile, self.user = profile, user
         self.next_action: str | None = None     # reservado: hoje a troca de entidade/usuário é na mesma janela
+        self.quitting = False                   # "Sair" do ícone ao lado do relógio: fecha de verdade
         self.setWindowTitle("IGNF Finora — Finanças pessoais")
         self.setMinimumSize(800, 480)
         geo = settings.get_geometry()
@@ -363,6 +364,9 @@ class MainWindow(QMainWindow):
         self.apply_nav(settings.get_nav())
         self._apply_access()
         self.go_to(self.visible_keys[0])
+        from finora.ui.tray import Tray
+        self.tray = Tray(self)
+        QTimer.singleShot(2500, self.tray.check)       # avisa os vencimentos logo depois de abrir
 
     def _build_pages(self, profile: Profile, t: dict):
         """Monta as telas da entidade aberta (de novo ao trocar de entidade ou de usuário)."""
@@ -404,6 +408,7 @@ class MainWindow(QMainWindow):
         self.go_to(self.visible_keys[0])
         who = f" como {user.name}" if user else ""
         self.statusBar().showMessage(f"Aberto: {profile.name}{who}", 5000)
+        QTimer.singleShot(1500, self.tray.check)       # vencimentos da entidade que abriu
 
     # ---------- usuário, entidade e permissões ----------
     def _apply_access(self):
@@ -661,4 +666,15 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         settings.set_geometry(self.saveGeometry())
+        tray = getattr(self, "tray", None)
+        if settings.get_tray() and tray is not None and tray.available and not self.quitting and not self.next_action:
+            event.ignore()                      # continua ao lado do relógio, avisando os vencimentos
+            self.hide()
+            if not getattr(self, "_told_tray", False):
+                self._told_tray = True
+                tray.notify("O Finora continua aberto aqui ao lado do relógio, para avisar os vencimentos. "
+                            "Para fechar de vez: botão direito no ícone › Sair.")
+            return
+        if tray is not None and tray.icon is not None:
+            tray.icon.hide()
         super().closeEvent(event)

@@ -128,6 +128,16 @@ def set_license_key(key: str) -> None:
     _s().setValue("license/key", key)
 
 
+def get_print_landscape(report: str) -> bool | None:
+    """Retrato ou paisagem escolhido por último para este relatório (None = ainda não escolheu)."""
+    v = _s().value(f"print/{report}")
+    return None if v is None else str(v).lower() in ("true", "1")
+
+
+def set_print_landscape(report: str, landscape: bool) -> None:
+    _s().setValue(f"print/{report}", landscape)
+
+
 def get_receipt_defaults() -> tuple[str, str]:
     """(cidade, seu CPF/CNPJ) usados no último recibo."""
     s = _s()

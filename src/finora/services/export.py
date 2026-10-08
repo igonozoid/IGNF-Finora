@@ -55,9 +55,13 @@ def to_xlsx(sheet: Sheet, path: str) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = safe_name(sheet.title)[:31]
-    if sheet.head is not None:                   # nome da entidade na primeira linha
+    if sheet.head is not None:                   # cabeçalho da entidade (o mesmo do recibo e da impressão)
         ws.append([sheet.head.name])
-        ws["A1"].font = Font(bold=True, size=11, color="444444")
+        ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
+        for line in head_lines(sheet.head):
+            ws.append([line])
+            ws.cell(ws.max_row, 1).font = Font(size=8, color="444444")
+        ws.append([])
     ws.append([sheet.title])
     first = ws.max_row
     ws.cell(first, 1).font = Font(bold=True, size=13)
@@ -115,17 +119,25 @@ def _text(v, currency: str) -> str:
 LOGO_URL = "finora-logo"
 
 
-def _letterhead_html(head) -> str:
-    """Cabeçalho da entidade (o mesmo do recibo). O logotipo é um recurso do documento (ui/exporting)."""
+def head_lines(head) -> list[str]:
+    """Endereço, contatos e documentos da entidade (só as linhas preenchidas)."""
+    return [x for x in (head.address_line, head.contacts_line, head.docs_line) if x]
+
+
+def letterhead_html(head) -> str:
+    """Cabeçalho da entidade: logotipo à esquerda, nome e dados centralizados e um traço embaixo. É o mesmo no
+    recibo, na impressão e no PDF dos relatórios. O logotipo é um recurso do documento (ver ui/exporting)."""
     if head is None:
         return ""
-    lines = "".join(f'<br><span style="font-size:7pt; color:#444">{escape(x)}</span>'
-                    for x in (head.address_line, head.contacts_line, head.docs_line) if x)
-    logo = f'<td width="70" valign="middle"><img src="{LOGO_URL}" height="36"></td>' if head.logo else ""
-    return ('<table width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:6px"><tr>'
-            f'{logo}<td valign="middle"><b style="font-size:10pt">{escape(head.name)}</b>{lines}</td></tr></table>'
-            '<table width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 8px 0"><tr>'
-            '<td style="border-top:1px solid #999; font-size:2pt">&nbsp;</td></tr></table>')
+    lines = "".join(f'<p align="center" style="font-size:7.5pt; color:#374151; margin:2px 0 0 0">{escape(x)}</p>'
+                    for x in head_lines(head))
+    logo = (f'<td width="90" valign="top"><img src="{LOGO_URL}" height="44"></td>' if head.logo
+            else '<td width="1"></td>')
+    return ('<table width="100%" cellspacing="0" cellpadding="0"><tr>'
+            f'{logo}<td valign="top"><p align="center" style="font-size:12pt; font-weight:bold; margin:0">'
+            f'{escape(head.name)}</p>{lines}</td>{'<td width="90"></td>' if head.logo else ''}</tr></table>'
+            '<table width="100%" cellspacing="0" cellpadding="0" style="margin:6px 0 4px 0"><tr>'
+            '<td style="border-top:1px solid #111827; font-size:2pt">&nbsp;</td></tr></table>')
 
 
 def to_html(sheet: Sheet, generated: datetime | None = None) -> str:
@@ -151,10 +163,10 @@ def to_html(sheet: Sheet, generated: datetime | None = None) -> str:
             color = ' style="color:#b03020"' if neg else ""
             cells.append(f'<td align="{"right" if c in numeric else "left"}"{color}>{text}</td>')
         body.append(f"<tr{tr}>{''.join(cells)}</tr>")
-    foot = f'<p style="font-size:8pt">{escape(sheet.footer)}</p>' if sheet.footer else ""
+    foot = f'<p style="font-size:8pt; margin-top:8px">{escape(sheet.footer)}</p>' if sheet.footer else ""
     return (
         "<html><body style=\"font-family:'IBM Plex Sans',Arial,Helvetica,sans-serif; font-size:8pt; color:#000\">"
-        f'{_letterhead_html(sheet.head)}<h2 style="margin:0">{escape(sheet.title)}</h2>'
+        f'{letterhead_html(sheet.head)}<h2 style="margin:6px 0 0 0">{escape(sheet.title)}</h2>'
         f'<p style="color:#555; margin:2px 0 8px 0">{escape(sheet.subtitle)}</p>'
         '<table width="100%" cellspacing="0" cellpadding="3" border="0" style="border-collapse:collapse">'
         f'<thead><tr style="background:#e0e0e0">{head}</tr></thead><tbody>{"".join(body)}</tbody></table>'

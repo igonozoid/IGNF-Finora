@@ -750,17 +750,17 @@ class EntriesPage(QWidget):
         self.ofx_lock = lock_icon("Importar extrato OFX é um recurso da edição Plus.", t)
         row1.addWidget(self.ofx_lock)
         self.ofx_lock.setVisible(not allowed(current_edition(), "ofx"))
-        self.export_btn = button("Exportar", "secondary", t, "fa6s.file-export", "fg")
-        self.export_btn.setToolTip("Salvar a lista que está na tela em Excel ou PDF")
+        self.export_btn = button("Imprimir/Exportar", "secondary", t, "fa6s.print", "fg")
+        self.export_btn.setToolTip("Imprimir a lista que está na tela ou salvar em Excel ou PDF")
         row1.addWidget(self.export_btn)
-        if allowed(current_edition(), "export"):
-            menu = QMenu(self.export_btn)
-            menu.addAction("Excel (.xlsx)", lambda: self._export("xlsx"))
-            menu.addAction("PDF", lambda: self._export("pdf"))
-            self.export_btn.setMenu(menu)
-        else:
-            self.export_btn.clicked.connect(lambda: show_upgrade(self, EXPORT_LOCK))
-            row1.addWidget(lock_icon(EXPORT_LOCK, t))
+        menu = QMenu(self.export_btn)
+        menu.addAction("Imprimir…", self._print)
+        can_export = allowed(current_edition(), "export")
+        for label, kind in (("Excel (.xlsx)", "xlsx"), ("PDF", "pdf")):
+            menu.addAction(label if can_export else f"{label} — edição Plus",
+                           (lambda k=kind: self._export(k)) if can_export else
+                           (lambda: show_upgrade(self, EXPORT_LOCK)))
+        self.export_btn.setMenu(menu)
 
         # Linha 2: filtros
         self.filter_group = QButtonGroup(self, exclusive=True)
@@ -1100,10 +1100,18 @@ class EntriesPage(QWidget):
 
     def export_sheet(self) -> export.Sheet:
         """A lista como está na tela (mês, filtros, busca e ordem)."""
-        parts = [f"{MONTHS[self.month - 1].capitalize()} de {self.year}"]
+        period = self.period_box.currentData()
+        if period == "month":
+            parts = [f"{MONTHS[self.month - 1].capitalize()} de {self.year}"]
+        elif period == "all":
+            parts = ["Todo o período"]
+        else:
+            parts = [f"{entries.PERIODS[period]} de {self.year_box.value()}"]
+        if self.date_box.currentData() != "due":
+            parts.append(self.date_box.currentText())
         if self.filter != "all":
             parts.append(entries.FILTERS[self.filter])
-        for box in (self.account_filter, self.category_filter):
+        for box in (self.account_filter, self.category_filter, self.kind_box, self.contact_filter, self.cc_filter):
             if box.currentData():
                 parts.append(box.currentText().strip())
         if self.search.text().strip():
@@ -1127,6 +1135,12 @@ class EntriesPage(QWidget):
     def _export(self, kind: str):
         from finora.ui import exporting
         path = exporting.run(self, self.export_sheet(), kind)
+        if path:
+            self.message.emit(f"Salvo em {path}")
+
+    def _print(self):
+        from finora.ui import printing
+        path = printing.open_print(self, self.export_sheet(), self.t)
         if path:
             self.message.emit(f"Salvo em {path}")
 

@@ -3,10 +3,10 @@ import re
 from datetime import date, timedelta
 from decimal import Decimal
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QTableWidget,
+    QAbstractItemView, QCheckBox, QComboBox, QDateEdit, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -436,32 +436,95 @@ class AnalyticalView(TableReport):
 # ---------- a pagar e a receber ----------
 class AgendaView(TableReport):
     TITLE = "A pagar e a receber"
-    COLUMNS = [("VENC.", 80, False), ("DESCRIÇÃO", None, False), ("CONTATO", 150, False), ("CONTA", 110, False),
-               ("A RECEBER", 120, True), ("A PAGAR", 120, True)]
+    ALL_COLUMNS = [("VENC.", 80, False), ("DESCRIÇÃO", None, False), ("CONTATO", 150, False), ("CONTA", 110, False),
+                   ("A RECEBER", 120, True), ("A PAGAR", 120, True)]
+    COLUMNS = ALL_COLUMNS
 
     def __init__(self, profile: Profile, t: dict):
         super().__init__(profile, t)
+        self.kind = QComboBox()
+        for k, label in reports.AGENDA_KINDS.items():
+            self.kind.addItem(label, k)
         self.period = QComboBox()
         for k, label in reports.AGENDA_PERIODS.items():
             self.period.addItem(label, k)
-        self.period.currentIndexChanged.connect(self.refresh)
-        self.bar.addWidget(self.period)
+        today = QDate.currentDate()
+        self.first = QDateEdit(today, calendarPopup=True, displayFormat="dd/MM/yyyy")
+        self.last = QDateEdit(today.addDays(29), calendarPopup=True, displayFormat="dd/MM/yyyy")
+        self.until = QLabel("até")
+        self.overdue = QCheckBox("Com as vencidas")
+        self.overdue.setToolTip("Inclui também as contas que já venceram antes do período e continuam em aberto")
+        for w in (self.kind, self.period, self.first, self.until, self.last, self.overdue):
+            self.bar.addWidget(w)
+        self._show_dates()
+        self.kind.currentIndexChanged.connect(self.refresh)
+        self.period.currentIndexChanged.connect(self._period_changed)
+        self.first.dateChanged.connect(self.refresh)
+        self.last.dateChanged.connect(self.refresh)
+        self.overdue.toggled.connect(self.refresh)
         self.finish_bar("Contas em aberto que vencem no período, semana a semana, com o total de cada semana.\n"
-                        "As já vencidas ficam em Inadimplência. Dois cliques abrem o lançamento.")
+                        "Escolha só a pagar, só a receber ou as duas, e um período qualquer em Período personalizado.\n"
+                        "Marque Com as vencidas para incluir o que já venceu e não foi pago. "
+                        "Dois cliques abrem o lançamento.")
+
+    def _show_dates(self):
+        custom = self.period.currentData() == "custom"
+        for w in (self.first, self.until, self.last):
+            w.setVisible(custom)
+
+    def _period_changed(self):
+        if self.period.currentData() == "custom":       # começa no período que estava na tela
+            prev = self._range or reports.agenda_range("30")
+            for w, d in ((self.first, prev[0]), (self.last, prev[1])):
+                w.blockSignals(True)
+                w.setDate(QDate(d.year, d.month, d.day))
+                w.blockSignals(False)
+        self._show_dates()
+        self.refresh()
+
+    _range = None
+
+    def date_range(self) -> tuple[date, date]:
+        if self.period.currentData() == "custom":
+            return self.first.date().toPython(), self.last.date().toPython()
+        return reports.agenda_range(self.period.currentData())
+
+    def subtitle(self) -> str:
+        first, last = self.date_range()
+        parts = [f"{first:%d/%m/%Y} a {last:%d/%m/%Y}"]
+        if self.period.currentData() != "custom":
+            parts.insert(0, self.period.currentText())
+        if self.kind.currentData():
+            parts.append(self.kind.currentText())
+        if self.overdue.isChecked():
+            parts.append("com as vencidas")
+        return " · ".join(parts)
 
     def refresh(self):
-        first, last = reports.agenda_range(self.period.currentData())
+        kind = self.kind.currentData()
+        keep = [i for i in range(6) if not (i == 4 and kind == "expense") and not (i == 5 and kind == "income")]
+        self.set_columns([self.ALL_COLUMNS[i] for i in keep])
+        first, last = self._range = self.date_range()
+        if first > last:
+            self.fill([], "A data inicial é depois da final.")
+            self.footer.clear()
+            return
         with Session() as s:
-            data = reports.agenda(s, self.profile.id, first, last)
+            data = reports.agenda(s, self.profile.id, first, last, kind, self.overdue.isChecked())
         rows, week, rec_w, pay_w = [], None, Decimal(0), Decimal(0)
+
+        def row(cells: list, **extra) -> dict:
+            tones = {keep.index(c): tone for c, tone in extra.pop("tones", {}).items() if c in keep}
+            return {"cells": [cells[i] for i in keep], "tones": tones, **extra}
 
         def close_week():
             if week is not None:
-                rows.append({"cells": ["", f"Total da semana de {week:%d/%m}", "", "", rec_w or None,
-                                       -pay_w if pay_w else None], "bold": True})
+                title = (f"Total das vencidas antes de {first:%d/%m}" if week == "old"
+                         else f"Total da semana de {week:%d/%m}")
+                rows.append(row(["", title, "", "", rec_w or None, -pay_w if pay_w else None], bold=True))
 
         for e in data:
-            start = e.due_date - timedelta(days=e.due_date.weekday())
+            start = "old" if e.due_date < first else e.due_date - timedelta(days=e.due_date.weekday())
             if start != week:
                 close_week()
                 week, rec_w, pay_w = start, Decimal(0), Decimal(0)
@@ -469,14 +532,20 @@ class AgendaView(TableReport):
             out = -e.base_amount if e.kind == "expense" else None
             rec_w += inc or 0
             pay_w += -out if out else 0
-            rows.append({"cells": [e.due_date.strftime("%d/%m/%y"), e.description, e.contact or "", e.account, inc, out],
-                         "tones": {4: "pos"}, "target": ("entry", e.id)})
+            rows.append(row([e.due_date.strftime("%d/%m/%y"), e.description, e.contact or "", e.account, inc, out],
+                            tones={4: "pos", **({0: "neg"} if e.due_date < date.today() else {})},
+                            target=("entry", e.id)))
         close_week()
         self.fill(rows, "Nenhuma conta em aberto vencendo nesse período.")
         rec = sum((e.base_amount for e in data if e.kind == "income"), Decimal(0))
         pay = sum((e.base_amount for e in data if e.kind == "expense"), Decimal(0))
-        self.footer.setText(f"A receber <b>{self.fmt(rec)}</b> &nbsp;·&nbsp; A pagar <b>{self.fmt(-pay)}</b> "
-                            f"&nbsp;·&nbsp; Saldo <b>{self.fmt(rec - pay)}</b>")
+        parts = [] if kind == "expense" else [f"A receber <b>{self.fmt(rec)}</b>"]
+        if kind != "income":
+            parts.append(f"A pagar <b>{self.fmt(-pay)}</b>")
+        if not kind:
+            parts.append(f"Saldo <b>{self.fmt(rec - pay)}</b>")
+        self.footer.setText(f"{len(data)} {'conta' if len(data) == 1 else 'contas'} &nbsp;·&nbsp; "
+                            + " &nbsp;·&nbsp; ".join(parts))
 
 
 # ---------- comparativo mensal por categoria ----------

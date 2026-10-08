@@ -17,6 +17,7 @@ recursos pagos em `core/licensing.py` (`allowed()`), que aparecem com cadeado e 
 | Categorias, DRE pessoal, fluxo de caixa, Dashboard | ✓ | ✓ | ✓ |
 | Backup e restauração local | ✓ | ✓ | ✓ |
 | Recibo imprimível e em PDF | ✓ | ✓ | ✓ |
+| Imprimir relatórios e listas (prévia, retrato ou paisagem, cabeçalho da entidade) | ✓ | ✓ | ✓ |
 | Login, permissões por módulo e histórico de alterações | | ✓ | ✓ |
 | Importação OFX | | ✓ | ✓ |
 | Anexos de comprovantes | | ✓ | ✓ |

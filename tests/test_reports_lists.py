@@ -132,6 +132,12 @@ def test_agenda_comparativo_patrimonio_e_caixa(session, profile):
     ag = reports.agenda(s, eid, date(2026, 10, 1), date(2026, 10, 31))
     assert [e.description for e in ag] == ["Luz"]
     assert reports.agenda_range("next_month", date(2026, 10, 7)) == (date(2026, 11, 1), date(2026, 11, 30))
+    assert reports.agenda(s, eid, date(2026, 10, 1), date(2026, 10, 31), "income") == []
+    assert len(reports.agenda(s, eid, date(2026, 10, 1), date(2026, 10, 31), "expense")) == 1
+    assert reports.agenda(s, eid, date(2026, 11, 1), date(2026, 11, 30)) == []
+    assert len(reports.agenda(s, eid, date(2026, 11, 1), date(2026, 11, 30), overdue=True)) == 1   # a Luz de outubro
+    with pytest.raises(ValueError):
+        reports.agenda(s, eid, date(2026, 11, 1), date(2026, 10, 1))
     # comparativo: a Luz mês a mês, média e total
     months = [(2026, 8), (2026, 9), (2026, 10)]
     luz = next(r for r in reports.category_by_month(s, eid, months) if r.category == "Luz")

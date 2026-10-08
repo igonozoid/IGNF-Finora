@@ -15,21 +15,18 @@ from finora.core.db import Session
 from finora.core.logs import log
 from finora.services import receipts
 from finora.services.entity_admin import letterhead
+from finora.services.export import LOGO_URL, letterhead_html
 from finora.services.receipts import Receipt
 from finora.ui import theme
 from finora.ui.widgets import button, field_label
 
 
-LOGO_URL = "finora-logo"
 
 
 def receipt_html(r: Receipt, copies: int = 2) -> str:
     """HTML do recibo no formato do IgnControl (preto no branco: é papel, não segue o tema da tela).
     O logotipo entra como recurso do documento (ver add_logo)."""
     h = r.head
-
-    def line(text: str) -> str:
-        return f'<p align="center" style="font-size:7.5pt; color:#374151; margin:2px 0 0 0">{escape(text)}</p>' if text else ""
 
     def field(label: str, value: str, italic: bool = False) -> str:
         style = "font-size:9pt; font-style:italic" if italic else "font-size:10pt"
@@ -39,19 +36,12 @@ def receipt_html(r: Receipt, copies: int = 2) -> str:
     def one(via: int) -> str:
         tag = (f'<p align="right" style="font-size:7pt; color:#6b7280; margin:0">{via}ª via</p>'
                if copies > 1 else "")
-        logo = (f'<td width="90" valign="top"><img src="{LOGO_URL}" height="44"></td>' if h.logo
-                else '<td width="1"></td>')
         sign_doc = (f'<br><span style="font-size:7.5pt; color:#6b7280">CPF/CNPJ: {escape(r.signer_doc)}</span>'
                     if r.signer_doc else "")
         return f"""
         <table width="100%" cellspacing="0" cellpadding="10" style="border:1px solid #9ca3af"><tr><td>
           {tag}
-          <table width="100%" cellspacing="0" cellpadding="0"><tr>{logo}
-            <td valign="top"><p align="center" style="font-size:12pt; font-weight:bold; margin:0">{escape(h.name)}</p>
-              {line(h.address_line)}{line(h.contacts_line)}{line(h.docs_line)}</td>
-            {'<td width="90"></td>' if h.logo else ''}</tr></table>
-          <table width="100%" cellspacing="0" cellpadding="0" style="margin:6px 0 4px 0"><tr>
-            <td style="border-top:1px solid #111827; font-size:2pt">&nbsp;</td></tr></table>
+          {letterhead_html(h)}
           <p align="center" style="font-size:14pt; font-weight:bold; letter-spacing:2px; margin:4px 0 0 0">RECIBO</p>
           <p align="center" style="font-size:8.5pt; color:#374151; margin:2px 0 10px 0">Data: {r.date_text} | Documento: {escape(r.document or "-")}</p>
           {field(r.party_label, r.party)}

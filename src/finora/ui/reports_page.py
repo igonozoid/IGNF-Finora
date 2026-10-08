@@ -70,9 +70,15 @@ class BackgroundDelegate(QStyledItemDelegate):
 
 
 def export_buttons(parent: QWidget, t: dict) -> QHBoxLayout:
+    """Imprimir (todas as edições), Excel e PDF (pagas). A tela precisa ter export_sheet() e o sinal message."""
     row = QHBoxLayout()
     row.setSpacing(theme.SP_S)
-    parent.export_btns = []
+    pr = button("Imprimir", "secondary", t, "fa6s.print", "fg")
+    pr.setProperty("fullText", "Imprimir")
+    pr.clicked.connect(lambda: _print(parent))
+    row.addWidget(pr)
+    parent.print_btn = pr
+    parent.export_btns = [pr]
     for label, icon, kind in (("Excel", "fa6s.file-excel", "xlsx"), ("PDF", "fa6s.file-pdf", "pdf")):
         b = button(label, "secondary", t, icon, "fg")
         b.setProperty("fullText", label)
@@ -95,9 +101,19 @@ def _export(view: QWidget, kind: str):
         view.message.emit(f"Salvo em {path}")
 
 
+def _print(view: QWidget):
+    from finora.ui import printing
+    path = printing.open_print(view, view.export_sheet(), view.t)
+    if path:
+        view.message.emit(f"Salvo em {path}")
+
+
 def compact_exports(view: QWidget, narrow: bool):
     for b in view.export_btns:
         b.setText("" if narrow else b.property("fullText"))
+        if b is getattr(view, "print_btn", None):
+            b.setToolTip("Imprimir (com prévia, retrato ou paisagem)")
+            continue
         b.setToolTip(f"Exportar para {b.property('fullText')}" + ("" if _feature("export") else
                                                                     f" — {LOCK_MSG['export']}"))
 

@@ -431,7 +431,8 @@ def overdue(s: Session, entity_id: int, today: date | None = None) -> OverdueRep
 
 # ---------- a pagar e a receber (agenda) ----------
 AGENDA_PERIODS = {"30": "Próximos 30 dias", "60": "Próximos 60 dias", "90": "Próximos 90 dias",
-                  "month": "Este mês", "next_month": "Mês que vem"}
+                  "month": "Este mês", "next_month": "Mês que vem", "custom": "Período personalizado"}
+AGENDA_KINDS = {"": "A pagar e a receber", "expense": "Só a pagar", "income": "Só a receber"}
 
 
 def agenda_range(key: str, today: date | None = None) -> tuple[date, date]:
@@ -444,10 +445,16 @@ def agenda_range(key: str, today: date | None = None) -> tuple[date, date]:
     return today, today + timedelta(days=int(key) - 1)
 
 
-def agenda(s: Session, entity_id: int, first: date, last: date) -> list:
-    """Contas em aberto (receitas e despesas) que vencem no período, na ordem do vencimento."""
-    q = entries.query(entity_id).where(Entry.status == "pending", Entry.kind != "transfer",
-                                       Entry.due_date.between(first, last))
+def agenda(s: Session, entity_id: int, first: date, last: date, kind: str = "", overdue: bool = False) -> list:
+    """Contas em aberto que vencem no período, na ordem do vencimento. kind: "" (as duas), "expense" ou "income".
+    overdue: inclui também as que venceram antes do período e continuam em aberto."""
+    if kind not in AGENDA_KINDS:
+        raise ValueError("Tipo inválido.")
+    if first > last:
+        raise ValueError("A data inicial é depois da final.")
+    due = Entry.due_date <= last if overdue else Entry.due_date.between(first, last)
+    q = entries.query(entity_id).where(Entry.status == "pending", due,
+                                       Entry.kind == kind if kind else Entry.kind != "transfer")
     return [entries.to_view(r) for r in s.execute(q.order_by(Entry.due_date, Entry.id))]
 
 

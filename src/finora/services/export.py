@@ -8,7 +8,14 @@ from html import escape
 from finora.core import money
 
 # estilos de linha: "" normal · "bold" subtotal/título · "detail" linha de detalhe (recuada, cinza) · "result" resultado
-STYLES = ("", "bold", "detail", "result")
+# · "indent" item de uma seção (recuado, cor normal)
+STYLES = ("", "bold", "detail", "result", "indent")
+KEEP_UPPER = {"CPF/CNPJ", "CPF", "CNPJ", "DRE", "AV", "UF", "CEP"}
+
+
+def header(title: str) -> str:
+    """'DESCRIÇÃO' -> 'Descrição', mas siglas ficam: 'CPF/CNPJ', 'AV %'."""
+    return " ".join(w if w.rstrip("%.") in KEEP_UPPER else w.capitalize() for w in title.split(" "))
 _PERCENT = re.compile(r"^-?[\d.,]+%$")
 
 
@@ -91,6 +98,8 @@ def to_xlsx(sheet: Sheet, path: str) -> None:
                 cell.alignment = Alignment(horizontal="right")
             if style in ("bold", "result"):
                 cell.font = Font(bold=True)
+            elif style == "indent" and c == 1:
+                cell.alignment = Alignment(indent=2)
             elif style == "detail":
                 cell.font = Font(color="777777")
                 if c == 1:
@@ -146,7 +155,7 @@ def to_html(sheet: Sheet, generated: datetime | None = None) -> str:
     # a coluna de texto mais "longa" (descrição, nome) fica com a sobra de largura
     texts = [c for c in range(len(sheet.headers)) if c not in numeric]
     wide = max(texts, key=lambda c: sum(len(_text(r[c], sheet.currency)) for r in sheet.rows), default=None)
-    head = "".join(f'<th align="{"right" if c in numeric else "left"}"{" width=\"34%\"" if c == wide else ""}>'
+    head = "".join(f'<th align="{"right" if c in numeric else "left"}"{" width=\"45%\"" if c == wide else ""}>'
                    f'{escape(h)}</th>' for c, h in enumerate(sheet.headers))
     body = []
     for i, row in enumerate(sheet.rows):
@@ -157,7 +166,7 @@ def to_html(sheet: Sheet, generated: datetime | None = None) -> str:
         cells = []
         for c, v in enumerate(row):
             text = "–" if isinstance(v, Decimal) and v == 0 else escape(_text(v, sheet.currency))
-            if style == "detail" and c == 0:
+            if style in ("detail", "indent") and c == 0:
                 text = "&nbsp;&nbsp;&nbsp;&nbsp;" + text
             neg = isinstance(v, Decimal) and v < 0
             color = ' style="color:#b03020"' if neg else ""

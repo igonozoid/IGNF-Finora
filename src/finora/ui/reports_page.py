@@ -39,6 +39,7 @@ REPORTS = [
     ("balance_history", "Evolução do patrimônio", "fa6s.chart-line", None),
     ("cash_history", "Entradas e saídas por mês", "fa6s.arrow-right-arrow-left", None),
     ("analytical", "Analítico", "fa6s.table-list", None),
+    ("irpf", "Imposto de Renda", "fa6s.landmark", None),
     ("budget", "Orçado x realizado", "fa6s.bullseye", "budget"),
 ]
 LOCK_MSG = {"budget": "Orçado x realizado é um recurso da edição Plus.",
@@ -568,7 +569,7 @@ class ReportsPage(QWidget):
                       "analytical": rl.AnalyticalView(profile, t), "agenda": rl.AgendaView(profile, t),
                       "category_months": rl.CategoryMonthsView(profile, t),
                       "balance_history": rl.BalanceHistoryView(profile, t),
-                      "cash_history": rl.CashHistoryView(profile, t)}
+                      "cash_history": rl.CashHistoryView(profile, t), "irpf": rl.IrpfView(profile, t)}
         self.stack = QStackedWidget()
         for v in self.views.values():
             self.stack.addWidget(v)

@@ -149,3 +149,31 @@ def test_agenda_comparativo_patrimonio_e_caixa(session, profile):
     cash = reports.cash_history(s, eid, months)
     assert [(c.inflow, c.outflow) for c in cash] == [(D("0.00"), D("100.00")), (D("1000.00"), D("150.00")),
                                                      (D("0.00"), D("0.00"))]
+
+
+def test_imposto_de_renda(session, profile):
+    from finora.services import contacts, irpf
+    s, eid = session, profile.id
+    bank = accounts.list_accounts(s, eid)[0].id
+    exp = {label.split(" › ")[-1]: cid for cid, label in categories.choices(s, eid, "expense")}
+    saude = next(cid for cid, label in categories.choices(s, eid, "expense") if label.startswith("Saúde"))
+    firma = contacts.create(s, eid, name="Empresa X", person_type="PJ", document="11222333000181")
+    medico = contacts.create(s, eid, name="Dr. Paulo", person_type="PF")
+    for y, val in ((2025, "4000"), (2026, "5000")):
+        entries.create(s, eid, EntryData(kind="income", description="Salário", amount=D(val), due_date=date(y, 3, 5),
+                                         account_id=bank, paid=True, paid_date=date(y, 3, 5), contact="Empresa X"))
+    entries.create(s, eid, EntryData(kind="expense", description="Consulta", amount=D("300"), due_date=date(2026, 4, 1),
+                                     account_id=bank, category_id=saude, paid=True, paid_date=date(2026, 4, 1),
+                                     contact="Dr. Paulo"))
+    entries.create(s, eid, EntryData(kind="expense", description="Luz", amount=D("100"), due_date=date(2026, 4, 1),
+                                     account_id=bank, category_id=exp["Luz"], paid=True, paid_date=date(2026, 4, 1)))
+    entries.create(s, eid, EntryData(kind="expense", description="Exame", amount=D("80"), due_date=date(2026, 12, 20),
+                                     account_id=bank, category_id=saude))          # não pago: fica fora
+    rep = irpf.report(s, eid, 2026)
+    assert [(r.name, r.document, r.previous, r.value) for r in rep.incomes] == \
+        [("Empresa X", "11.222.333/0001-81", D("4000.00"), D("5000.00"))]
+    assert [(r.name, r.value, r.missing_doc) for r in rep.deductible["saude"]] == [("Dr. Paulo", D("300.00"), True)]
+    assert rep.deductible["educacao"] == [] and rep.missing == 1
+    banco = next(r for r in rep.balances if r.name == "Banco")
+    assert banco.value - banco.previous == D("4600.00")                  # 5000 − 300 − 100
+    assert firma and medico

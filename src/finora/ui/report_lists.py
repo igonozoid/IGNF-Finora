@@ -6,8 +6,8 @@ from decimal import Decimal
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QDateEdit, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QTableWidget,
-    QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView, QCheckBox, QComboBox, QDateEdit, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QSpinBox,
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from finora.core import money
@@ -164,10 +164,14 @@ class TableReport(QWidget):
         return self.period.currentText() if hasattr(self, "period") else ""
 
     def export_sheet(self) -> export.Sheet:
-        sheet = export.Sheet(self.TITLE, self.subtitle(), [c[0].capitalize() for c in self.COLUMNS],
+        sheet = export.Sheet(self.TITLE, self.subtitle(), [export.header(c[0]) for c in self.COLUMNS],
                              currency=self.profile.currency)
         for row in self._rows:
-            sheet.add(row["cells"], "bold" if row.get("bold") else "detail" if row.get("muted") else "")
+            style = "bold" if row.get("bold") else "detail" if row.get("muted") else "indent" if row.get("indent") else ""
+            cells = list(row["cells"])
+            if row.get("indent") and isinstance(cells[0], str):      # o recuo da tela vira estilo na exportação
+                cells[0] = cells[0].strip()
+            sheet.add(cells, style)
         text = re.sub(r"<[^>]+>", "", self.footer.text()).replace("&nbsp;", " ")
         sheet.footer = " ".join(text.split())
         return sheet
@@ -546,6 +550,59 @@ class AgendaView(TableReport):
             parts.append(f"Saldo <b>{self.fmt(rec - pay)}</b>")
         self.footer.setText(f"{len(data)} {'conta' if len(data) == 1 else 'contas'} &nbsp;·&nbsp; "
                             + " &nbsp;·&nbsp; ".join(parts))
+
+
+# ---------- imposto de renda ----------
+class IrpfView(TableReport):
+    TITLE = "Imposto de Renda"
+    COLUMNS = [("NOME", None, False), ("CPF/CNPJ", 150, False), ("ANO ANTERIOR", 130, True), ("ANO", 130, True)]
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.year = QSpinBox(minimum=2000, maximum=2100, value=date.today().year - 1)
+        self.year.setPrefix("Ano-calendário ")
+        self.year.valueChanged.connect(lambda _v: self.refresh())
+        self.bar.addWidget(self.year)
+        self.finish_bar("Resumo para a declaração do IRPF: o que você recebeu (por fonte pagadora), o que pagou de\n"
+                        "saúde e educação (por quem recebeu) e o saldo das contas em 31/12. Tudo pela data do\n"
+                        "pagamento. Saúde e Educação são os grupos da DRE das suas categorias.\n"
+                        "O Finora não sabe as regras de cada gasto (remédio não deduz, educação tem limite):\n"
+                        "confira antes de digitar no programa da Receita.")
+
+    def subtitle(self) -> str:
+        return f"Ano-calendário {self.year.value()} (declaração de {self.year.value() + 1})"
+
+    def refresh(self):
+        from finora.services import irpf
+        y = self.year.value()
+        self.set_columns([("NOME", None, False), ("CPF/CNPJ", 150, False), (str(y - 1), 130, True),
+                          (str(y), 130, True)])
+        with Session() as s:
+            rep = irpf.report(s, self.profile.id, y)
+        rows: list[dict] = []
+
+        def section(title: str, items: list, total_label: str, show_doc: bool = True):
+            if not items:
+                return
+            rows.append({"cells": [title, "", None, None], "bold": True})
+            for r in items:
+                doc = r.document if r.document else ("falta" if show_doc and r.missing_doc else "")
+                rows.append({"cells": [f"    {r.name}", doc, r.previous or None, r.value], "indent": True,
+                             "tones": {1: "neg"} if doc == "falta" else {}})
+            prev, cur = rep.total(items)
+            rows.append({"cells": [total_label, "", prev, cur], "bold": True})
+
+        section("Rendimentos recebidos (por fonte pagadora)", rep.incomes, "Total recebido")
+        for key, label in irpf.DEDUCTIBLE.items():
+            section(f"Pagamentos de {label.lower()} (por quem recebeu)", rep.deductible[key], f"Total de {label.lower()}")
+        section("Saldo das contas em 31/12 (Bens e Direitos)", rep.balances, "Total em 31/12", show_doc=False)
+        self.fill(rows, f"Nada recebido, pago em saúde/educação ou guardado em {y}.")
+        notes = []
+        if rep.missing:
+            notes.append(f"<b>{rep.missing}</b> {'linha está' if rep.missing == 1 else 'linhas estão'} sem CPF/CNPJ "
+                         "ou sem contato: complete em Contatos (a Receita pede o documento de quem pagou/recebeu).")
+        notes.append("Valores na moeda principal. Confira com os informes de rendimentos e recibos.")
+        self.footer.setText(" ".join(notes))
 
 
 # ---------- comparativo mensal por categoria ----------

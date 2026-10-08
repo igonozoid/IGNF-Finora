@@ -25,8 +25,9 @@ LOCK_MSG = ("Importar o extrato do banco (OFX) e conciliar com seus lançamentos
 R = Qt.AlignRight | Qt.AlignVCenter
 L = Qt.AlignLeft | Qt.AlignVCenter
 C_DATE, C_BANK, C_VALUE, C_LINK, C_SYS, C_ACT = range(6)
-HELP = ("1. Baixe o extrato no site ou app do banco no formato OFX (às vezes chamado \"Money\").\n"
-        "2. Clique em \"Importar OFX\" e escolha a conta.\n"
+HELP = ("1. Baixe o extrato (ou a fatura do cartão) no site ou app do banco: OFX (às vezes chamado \"Money\"),\n"
+        "   CSV ou Excel. Com planilha, o Finora mostra as colunas para você conferir.\n"
+        "2. Escolha a conta e clique em \"Importar extrato\".\n"
         "3. Para cada linha, confirme o lançamento sugerido, crie um novo ou ignore.\n"
         "Linhas já importadas não se repetem, então pode importar o mesmo período de novo sem medo.")
 
@@ -120,7 +121,8 @@ class ReconcilePage(QWidget):
         self.summary = QLabel()
         self.summary.setProperty("role", "field")
         bar.addWidget(self.summary)
-        self.import_btn = button("Importar OFX", "primary", t, "fa6s.file-import", "on_acc")
+        self.import_btn = button("Importar extrato", "primary", t, "fa6s.file-import", "on_acc")
+        self.import_btn.setToolTip("Extrato ou fatura em OFX, CSV ou Excel (.xlsx), baixado do site ou app do banco")
         bar.addWidget(self.import_btn)
         root.addLayout(bar)
 
@@ -189,8 +191,8 @@ class ReconcilePage(QWidget):
         self.footer.setText("Verde = ligado a um lançamento · Amarelo = sugestão, confira e confirme · "
                             "Cinza = não achei nada, crie ou ignore. Duplo clique abre o lançamento.")
         if not self.rows:
-            self._show_empty("Nenhuma linha do extrato importada nesta conta.\nBaixe o extrato OFX no banco e "
-                             "clique em \"Importar OFX\"." if not total else "Tudo conciliado nesta conta. 👏")
+            self._show_empty("Nenhuma linha do extrato importada nesta conta.\nBaixe o extrato no banco (OFX, CSV ou "
+                             "Excel) e clique em \"Importar extrato\"." if not total else "Tudo conciliado nesta conta. 👏")
             return
         self.body.setCurrentWidget(self.table)
         self._fill_table()
@@ -311,11 +313,12 @@ class ReconcilePage(QWidget):
     def _import(self):
         acc = self.account.currentData()
         if acc is None:
-            QMessageBox.information(self, "Importar OFX", "Cadastre primeiro a conta do banco em Contas.")
+            QMessageBox.information(self, "Importar extrato", "Cadastre primeiro a conta do banco em Contas.")
             return
         start = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation)
-        path, _ = QFileDialog.getOpenFileName(self, f"Extrato OFX da conta {self.account.currentText()}", start,
-                                              "Extrato OFX (*.ofx *.OFX);;Todos os arquivos (*)")
+        path, _ = QFileDialog.getOpenFileName(self, f"Extrato da conta {self.account.currentText()}", start,
+                                              "Extratos (*.ofx *.OFX *.csv *.CSV *.txt *.xlsx);;OFX (*.ofx *.OFX);;"
+                                              "Planilha (*.csv *.txt *.xlsx);;Todos os arquivos (*)")
         if not path:
             return
         self.import_file(path)
@@ -323,13 +326,21 @@ class ReconcilePage(QWidget):
     def import_file(self, path: str) -> None:
         acc = self.account.currentData()
         try:
-            with Session() as s:
-                r = reconcile.import_ofx(s, self.profile.id, acc, Path(path).read_bytes())
+            data = Path(path).read_bytes()
+            if path.lower().endswith(".ofx") or data.lstrip()[:20].upper().startswith((b"OFXHEADER", b"<OFX")):
+                with Session() as s:
+                    r = reconcile.import_ofx(s, self.profile.id, acc, data)
+            else:
+                lines = self._sheet_lines(path, data)
+                if lines is None:
+                    return
+                with Session() as s:
+                    r = reconcile.import_lines(s, self.profile.id, acc, lines)
         except (ValueError, OSError) as e:
-            QMessageBox.warning(self, "Importar OFX", str(e) if isinstance(e, ValueError)
+            QMessageBox.warning(self, "Importar extrato", str(e) if isinstance(e, ValueError)
                                 else "Não consegui abrir o arquivo.")
             return
-        log.info("OFX importado: %s novas, %s repetidas", r.new, r.repeated)
+        log.info("Extrato importado: %s novas, %s repetidas", r.new, r.repeated)
         parts = [f"{r.new} {'linha nova' if r.new == 1 else 'linhas novas'}"]
         if r.repeated:
             parts.append(f"{r.repeated} já importada{'s' if r.repeated != 1 else ''} antes")
@@ -339,6 +350,19 @@ class ReconcilePage(QWidget):
         self.message.emit(f"Extrato de {r.first:%d/%m} a {r.last:%d/%m}: " + ", ".join(parts) + ".")
         self.show_btns["pending"].setChecked(True)
         self.refresh()
+
+    def _sheet_lines(self, path: str, data: bytes):
+        """Planilha (CSV/Excel): mostra as colunas adivinhadas e a prévia. None se cancelou."""
+        from finora.services import accounts, statement_import
+        from finora.ui.statement_dialog import StatementDialog
+        rows = statement_import.read_table(data, Path(path).name)
+        with Session() as s:
+            acc = next(a for a in accounts.list_accounts(s, self.profile.id, include_inactive=True)
+                       if a.id == self.account.currentData())
+        dlg = StatementDialog(self, rows, Path(path).name, acc.name, acc.kind == "card", acc.currency, self.t)
+        if dlg.exec() != QDialog.Accepted or dlg.parsed is None:
+            return None
+        return dlg.parsed.lines
 
     def apply_theme(self, t: dict):
         self.t = t

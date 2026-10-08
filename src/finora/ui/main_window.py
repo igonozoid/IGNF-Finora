@@ -590,7 +590,7 @@ class MainWindow(QMainWindow):
         self.go_to(self.stack.currentIndex())
 
     def import_ofx(self):
-        """Botão "Importar OFX" de Lançamentos: leva para a Conciliação e já pede o arquivo."""
+        """Botão "Importar extrato" de Lançamentos: leva para a Conciliação e já pede o arquivo."""
         self.go_to("reconcile")
         self.page("reconcile")._import()
 

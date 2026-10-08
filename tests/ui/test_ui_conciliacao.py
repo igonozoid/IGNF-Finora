@@ -20,7 +20,7 @@ def _ofx_this_month(tmp_path) -> str:
 def test_importar_confirmar_criar_ignorar(plus, window, dialogs, tmp_path, qtbot, monkeypatch):
     window.go_to("reconcile")
     page = window.page("reconcile")
-    assert "Importar OFX" in page.empty.text()
+    assert "Importar extrato" in page.empty.text()
     dialogs.open_path = _ofx_this_month(tmp_path)
     page.import_btn.click()
     pump(qtbot)
@@ -62,3 +62,29 @@ def test_conciliacao_bloqueada_na_free(window, qtbot):
     window.go_to("reconcile")
     page = window.page("reconcile")
     assert page.locked and not hasattr(page, "table")
+
+
+def test_importar_planilha_csv_com_previa(plus, window, dialogs, tmp_path, qtbot, monkeypatch):
+    from finora.ui.statement_dialog import StatementDialog
+    today = date.today()
+    path = tmp_path / "extrato.csv"
+    path.write_text("Data;Histórico;Valor\n"
+                    f"{today:%d/%m/%Y};UBER *TRIP;-23,90\n"
+                    f"{today:%d/%m/%Y};PIX RECEBIDO;150,00\n", encoding="utf-8")
+    seen = {}
+
+    def fake_exec(dlg):
+        seen["rows"] = dlg.table.rowCount()
+        seen["ok"] = dlg.ok.isEnabled()
+        dlg.boxes["amount_col"].setCurrentIndex(0)          # sem coluna de valor: não deixa importar
+        seen["blocked"] = not dlg.ok.isEnabled()
+        dlg.boxes["amount_col"].setCurrentIndex(3)          # coluna C
+        return QDialog.Accepted
+
+    monkeypatch.setattr(StatementDialog, "exec", fake_exec)
+    window.go_to("reconcile")
+    page = window.page("reconcile")
+    page.import_file(str(path))
+    pump(qtbot)
+    assert seen == {"rows": 2, "ok": True, "blocked": True}
+    assert "2 linhas novas" in window.statusBar().currentMessage()

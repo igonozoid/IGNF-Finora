@@ -776,8 +776,8 @@ class EntriesPage(QWidget):
         self.search.setMinimumWidth(110)
         self.search_icon = self.search.addAction(qta.icon("fa6s.magnifying-glass", color=t["mut"]),
                                                  QLineEdit.LeadingPosition)
-        self.ofx_btn = button("Importar OFX", "secondary", t, "fa6s.file-import", "fg")
-        self.ofx_btn.setToolTip("Importar o extrato do banco e conciliar (tela Conciliação)")
+        self.ofx_btn = button("Importar extrato", "secondary", t, "fa6s.file-import", "fg")
+        self.ofx_btn.setToolTip("Importar o extrato do banco ou a fatura do cartão (OFX, CSV ou Excel) e conciliar")
         row1 = QHBoxLayout()
         row1.setSpacing(theme.SP_S)
         row1.addStretch(1)

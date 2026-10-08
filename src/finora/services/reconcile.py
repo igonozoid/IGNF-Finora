@@ -90,10 +90,14 @@ def parse_ofx(data: bytes) -> list[OfxLine]:
 
 
 def import_ofx(s: Session, entity_id: int, account_id: int, data: bytes) -> ImportResult:
+    return import_lines(s, entity_id, account_id, parse_ofx(data))
+
+
+def import_lines(s: Session, entity_id: int, account_id: int, lines: list[OfxLine]) -> ImportResult:
+    """Grava as linhas do extrato (OFX ou planilha) que ainda não estão lá e liga sozinho o que não deixa dúvida."""
     acc = s.get(Account, account_id)
     if acc is None or acc.entity_id != entity_id:
         raise ValueError("Escolha a conta do extrato.")
-    lines = parse_ofx(data)
     known = set(s.scalars(select(BankLine.fitid).where(BankLine.account_id == account_id)))
     new = []
     for ln in lines:

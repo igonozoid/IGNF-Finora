@@ -16,6 +16,16 @@ class Entity(Base):
     person_type: Mapped[str] = mapped_column(String(2), default="PF")      # PF | PJ
     document: Mapped[str | None] = mapped_column(String(20))                # CPF/CNPJ (só dígitos)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Dados que aparecem no cabeçalho do recibo e dos relatórios (todos opcionais)
+    document2: Mapped[str | None] = mapped_column(String(30))               # inscrição estadual/municipal
+    address: Mapped[str | None] = mapped_column(String(200))
+    city: Mapped[str | None] = mapped_column(String(80))
+    state: Mapped[str | None] = mapped_column(String(2))
+    zip_code: Mapped[str | None] = mapped_column(String(9))
+    phone: Mapped[str | None] = mapped_column(String(30))
+    email: Mapped[str | None] = mapped_column(String(120))
+    website: Mapped[str | None] = mapped_column(String(120))
+    logo: Mapped[bytes | None] = mapped_column(LargeBinary(length=2_000_000), deferred=True)   # PNG, até 512 px
 
 class Account(Base):
     __tablename__ = "accounts"

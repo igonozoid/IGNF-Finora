@@ -22,30 +22,37 @@ def ctx(session, profile):
 
 
 def test_recibo_de_despesa_quem_assina_e_o_contato(ctx):
-    r = receipts.build(ctx["s"], ctx["add"](), city="Campinas", my_doc="111.444.777-35")
-    assert (r.payer, r.payee) == ("Ana", "Maria Diarista")
-    assert r.payee_doc == "529.982.247-25" and r.payer_doc == "111.444.777-35"
-    assert r.body == ("Recebi de Ana, CPF 111.444.777-35 a importância de R$ 350,00 (trezentos e cinquenta reais), "
-                      "referente a Faxina de outubro.")
-    assert r.place_date == "Campinas, 11 de outubro de 2026"          # usa a data do pagamento
-    assert len(r.number) == 6
+    from finora.services import entity_admin
+    s = ctx["s"]
+    entity_admin.update(s, ctx["eid"], name="Ana", person_type="PF", document="111.444.777-35")
+    entity_admin.update_details(s, ctx["eid"], address="Rua A, 10", city="Campinas", state="sp",
+                                zip_code="13010050", phone="(19) 3333-4444", email="ana@x.com")
+    r = receipts.build(s, ctx["add"](document_no="NF 123"))
+    assert (r.party_label, r.party, r.entity_label, r.entity) == ("Pagamento para", "Maria Diarista",
+                                                                  "Emitido por", "Ana")
+    assert (r.signer, r.signer_doc) == ("Maria Diarista", "529.982.247-25")
+    assert r.amount_words == "trezentos e cinquenta reais" and r.date_text == "11/10/2026"   # data do pagamento
+    assert r.document == "NF 123" and r.reference == "Faxina de outubro" and len(r.number) == 6
+    assert r.head.address_line == "Rua A, 10 — Campinas/SP — CEP 13010-050"
+    assert r.head.contacts_line == "Tel: (19) 3333-4444   e-mail: ana@x.com"
+    assert r.head.docs_line == "CPF 111.444.777-35"
 
 
-def test_recibo_de_receita_quem_assina_e_voce(ctx):
+def test_recibo_de_receita_quem_assina_e_a_entidade(ctx):
     i = ctx["add"](kind="income", description="Aula particular", amount=D("1250.40"), contact="Pedro")
-    r = receipts.build(ctx["s"], i, when=date(2026, 10, 20))
-    assert (r.payer, r.payee) == ("Pedro", "Ana")
-    assert "mil duzentos e cinquenta reais e quarenta centavos" in r.body
-    assert r.place_date == "20 de outubro de 2026"                     # sem cidade
+    r = receipts.build(ctx["s"], i, when=date(2026, 10, 20), notes="Pago em dinheiro", entity_doc="11144477735")
+    assert (r.party_label, r.party, r.entity_label) == ("Recebido de", "Pedro", "Recebido por")
+    assert (r.signer, r.signer_doc) == ("Ana", "111.444.777-35")   # sem CPF na entidade: usa o informado
+    assert "mil duzentos e cinquenta reais e quarenta centavos" in r.amount_words
+    assert r.notes == "Pago em dinheiro" and r.date_text == "20/10/2026"
 
 
 def test_sem_contato_pede_o_nome_e_aceita_completar(ctx):
     i = ctx["add"](contact="")
-    with pytest.raises(ValueError, match="quem recebeu"):
+    with pytest.raises(ValueError, match="recebeu o pagamento"):
         receipts.build(ctx["s"], i)
-    r = receipts.build(ctx["s"], i, contact_name="João Pintor", contact_doc="11222333000181")
-    assert r.payee == "João Pintor" and r.payee_doc == "11.222.333/0001-81"
-    assert "CNPJ" not in r.body                                         # o documento do pagador é que vai no texto
+    r = receipts.build(ctx["s"], i, party="João Pintor", party_doc="11222333000181")
+    assert r.signer == "João Pintor" and r.signer_doc == "11.222.333/0001-81"
 
 
 def test_transferencia_e_cartao_nao_tem_recibo(ctx):

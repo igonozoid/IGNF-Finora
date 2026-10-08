@@ -257,6 +257,7 @@ def confirm_delete(parent, e: EntryView) -> str | None:
 class EntryForm(QFrame):
     saved = Signal(str, int)   # mensagem, id para selecionar
     closed = Signal()
+    receipt_requested = Signal(object)   # EntryView
 
     def __init__(self, profile: Profile, t: dict):
         super().__init__(objectName="card")
@@ -390,8 +391,12 @@ class EntryForm(QFrame):
         self.save_btn = button("Salvar", "primary")
         self.cancel_btn = button("Cancelar", "secondary")
         self.delete_btn = button("Excluir", "danger")
+        self.receipt_btn = button("Recibo", "secondary", t, "fa6s.receipt", "fg")
+        self.receipt_btn.setToolTip("Imprimir ou salvar o recibo deste lançamento (1 ou 2 vias)")
+        self.receipt_btn.clicked.connect(lambda: self.editing and self.receipt_requested.emit(self.editing))
         btns.addWidget(self.save_btn)
         btns.addWidget(self.cancel_btn)
+        btns.addWidget(self.receipt_btn)
         btns.addStretch(1)
         btns.addWidget(self.delete_btn)
         lay.addLayout(btns)
@@ -574,6 +579,7 @@ class EntryForm(QFrame):
         self.times.setValue(12)
         self.repeat_frame.show()
         self.attach.set_entry(None)
+        self.receipt_btn.hide()
         self.delete_btn.hide()
         self._error(None)
         self._update_repeat()
@@ -638,6 +644,7 @@ class EntryForm(QFrame):
             self.series_info.show()
         self.delete_btn.setEnabled(not (lock and when <= lock))
         self.attach.set_entry(e.id)
+        self.receipt_btn.setVisible(e.kind != "transfer" and not e.on_card)
         self.delete_btn.show()
         self._error(None)
         self.desc.setFocus()
@@ -893,6 +900,7 @@ class EntriesPage(QWidget):
         self.table.doubleClicked.connect(lambda idx: self.edit_entry(idx.data(Qt.UserRole)))
         self.table.customContextMenuRequested.connect(self._context_menu)
         self.form.saved.connect(self._saved)
+        self.form.receipt_requested.connect(self.issue_receipt)
         self.form.attach.changed.connect(self._attachments_changed)
         self.form.closed.connect(self.close_form)
         QShortcut(QKeySequence(Qt.Key_Return), self.table, activated=self._edit_current,

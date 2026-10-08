@@ -113,3 +113,67 @@ def update(s: Session, entity_id: int, *, name: str, person_type: str, document:
             raise LimitError(f"Sua edição permite até {lim} entidades ativas.")
     e.name, e.person_type, e.document, e.is_active = name, person_type, doc, is_active
     s.commit()
+
+
+# ---------- dados para o cabeçalho (recibo e relatórios) e logotipo ----------
+DETAILS = {"document2": 30, "address": 200, "city": 80, "state": 2, "zip_code": 9, "phone": 30, "email": 120,
+           "website": 120}
+MAX_LOGO = 1_500_000
+
+
+@dataclass(frozen=True)
+class Letterhead:
+    name: str
+    address_line: str            # "Rua X, 10 — Campinas/SP — CEP 13010-050"
+    contacts_line: str           # "Tel: … · e-mail: … · site: …"
+    docs_line: str               # "CNPJ 11.222.333/0001-81 · IE 123"
+    logo: bytes | None
+    document: str                # CPF/CNPJ formatado (assinatura do recibo)
+
+
+def details(s: Session, entity_id: int) -> dict:
+    e = s.get(Entity, entity_id)
+    return {k: getattr(e, k) or "" for k in DETAILS}
+
+
+def update_details(s: Session, entity_id: int, **fields) -> None:
+    """Endereço, contatos e inscrição. Mesmas conferências do cadastro de contatos (e-mail, UF, CEP)."""
+    from finora.services.contacts import clean_details
+    unknown = set(fields) - set(DETAILS)
+    if unknown:
+        raise ValueError(f"Campo desconhecido: {', '.join(sorted(unknown))}")
+    common = {k: v for k, v in fields.items() if k in ("email", "state", "zip_code", "phone", "address", "city")}
+    clean = clean_details(common)
+    e = s.get(Entity, entity_id)
+    for k in DETAILS:
+        if k in clean:
+            setattr(e, k, clean[k])
+        elif k in fields:
+            v = (fields[k] or "").strip()
+            if len(v) > DETAILS[k]:
+                raise ValueError("Texto longo demais em um dos campos.")
+            setattr(e, k, v or None)
+    s.commit()
+
+
+def set_logo(s: Session, entity_id: int, png: bytes | None) -> None:
+    if png is not None and len(png) > MAX_LOGO:
+        raise ValueError("A imagem ficou grande demais. Use um logotipo menor.")
+    s.get(Entity, entity_id).logo = png or None
+    s.commit()
+
+
+def get_logo(s: Session, entity_id: int) -> bytes | None:
+    return s.get(Entity, entity_id).logo
+
+
+def letterhead(s: Session, entity_id: int) -> Letterhead:
+    e = s.get(Entity, entity_id)
+    place = "/".join(x for x in (e.city, e.state) if x)
+    address = " — ".join(x for x in (e.address, place, f"CEP {e.zip_code}" if e.zip_code else "") if x)
+    contacts = "   ".join(x for x in (f"Tel: {e.phone}" if e.phone else "", f"e-mail: {e.email}" if e.email else "",
+                                      f"site: {e.website}" if e.website else "") if x)
+    doc = documents.fmt(e.document) if e.document else ""
+    label = "CNPJ" if (e.person_type or "PF") == "PJ" else "CPF"
+    docs = "   ".join(x for x in (f"{label} {doc}" if doc else "", e.document2 or "") if x)
+    return Letterhead(e.name, address, contacts, docs, e.logo, doc)

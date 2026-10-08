@@ -1,8 +1,9 @@
 """Tela Administração (mockup): Usuários · Entidades · Permissões · Auditoria."""
 from PySide6.QtCore import QDate, Qt, Signal
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QDateEdit, QFrame, QHBoxLayout, QHeaderView, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget,
+    QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QDateEdit, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
+    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -291,11 +292,41 @@ class EntitiesTab(QWidget):
         for code, (_sym, label) in money.CURRENCIES.items():
             self.currency.addItem(f"{code} — {label}", code)
         self.active = QCheckBox("Ativa")
+        # logotipo (aparece no menu, no recibo e no cabeçalho dos relatórios)
+        logo_row = QHBoxLayout()
+        self.logo_view = QLabel(alignment=Qt.AlignCenter, objectName="logoBox")
+        self.logo_view.setFixedSize(64, 64)
+        self.logo_pick = button("Escolher imagem…", "link", t, "fa6s.image")
+        self.logo_clear = button("Remover", "link")
+        col = QVBoxLayout()
+        col.addWidget(self.logo_pick, 0, Qt.AlignLeft)
+        col.addWidget(self.logo_clear, 0, Qt.AlignLeft)
+        col.addStretch(1)
+        logo_row.addWidget(self.logo_view)
+        logo_row.addLayout(col, 1)
+        fl.addWidget(field_label("Logotipo", t, "PNG ou JPG. Aparece no menu, no recibo e no cabeçalho dos "
+                                               "relatórios.\nImagens grandes são reduzidas sozinhas."))
+        fl.addLayout(logo_row)
+        self._logo: bytes | None = None
+        self._logo_changed = False
         for label, w in (("Nome", self.name), ("Tipo", self.ptype), ("CPF/CNPJ", self.doc),
                          ("Moeda principal", self.currency)):
             fl.addWidget(field_label(label, t))
             fl.addWidget(w)
+        self.det = {}
+        for key, label, ph in (("document2", "Inscrição estadual/municipal", "Opcional"),
+                               ("address", "Endereço", "Rua, número, sala"), ("city", "Cidade", ""),
+                               ("state", "UF", "RS"), ("zip_code", "CEP", "95890-000"),
+                               ("phone", "Telefone / WhatsApp", ""), ("email", "E-mail", ""),
+                               ("website", "Site", "www.exemplo.com.br")):
+            w = QLineEdit(maxLength=entity_admin.DETAILS[key], placeholderText=ph)
+            self.det[key] = w
+            fl.addWidget(field_label(label, t))
+            fl.addWidget(w)
+        self.det["state"].setMaximumWidth(60)
         fl.addWidget(self.active)
+        self.logo_pick.clicked.connect(self._pick_logo)
+        self.logo_clear.clicked.connect(lambda: self._set_logo(None))
         self.lock_info = QLabel(wordWrap=True)
         self.lock_info.setProperty("role", "field")
         fl.addWidget(self.lock_info)
@@ -350,6 +381,9 @@ class EntitiesTab(QWidget):
         self.ptype.setCurrentIndex(0)
         self.currency.setEnabled(True)
         self.active.hide()
+        for w in self.det.values():
+            w.clear()
+        self._set_logo(None, changed=False)
         self.lock_info.setText("Vem com uma conta e as categorias padrão. Os administradores já ganham acesso.")
         self._error(None)
 
@@ -366,8 +400,32 @@ class EntitiesTab(QWidget):
         self.active.show()
         with Session() as s:
             lock = period_lock.locked_through(s, e.id)
+            det = entity_admin.details(s, e.id)
+            logo = entity_admin.get_logo(s, e.id)
+        for k, w in self.det.items():
+            w.setText(det.get(k, ""))
+        self._set_logo(logo, changed=False)
         self.lock_info.setText(f"Período fechado até {lock:%d/%m/%Y}." if lock else "Nenhum período fechado.")
         self._error(None)
+
+    def _set_logo(self, png: bytes | None, changed: bool = True):
+        self._logo, self._logo_changed = png, changed
+        pix = logo_pixmap(png, 60)
+        if pix is not None:
+            self.logo_view.setPixmap(pix)
+        else:
+            self.logo_view.setPixmap(QPixmap())
+            self.logo_view.setText("sem\nlogo")
+        self.logo_clear.setVisible(png is not None)
+
+    def _pick_logo(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Logotipo da entidade", "", "Imagens (*.png *.jpg *.jpeg *.bmp)")
+        if not path:
+            return
+        try:
+            self._set_logo(scaled_png(path))
+        except ValueError as e:
+            self._error(str(e))
 
     def _save(self):
         try:
@@ -381,6 +439,9 @@ class EntitiesTab(QWidget):
                     entity_admin.update(s, eid, name=self.name.text(), person_type=self.ptype.currentData(),
                                         document=self.doc.text(), is_active=self.active.isChecked())
                     msg = "Entidade atualizada."
+                entity_admin.update_details(s, eid, **{k: w.text() for k, w in self.det.items()})
+                if self._logo_changed:
+                    entity_admin.set_logo(s, eid, self._logo)
         except (ValueError, LimitError) as e:
             self._error(str(e))
             return
@@ -388,6 +449,29 @@ class EntitiesTab(QWidget):
         self.changed.emit()
         self.refresh()
         self._edit(next(e for e in self.items if e.id == eid))
+
+
+def scaled_png(path: str, max_side: int = 512) -> bytes:
+    """Lê uma imagem e devolve PNG com no máximo `max_side` px (logotipos enormes ficam leves)."""
+    from PySide6.QtCore import QBuffer, QIODevice
+    from PySide6.QtGui import QImage
+    img = QImage(path)
+    if img.isNull():
+        raise ValueError("Não consegui abrir essa imagem. Use PNG ou JPG.")
+    if max(img.width(), img.height()) > max_side:
+        img = img.scaled(max_side, max_side, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    buf = QBuffer()
+    buf.open(QIODevice.WriteOnly)
+    img.save(buf, "PNG")
+    return bytes(buf.data())
+
+
+def logo_pixmap(png: bytes | None, size: int):
+    from PySide6.QtGui import QPixmap
+    pix = QPixmap()
+    if not png or not pix.loadFromData(png):
+        return None
+    return pix.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
 
 
 # ---------- Permissões ----------

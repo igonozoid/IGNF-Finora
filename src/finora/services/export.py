@@ -21,6 +21,7 @@ class Sheet:
     styles: list[str] = field(default_factory=list)     # um por linha (vazio = normal)
     currency: str = "BRL"
     footer: str = ""
+    head: object = None          # entity_admin.Letterhead: cabeçalho com nome, endereço e logotipo da entidade
 
     def add(self, cells: list, style: str = "") -> None:
         assert len(cells) == len(self.headers) and style in STYLES
@@ -54,13 +55,17 @@ def to_xlsx(sheet: Sheet, path: str) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = safe_name(sheet.title)[:31]
+    if sheet.head is not None:                   # nome da entidade na primeira linha
+        ws.append([sheet.head.name])
+        ws["A1"].font = Font(bold=True, size=11, color="444444")
     ws.append([sheet.title])
-    ws["A1"].font = Font(bold=True, size=13)
+    first = ws.max_row
+    ws.cell(first, 1).font = Font(bold=True, size=13)
     ws.append([sheet.subtitle])
-    ws["A2"].font = Font(italic=True, color="666666")
+    ws.cell(first + 1, 1).font = Font(italic=True, color="666666")
     ws.append([])
     ws.append(sheet.headers)
-    head = 4
+    head = ws.max_row
     for c in range(1, len(sheet.headers) + 1):
         cell = ws.cell(head, c)
         cell.font = Font(bold=True)
@@ -107,6 +112,22 @@ def _text(v, currency: str) -> str:
     return str(v)
 
 
+LOGO_URL = "finora-logo"
+
+
+def _letterhead_html(head) -> str:
+    """Cabeçalho da entidade (o mesmo do recibo). O logotipo é um recurso do documento (ui/exporting)."""
+    if head is None:
+        return ""
+    lines = "".join(f'<br><span style="font-size:7pt; color:#444">{escape(x)}</span>'
+                    for x in (head.address_line, head.contacts_line, head.docs_line) if x)
+    logo = f'<td width="70" valign="middle"><img src="{LOGO_URL}" height="36"></td>' if head.logo else ""
+    return ('<table width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:6px"><tr>'
+            f'{logo}<td valign="middle"><b style="font-size:10pt">{escape(head.name)}</b>{lines}</td></tr></table>'
+            '<table width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 8px 0"><tr>'
+            '<td style="border-top:1px solid #999; font-size:2pt">&nbsp;</td></tr></table>')
+
+
 def to_html(sheet: Sheet, generated: datetime | None = None) -> str:
     generated = generated or datetime.now()
     numeric = sheet.numeric_cols()
@@ -133,7 +154,7 @@ def to_html(sheet: Sheet, generated: datetime | None = None) -> str:
     foot = f'<p style="font-size:8pt">{escape(sheet.footer)}</p>' if sheet.footer else ""
     return (
         "<html><body style=\"font-family:'IBM Plex Sans',Arial,Helvetica,sans-serif; font-size:8pt; color:#000\">"
-        f'<h2 style="margin:0">{escape(sheet.title)}</h2>'
+        f'{_letterhead_html(sheet.head)}<h2 style="margin:0">{escape(sheet.title)}</h2>'
         f'<p style="color:#555; margin:2px 0 8px 0">{escape(sheet.subtitle)}</p>'
         '<table width="100%" cellspacing="0" cellpadding="3" border="0" style="border-collapse:collapse">'
         f'<thead><tr style="background:#e0e0e0">{head}</tr></thead><tbody>{"".join(body)}</tbody></table>'

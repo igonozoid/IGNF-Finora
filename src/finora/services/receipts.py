@@ -1,7 +1,12 @@
-"""Recibo de um lançamento (receita ou despesa).
+"""Recibo de um lançamento, no mesmo formato do IgnControl (e do sistema legado):
 
-- Receita (você recebeu): "Recebi de <contato> …" — quem assina é você.
-- Despesa (você pagou): "Recebi de <você> …" — quem assina é o contato (ex.: a diarista assina e você guarda).
+- cabeçalho com o logotipo e os dados da entidade (endereço, contatos, CPF/CNPJ e inscrição);
+- RECIBO · Data | Documento;
+- Despesa: "Pagamento para" (o contato) · "Emitido por" (a entidade) — quem assina é o contato;
+- Receita: "Recebido de" (o contato) · "Recebido por" (a entidade) — quem assina é a entidade;
+- Valor, Data, Documento, Importância (por extenso), Referente a, Observação e a linha de assinatura com o
+  nome em maiúsculas e o CPF/CNPJ de quem assina; 1 ou 2 vias (meia folha A4 cada, com linha de corte).
+
 Transferências e compras no cartão não geram recibo.
 """
 from dataclasses import dataclass
@@ -11,7 +16,8 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from finora.core import documents, extenso, money
-from finora.models import Contact, Entity, Entry
+from finora.models import Account, Contact, Entry
+from finora.services.entity_admin import Letterhead, letterhead
 
 MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro",
           "novembro", "dezembro"]
@@ -20,15 +26,20 @@ MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "
 @dataclass(frozen=True)
 class Receipt:
     number: str
+    is_expense: bool
+    party_label: str          # "Pagamento para" | "Recebido de"
+    party: str
+    entity_label: str         # "Emitido por" | "Recebido por"
+    entity: str
     amount: Decimal
     currency: str
-    payer: str               # quem pagou ("Recebi de …")
-    payer_doc: str
-    payee: str               # quem recebeu e assina
-    payee_doc: str
-    reference: str           # "referente a …"
-    city: str
     when: date
+    document: str
+    reference: str
+    notes: str
+    signer: str               # quem assina (despesa: o contato; receita: a entidade)
+    signer_doc: str
+    head: Letterhead
 
     @property
     def amount_text(self) -> str:
@@ -39,19 +50,8 @@ class Receipt:
         return extenso.money(self.amount, self.currency)
 
     @property
-    def place_date(self) -> str:
-        d = f"{self.when.day} de {MONTHS[self.when.month - 1]} de {self.when.year}"
-        return f"{self.city}, {d}" if self.city.strip() else d
-
-    @property
-    def body(self) -> str:
-        doc = f", {_doc_label(self.payer_doc)} {self.payer_doc}" if self.payer_doc else ""
-        return (f"Recebi de {self.payer}{doc} a importância de {self.amount_text} ({self.amount_words}), "
-                f"referente a {self.reference}.")
-
-
-def _doc_label(doc: str) -> str:
-    return "CNPJ" if len(documents.digits(doc)) == 14 else "CPF"
+    def date_text(self) -> str:
+        return self.when.strftime("%d/%m/%Y")
 
 
 def can_issue(e: Entry) -> str | None:
@@ -63,44 +63,51 @@ def can_issue(e: Entry) -> str | None:
     return None
 
 
-def build(s: Session, entry_id: int, *, city: str = "", when: date | None = None, my_doc: str = "",
-          contact_name: str | None = None, contact_doc: str | None = None) -> Receipt:
-    """Monta o recibo. `contact_name`/`contact_doc` permitem completar quem não está cadastrado."""
+def build(s: Session, entry_id: int, *, when: date | None = None, party: str | None = None,
+          party_doc: str | None = None, document: str | None = None, reference: str | None = None,
+          notes: str = "", entity_doc: str = "") -> Receipt:
+    """Monta o recibo. Os parâmetros permitem revisar o que vem do lançamento (como no diálogo do IgnControl)."""
     e = s.get(Entry, entry_id)
     reason = can_issue(e)
     if reason:
         raise ValueError(reason)
-    me = s.get(Entity, e.entity_id)
+    head = letterhead(s, e.entity_id)
     c = s.get(Contact, e.contact_id) if e.contact_id else None
-    other = (contact_name if contact_name is not None else (c.name if c else "")).strip()
-    other_doc = contact_doc if contact_doc is not None else (documents.fmt(c.document) if c and c.document else "")
-    if not other:
-        raise ValueError("Informe o nome de quem " + ("pagou." if e.kind == "income" else "recebeu."))
-    when = when or e.paid_date or e.due_date
-    reference = (e.description or "").strip() or "pagamento"
-    number = f"{e.id:06d}"
-    my_doc = documents.fmt(my_doc) if my_doc else ""
-    other_doc = documents.fmt(other_doc) if other_doc else ""
-    if e.kind == "income":       # você recebeu: o contato pagou, você assina
-        return Receipt(number, Decimal(e.amount), me.currency, other, other_doc, me.name, my_doc, reference,
-                       city, when)
-    return Receipt(number, Decimal(e.amount), me.currency, me.name, my_doc, other, other_doc, reference, city, when)
+    expense = e.kind == "expense"
+    name = (party if party is not None else (c.name if c else "")).strip()
+    if not name:
+        raise ValueError("Informe o nome de quem " + ("recebeu o pagamento." if expense else "pagou."))
+    p_doc = party_doc if party_doc is not None else (c.document if c and c.document else "")
+    p_doc = documents.fmt(p_doc) if p_doc else ""
+    my_doc = head.document or (documents.fmt(entity_doc) if entity_doc else "")
+    currency = s.get(Account, e.account_id).currency
+    return Receipt(
+        number=f"{e.id:06d}", is_expense=expense,
+        party_label="Pagamento para" if expense else "Recebido de", party=name,
+        entity_label="Emitido por" if expense else "Recebido por", entity=head.name,
+        amount=Decimal(e.amount), currency=currency, when=when or e.paid_date or e.due_date,
+        document=(document if document is not None else (e.document_no or "")).strip(),
+        reference=(reference if reference is not None else (e.description or "")).strip() or "pagamento",
+        notes=(notes or "").strip(),
+        signer=name if expense else head.name, signer_doc=p_doc if expense else my_doc, head=head)
 
 
 @dataclass(frozen=True)
 class Parties:
-    i_received: bool         # True: receita (você recebeu e assina); False: despesa (o contato assina)
+    is_expense: bool
     contact: str
     contact_doc: str
     when: date
+    document: str
+    reference: str
 
 
 def parties(s: Session, entry_id: int) -> Parties:
-    """O que a janela precisa para começar: papéis, contato cadastrado e data sugerida."""
+    """O que a janela precisa para começar (já preenchido a partir do lançamento)."""
     e = s.get(Entry, entry_id)
     reason = can_issue(e)
     if reason:
         raise ValueError(reason)
     c = s.get(Contact, e.contact_id) if e.contact_id else None
-    return Parties(e.kind == "income", c.name if c else "", documents.fmt(c.document) if c and c.document else "",
-                   e.paid_date or e.due_date)
+    return Parties(e.kind == "expense", c.name if c else "", documents.fmt(c.document) if c and c.document else "",
+                   e.paid_date or e.due_date, e.document_no or "", e.description or "")

@@ -180,7 +180,8 @@ class Sidebar(QWidget):
 
     def apply_theme(self, name: str, t: dict):
         self._t = t
-        self._brand_icon.setPixmap(qta.icon("fa6s.coins", color=t["acc"]).pixmap(QSize(16, 16)))
+        self._brand_icon.setPixmap(getattr(self, "logo", None) or
+                                   qta.icon("fa6s.coins", color=t["acc"]).pixmap(QSize(16, 16)))
         for b, icon, _label in self.buttons:
             b.setIcon(qta.icon(icon, color=t["mut"], color_active=t["fg"], color_on=t["fg"]))
         dark = self._dark = name == "dark"
@@ -236,7 +237,8 @@ class TopTabs(QFrame):
         self._name.setToolTip(f"{profile.name} · {user_name or 'Pessoal'} · {profile.currency} — clique para trocar")
 
     def apply_theme(self, name: str, t: dict):
-        self._chip_icon.setPixmap(qta.icon("fa6s.coins", color=t["acc"]).pixmap(QSize(14, 14)))
+        self._chip_icon.setPixmap(getattr(self, "logo", None) or
+                                  qta.icon("fa6s.coins", color=t["acc"]).pixmap(QSize(14, 14)))
         for b, icon, _label in self.buttons:
             b.setIcon(qta.icon(icon, color=t["mut"], color_active=t["fg"], color_on=t["fg"]))
         self.theme_btn.setIcon(qta.icon("fa6s.sun" if name == "dark" else "fa6s.moon",
@@ -411,6 +413,19 @@ class MainWindow(QMainWindow):
         name = self.user.name if self.user else ""
         self.sidebar.set_profile(self.profile, name)
         self.tabs.set_profile(self.profile, name)
+        self._show_logo()
+
+    def _show_logo(self):
+        """Logotipo da entidade no alto do menu (sem logotipo: as moedas do Finora)."""
+        from finora.services import entity_admin
+        from finora.ui.admin_page import logo_pixmap
+        with Session() as s:
+            png = entity_admin.get_logo(s, self.profile.id)
+        self.sidebar.logo = logo_pixmap(png, 16)
+        self.tabs.logo = logo_pixmap(png, 14)
+        if self.sidebar.logo is not None:
+            self.sidebar._brand_icon.setPixmap(self.sidebar.logo)
+            self.tabs._chip_icon.setPixmap(self.tabs.logo)
 
     def _session_menu(self, anchor: QWidget):
         menu = QMenu(self)

@@ -659,8 +659,23 @@ class SettingsPage(QWidget):
         self.tray_on = QCheckBox("Ao fechar a janela, continuar ao lado do relógio (para avisar mesmo fechado)")
         self.tray_on.setChecked(settings.get_tray())
         lay.addWidget(self.tray_on)
-        lay.addWidget(_muted("O aviso aparece no canto da tela uma vez por dia; clique nele para ver as contas. "
-                             "Para o Finora abrir junto com o Windows, coloque o atalho dele na pasta Inicializar."))
+        lay.addWidget(_muted("O aviso aparece no canto da tela uma vez por dia; clique nele para ver as contas."))
+        # atalhos (o Finora é portátil: são opcionais e apontam para o programa desta pasta)
+        from finora.core import shortcuts
+        srow = QHBoxLayout()
+        srow.addWidget(QLabel("Atalhos:"))
+        self.shortcut_checks = {}
+        for kind, label in shortcuts.KINDS.items():
+            chk = QCheckBox(label)
+            chk.setChecked(shortcuts.exists(kind))
+            chk.toggled.connect(lambda on, k=kind: self._shortcut(k, on))
+            if shortcuts.exe_path() is None:
+                chk.setEnabled(False)
+                chk.setToolTip("Só no programa (IGNF-Finora.exe), não no código-fonte")
+            self.shortcut_checks[kind] = chk
+            srow.addWidget(chk)
+        srow.addStretch(1)
+        lay.addLayout(srow)
         self.rem_on.toggled.connect(self._reminders_changed)
         self.rem_days.activated.connect(lambda _i: self._reminders_changed())
         self.tray_on.toggled.connect(self._reminders_changed)
@@ -677,6 +692,23 @@ class SettingsPage(QWidget):
             tray.refresh_visibility()
         if self.tray_on.isChecked() and (tray is None or not tray.available):
             self.message.emit("Este sistema não tem a área ao lado do relógio: a janela vai fechar normalmente.")
+
+    def _shortcut(self, kind: str, on: bool):
+        from finora.core import shortcuts
+        try:
+            if on:
+                shortcuts.create(kind)
+            else:
+                shortcuts.remove(kind)
+        except (ValueError, OSError) as e:
+            chk = self.shortcut_checks[kind]
+            chk.blockSignals(True)
+            chk.setChecked(not on)
+            chk.blockSignals(False)
+            QMessageBox.warning(self, "Atalhos", str(e))
+            return
+        label = shortcuts.KINDS[kind]
+        self.message.emit(f"Atalho criado: {label}." if on else f"Atalho removido: {label}.")
 
     def _remind_now(self):
         tray = getattr(self.window(), "tray", None)

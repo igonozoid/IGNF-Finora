@@ -52,6 +52,10 @@ class CategoriesPage(QWidget):
         bar.addWidget(self.new_child_btn)
         bar.addWidget(self.toggle_btn)
         bar.addStretch(1)
+        self.rules_btn = button("Regras automáticas", "secondary", t, "fa6s.wand-magic-sparkles", "fg")
+        self.rules_btn.setToolTip("Ex.: descrição contém “uber” → Transporte. Vale no lançamento novo e no extrato.")
+        self.rules_btn.clicked.connect(self.open_rules)
+        bar.addWidget(self.rules_btn)
 
         # Árvore
         self.tree = QTreeWidget()
@@ -316,3 +320,10 @@ class CategoriesPage(QWidget):
     def apply_theme(self, t: dict):
         self.t = t
         self.refresh()
+
+    def open_rules(self):
+        from finora.ui.rules_dialog import RulesDialog
+        dlg = RulesDialog(self, self.profile.id, self.t)
+        dlg.exec()
+        if dlg.changed:
+            self.message.emit("Regras automáticas salvas.")

@@ -212,3 +212,30 @@ def test_marcar_contato_categoria_e_centro_como_compartilhados(plus, window):
 def test_free_nao_mostra_compartilhar(window):
     window.go_to("contacts")
     assert window.page("contacts").form.shared.isHidden()
+
+
+def test_regras_automaticas_preenchem_o_lancamento_novo(window, monkeypatch):
+    from finora.ui.rules_dialog import RulesDialog
+    window.go_to("categories")
+    page = window.page("categories")
+
+    def fake_exec(dlg):
+        assert dlg.empty.isVisible() or not dlg.items
+        dlg.text.setText("enel")
+        dlg.category.setCurrentIndex(next(i for i in range(dlg.category.count())
+                                          if dlg.category.itemText(i).endswith("Luz")))
+        dlg.save()
+        assert [r.text for r in dlg.items] == ["enel"] and dlg.error.isHidden()
+        dlg.new_rule()
+        dlg.text.setText("x")
+        dlg.save()
+        assert not dlg.error.isHidden()                      # texto curto demais / sem categoria
+        return 0
+
+    monkeypatch.setattr(RulesDialog, "exec", fake_exec)
+    page.rules_btn.click()
+    window.new_entry()
+    form = window.page("entries").form
+    form.desc.setText("Boleto ENEL outubro")
+    form.desc.editingFinished.emit()
+    assert form.category.currentText().endswith("Luz") and not form.rule_note.isHidden()

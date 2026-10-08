@@ -297,6 +297,7 @@ class EntryForm(QFrame):
 
         self.desc = QLineEdit(maxLength=200, placeholderText="Ex.: Conta de luz")
         lay.addLayout(self._field("Descrição", self.desc))
+        self.desc.editingFinished.connect(self.apply_rule)
 
         row = QHBoxLayout()
         row.setSpacing(theme.SP_M)
@@ -335,6 +336,10 @@ class EntryForm(QFrame):
                                             "Cadastre em Centros de custo (opcional).")
         lay.addLayout(self.cc_box)
         self._has_cc = False
+        self.rule_note = QLabel(wordWrap=True)          # "Regra: uber -> Transporte"
+        self.rule_note.setProperty("role", "muted")
+        self.rule_note.hide()
+        lay.addWidget(self.rule_note)
         self.contact = QComboBox(editable=True)
         self.contact.lineEdit().setPlaceholderText("Opcional")
         self.contact.setInsertPolicy(QComboBox.NoInsert)
@@ -441,6 +446,30 @@ class EntryForm(QFrame):
                 w.setVisible(visible)
 
     # ----- dados -----
+    def apply_rule(self):
+        """Lançamento novo: a regra automática que serve para a descrição preenche o que está vazio
+        (categoria, contato, centro de custo). Não mexe no que você já escolheu."""
+        if self.editing is not None or self._kind() == "transfer":
+            return
+        from finora.services import rules
+        with Session() as s:
+            r = rules.match(s, self.profile.id, self.desc.text(), self._kind())
+        if r is None:
+            self.rule_note.hide()
+            return
+        done = []
+        if r.category_id and self.category.currentData() is None and self.category.findData(r.category_id) >= 0:
+            self.category.setCurrentIndex(self.category.findData(r.category_id))
+            done.append(r.category)
+        if r.contact and not self.contact.currentText().strip():
+            self.contact.setCurrentText(r.contact)
+            done.append(r.contact)
+        if r.cost_center_id and self.cost_center.currentData() is None and self.cost_center.findData(r.cost_center_id) >= 0:
+            self.cost_center.setCurrentIndex(self.cost_center.findData(r.cost_center_id))
+            done.append(r.cost_center)
+        self.rule_note.setText(f"Regra automática “{r.text}”: {' · '.join(done)}" if done else "")
+        self.rule_note.setVisible(bool(done))
+
     def _kind(self) -> str:
         b = self.kind_group.checkedButton()
         return b.property("kind") if b else "expense"   # antes de abrir o formulário pela 1ª vez
@@ -573,6 +602,7 @@ class EntryForm(QFrame):
         self.cost_center.setCurrentIndex(0)
         self._kind_changed()
         self.desc.clear()
+        self.rule_note.hide()
         self.amount.clear()
         self.due.setDate(_qdate(default_due))
         self.contact.setCurrentText("")
@@ -612,6 +642,7 @@ class EntryForm(QFrame):
 
     def open_edit(self, e: EntryView):
         self.editing = e
+        self.rule_note.hide()
         self.title.setText("Editar lançamento")
         self._load_lists(keep_account=e.account_id, keep_dest=e.dest_account_id)
         self.kind_group.button(list(entries.KINDS).index(e.kind)).setChecked(True)

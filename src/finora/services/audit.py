@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 from finora.core import money
 from finora.core.current import current
 from finora.models import (
-    Account, Attachment, AuditLog, Budget, Category, Contact, CostCenter, Entity, Entry, ExchangeRate, Permission,
-    User,
+    Account, Attachment, AuditLog, Budget, Category, CategoryRule, Contact, CostCenter, Entity, Entry, ExchangeRate,
+    Permission, User,
 )
 
 # modelo -> (nome no texto, função que descreve o registro)
@@ -28,6 +28,7 @@ LABELS = {
     Entity: ("entidade", lambda o: f"\"{o.name}\""),
     User: ("usuário", lambda o: f"\"{o.name}\""),
     Permission: ("permissão", lambda o: f"{o.module} do usuário nº {o.user_id}"),
+    CategoryRule: ("regra", lambda o: f"\"{o.text}\""),
     Attachment: ("comprovante", lambda o: f"\"{o.filename}\" do lançamento nº {o.entry_id}"),
 }
 FIELDS = {"description": "descrição", "amount": "valor", "due_date": "vencimento", "competence_date": "data",

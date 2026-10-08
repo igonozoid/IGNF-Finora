@@ -155,9 +155,20 @@ def _auto_match(s: Session, new: list[BankLine]) -> int:
 
 
 def _learned(s: Session, line: BankLine) -> Suggestion:
-    """Lançamento novo, copiando categoria/contato do último parecido que você já conciliou."""
-    key = _norm(line.memo)
+    """Lançamento novo: as regras automáticas (Categorias › Regras) mandam; sem regra, copia categoria/contato do
+    último parecido que você já conciliou."""
+    from finora.services import rules
     kind = "income" if line.amount > 0 else "expense"
+    sug = _from_history(s, line, kind)
+    rule = rules.match(s, line.entity_id, line.memo, kind)
+    if rule is None:
+        return sug
+    return Suggestion("new", None, rule.description or sug.description, rule.category_id or sug.category_id,
+                      rule.category if rule.category_id else sug.category, rule.contact or sug.contact)
+
+
+def _from_history(s: Session, line: BankLine, kind: str) -> Suggestion:
+    key = _norm(line.memo)
     if key:
         prev = s.execute(
             select(Entry, Category.name, Contact.name, BankLine.memo)

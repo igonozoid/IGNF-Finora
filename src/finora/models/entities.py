@@ -113,6 +113,19 @@ class Entry(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(index=True)
     deleted_by: Mapped[str | None] = mapped_column(String(80))
 
+class CategoryRule(Base):
+    """Regra automática: descrição (ou texto do extrato) contém `text` -> categoria, contato e centro de custo."""
+    __tablename__ = "category_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    text: Mapped[str] = mapped_column(String(80))                 # o que procurar (sem diferença de acento/maiúscula)
+    kind: Mapped[str] = mapped_column(String(10), default="")     # income|expense|"" (as duas)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"))
+    cost_center_id: Mapped[int | None] = mapped_column(ForeignKey("cost_centers.id", ondelete="SET NULL"))
+    description: Mapped[str | None] = mapped_column(String(200))  # descrição para o lançamento (vazio = mantém)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
 class BankLine(Base):
     """Linha de extrato importada (OFX). Fica guardada para a conciliação e para não importar duas vezes."""
     __tablename__ = "bank_lines"

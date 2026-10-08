@@ -73,6 +73,25 @@ def archive() -> Path:
     return out
 
 
+def sign() -> None:
+    """Assina o .exe (Windows) se houver certificado: FINORA_SIGN_PFX (arquivo .pfx) e FINORA_SIGN_PASS (senha).
+    Sem certificado, segue sem assinar (o Windows mostra "editor desconhecido"). Ver docs/ASSINATURA.md."""
+    pfx, pwd = os.environ.get("FINORA_SIGN_PFX"), os.environ.get("FINORA_SIGN_PASS", "")
+    if sys.platform != "win32" or not pfx:
+        print("Sem certificado (FINORA_SIGN_PFX): o executável sai sem assinatura.")
+        return
+    tool = shutil.which("signtool") or next((str(p) for p in Path("C:/Program Files (x86)/Windows Kits/10/bin")
+                                             .glob("*/x64/signtool.exe")), None)
+    if not tool:
+        sys.exit("signtool não encontrado (instale o Windows SDK).")
+    exe = PKG / "IGNF-Finora.exe"
+    r = subprocess.run([tool, "sign", "/f", pfx, "/p", pwd, "/fd", "sha256", "/tr", "http://timestamp.digicert.com",
+                        "/td", "sha256", "/d", "IGNF Finora", str(exe)])
+    if r.returncode != 0:
+        sys.exit("A assinatura falhou.")
+    print(f"Assinado: {exe.name}")
+
+
 def size(path: Path) -> str:
     total = path.stat().st_size if path.is_file() else sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
     return f"{total / 1024 / 1024:.0f} MB"
@@ -81,6 +100,7 @@ def size(path: Path) -> str:
 if __name__ == "__main__":
     make_icon()
     pyinstaller()
+    sign()
     smoke_test()
     out = archive()
     print(f"Pasta: {PKG} ({size(PKG)})\nPacote: {out} ({size(out)})")

@@ -19,7 +19,9 @@ recursos pagos em `core/licensing.py` (`allowed()`), que aparecem com cadeado e 
 | Recibo imprimível e em PDF | ✓ | ✓ | ✓ |
 | Imprimir relatórios e listas (prévia, retrato ou paisagem, cabeçalho da entidade) | ✓ | ✓ | ✓ |
 | Login, permissões por módulo e histórico de alterações | | ✓ | ✓ |
-| Importação OFX | | ✓ | ✓ |
+| Lixeira (restaurar excluídos), regras automáticas de categoria, metas, lembretes de vencimento | ✓ | ✓ | ✓ |
+| Relatório Imposto de Renda e gráficos nos relatórios | ✓ | ✓ | ✓ |
+| Importação de extrato: OFX, CSV e Excel | | ✓ | ✓ |
 | Anexos de comprovantes | | ✓ | ✓ |
 | Orçamento (orçado x realizado) | | ✓ | ✓ |
 | Exportação Excel/PDF | | ✓ | ✓ |

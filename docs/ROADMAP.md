@@ -105,8 +105,22 @@ finanças pessoais. Podem virar módulos opcionais no futuro.
 - [x] Pacote portátil Linux (`.tar.gz`): mesmo script; o GitHub gera os dois em Actions › Pacotes
 - [ ] Pacote macOS (sem assinatura, com aviso)
 - [x] Atualizações: aviso de versão nova (GitHub Releases, 1x por dia) + LEIA-ME de como atualizar mantendo `data`
+- [x] Atualizar com um clique (baixa, confere SHA-256, troca o programa e guarda o antigo; `data` intacta)
+- [x] Atalhos opcionais (Área de trabalho, menu Iniciar, abrir com o sistema) — o app continua portátil
+- [x] Ajuda (F1) por tela e "Enviar relatório de problema"
 - [x] Termos de uso e aviso de privacidade (LGPD): aceite na 1ª abertura e em Configurações › Sobre (revisar com advogado)
-- [ ] (Depois) instalador e assinatura digital
+- [ ] Assinatura digital: build pronto (`FINORA_SIGN_PFX`), falta comprar o certificado (ver `docs/ASSINATURA.md`)
+
+## Fase F — Maturidade (out/2026)
+
+- [x] Impressão padronizada de todos os relatórios e listas (prévia, retrato/paisagem, cabeçalho da entidade)
+- [x] Lixeira: excluir não apaga do banco; Desfazer e restaurar
+- [x] Regras automáticas de categoria (lançamento novo, extrato e "aplicar aos sem categoria")
+- [x] Relatório Imposto de Renda (rendimentos, saúde/educação com CPF/CNPJ, saldos em 31/12)
+- [x] Importar extrato/fatura em CSV e Excel (com prévia das colunas)
+- [x] Lembretes de vencimento (aviso do sistema, ícone ao lado do relógio)
+- [x] Metas e objetivos no Dashboard
+- [x] Gráficos nos relatórios, também na impressão
 
 ## Futuro (a estudar)
 

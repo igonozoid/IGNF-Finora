@@ -288,14 +288,20 @@ class Header(QFrame):
         self.new_btn.setProperty("variant", "primary")
         self.new_btn.setCursor(Qt.PointingHandCursor)
         self.new_btn.setToolTip("Registrar uma receita, despesa ou transferência (Ctrl+N)")
+        self.help_btn = QPushButton()
+        self.help_btn.setProperty("variant", "secondary")
+        self.help_btn.setCursor(Qt.PointingHandCursor)
+        self.help_btn.setToolTip("Ajuda (F1), atalhos e relatório de problema")
         lay.addWidget(self.title)
         lay.addWidget(self.subtitle, 1)
         lay.addWidget(self.period)
         lay.addWidget(self.search)
+        lay.addWidget(self.help_btn)
         lay.addWidget(self.new_btn)
 
     def apply_theme(self, t: dict):
         self.new_btn.setIcon(qta.icon("fa6s.plus", color=t["on_acc"]))
+        self.help_btn.setIcon(qta.icon("fa6s.circle-question", color=t["fg"]))
         self.search.apply_theme(t)
 
     def resizeEvent(self, e):
@@ -358,6 +364,15 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+T"), self, activated=self.toggle_theme)
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self.new_entry)
         QShortcut(QKeySequence("Ctrl+K"), self, activated=self.header.search.focus)
+        QShortcut(QKeySequence(Qt.Key_F1), self, activated=lambda: self.show_help())
+        help_menu = QMenu(self.header.help_btn)
+        help_menu.addAction("Ajuda desta tela (F1)", lambda: self.show_help())
+        help_menu.addAction("Atalhos de teclado", lambda: self.show_help("atalhos"))
+        help_menu.addAction("Primeiros passos", lambda: self.show_help("inicio"))
+        help_menu.addSeparator()
+        help_menu.addAction("Enviar relatório de problema…", self.report_problem)
+        help_menu.addAction("Sobre o IGNF Finora", lambda: self.go_to("settings"))
+        self.header.help_btn.setMenu(help_menu)
 
         self.theme_name = settings.get_theme(theme.DEFAULT_THEME)
         self.apply_theme(self.theme_name)
@@ -505,6 +520,19 @@ class MainWindow(QMainWindow):
 
     def current_key(self) -> str:
         return KEYS[self.stack.currentIndex()]
+
+    def show_help(self, key: str | None = None):
+        """Ajuda (F1): abre na seção da tela atual."""
+        from finora.ui.help import HelpDialog
+        dlg = HelpDialog(self, theme.tokens(self.theme_name), key or self.current_key())
+        dlg.setAttribute(Qt.WA_DeleteOnClose)
+        dlg.show()
+        self._help = dlg
+        return dlg
+
+    def report_problem(self):
+        from finora.ui.help import ProblemDialog
+        ProblemDialog(self, theme.tokens(self.theme_name)).exec()
 
     def _fit_to_screen(self):
         """Tamanho do mockup (1366x800), limitado à área livre da tela, centralizado."""

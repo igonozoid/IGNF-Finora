@@ -197,3 +197,20 @@ def test_lembretes_e_ficar_ao_lado_do_relogio(window, monkeypatch):
     assert settings.get_tray()
     window.tray.open_payable()
     assert window.current_key() == "entries" and window.page("entries").filter == "payable"
+
+
+def test_ajuda_f1_abre_na_tela_atual(window, dialogs, tmp_path):
+    from finora.ui.help import ProblemDialog, sections
+    from finora.ui.main_window import NAV
+    keys = {k for k, _t, _b in sections()}
+    assert {k for k, *_r in NAV} <= keys and "atalhos" in keys
+    window.go_to("reports")
+    dlg = window.show_help()
+    assert dlg.current_key == "reports" and "Imposto de Renda" in dlg.text.toPlainText()
+    dlg.close()
+    assert window.header.help_btn.menu().actions()[0].text().startswith("Ajuda")
+    prob = ProblemDialog(window, window.page("settings").t)
+    prob.what.setPlainText("teste")
+    prob.folder = tmp_path                                   # nunca grava nos Documentos de verdade
+    prob.generate(open_apps=False)
+    assert prob.path is not None and prob.path.parent == tmp_path and prob.path.exists()

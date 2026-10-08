@@ -116,3 +116,30 @@ def test_analitico_lista_receitas_e_despesas_do_periodo(session, profile):
     assert [e.description for e in out] == ["Salário", "Luz"]
     assert [e.description for e in reports.analytical(s, eid, date(2026, 10, 1), date(2026, 10, 31), "expense")] \
         == ["Luz"]
+
+
+def test_agenda_comparativo_patrimonio_e_caixa(session, profile):
+    s, eid = session, profile.id
+    bank = accounts.list_accounts(s, eid)[0].id
+    exp = {label.split(" › ")[-1]: cid for cid, label in categories.choices(s, eid, "expense")}
+    for m, val, paid in ((8, "100", True), (9, "150", True), (10, "200", False)):
+        entries.create(s, eid, EntryData(kind="expense", description="Luz", amount=D(val), due_date=date(2026, m, 15),
+                                         account_id=bank, category_id=exp["Luz"], paid=paid,
+                                         paid_date=date(2026, m, 15) if paid else None))
+    entries.create(s, eid, EntryData(kind="income", description="Salário", amount=D("1000"),
+                                     due_date=date(2026, 9, 5), account_id=bank, paid=True, paid_date=date(2026, 9, 5)))
+    # agenda: só o que está em aberto no período
+    ag = reports.agenda(s, eid, date(2026, 10, 1), date(2026, 10, 31))
+    assert [e.description for e in ag] == ["Luz"]
+    assert reports.agenda_range("next_month", date(2026, 10, 7)) == (date(2026, 11, 1), date(2026, 11, 30))
+    # comparativo: a Luz mês a mês, média e total
+    months = [(2026, 8), (2026, 9), (2026, 10)]
+    luz = next(r for r in reports.category_by_month(s, eid, months) if r.category == "Luz")
+    assert luz.values == [D("100.00"), D("150.00"), D("200.00")] and luz.average == D("150.00")
+    # patrimônio: saldo no fim de cada mês (o banco começa com 100)
+    bal = next(r for r in reports.balance_history(s, eid, months) if r.account == "Banco")
+    assert bal.values == [D("0.00"), D("850.00"), D("850.00")]
+    # caixa: só o realizado
+    cash = reports.cash_history(s, eid, months)
+    assert [(c.inflow, c.outflow) for c in cash] == [(D("0.00"), D("100.00")), (D("1000.00"), D("150.00")),
+                                                     (D("0.00"), D("0.00"))]

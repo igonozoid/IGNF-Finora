@@ -33,7 +33,11 @@ REPORTS = [
     ("category", "Por categoria", "fa6s.tags", None),
     ("cost_center", "Por centro de custo", "fa6s.diagram-project", "cost_centers"),
     ("contact", "Por contato", "fa6s.address-book", None),
+    ("agenda", "A pagar e a receber", "fa6s.calendar-days", None),
     ("overdue", "Inadimplência", "fa6s.hourglass-half", None),
+    ("category_months", "Comparativo por categoria", "fa6s.table-columns", None),
+    ("balance_history", "Evolução do patrimônio", "fa6s.chart-line", None),
+    ("cash_history", "Entradas e saídas por mês", "fa6s.arrow-right-arrow-left", None),
     ("analytical", "Analítico", "fa6s.table-list", None),
     ("budget", "Orçado x realizado", "fa6s.bullseye", "budget"),
 ]
@@ -545,7 +549,10 @@ class ReportsPage(QWidget):
                       "statement": rl.AccountStatementView(profile, t), "category": rl.ByCategoryView(profile, t),
                       "cost_center": rl.ByCostCenterView(profile, t), "budget": rl.BudgetView(profile, t),
                       "contact": rl.ByContactView(profile, t), "overdue": rl.OverdueView(profile, t),
-                      "analytical": rl.AnalyticalView(profile, t)}
+                      "analytical": rl.AnalyticalView(profile, t), "agenda": rl.AgendaView(profile, t),
+                      "category_months": rl.CategoryMonthsView(profile, t),
+                      "balance_history": rl.BalanceHistoryView(profile, t),
+                      "cash_history": rl.CashHistoryView(profile, t)}
         self.stack = QStackedWidget()
         for v in self.views.values():
             self.stack.addWidget(v)

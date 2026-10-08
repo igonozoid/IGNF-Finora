@@ -427,3 +427,114 @@ def overdue(s: Session, entity_id: int, today: date | None = None) -> OverdueRep
                                (today - st.due).days, st.account_id))
     pay.sort(key=lambda i: i.due)
     return OverdueReport(pay, rec)
+
+
+# ---------- a pagar e a receber (agenda) ----------
+AGENDA_PERIODS = {"30": "Próximos 30 dias", "60": "Próximos 60 dias", "90": "Próximos 90 dias",
+                  "month": "Este mês", "next_month": "Mês que vem"}
+
+
+def agenda_range(key: str, today: date | None = None) -> tuple[date, date]:
+    today = today or date.today()
+    if key == "month":
+        return entries.month_range(today.year, today.month)
+    if key == "next_month":
+        d = entries.add_months(today.replace(day=1), 1)
+        return entries.month_range(d.year, d.month)
+    return today, today + timedelta(days=int(key) - 1)
+
+
+def agenda(s: Session, entity_id: int, first: date, last: date) -> list:
+    """Contas em aberto (receitas e despesas) que vencem no período, na ordem do vencimento."""
+    q = entries.query(entity_id).where(Entry.status == "pending", Entry.kind != "transfer",
+                                       Entry.due_date.between(first, last))
+    return [entries.to_view(r) for r in s.execute(q.order_by(Entry.due_date, Entry.id))]
+
+
+# ---------- comparativo mensal por categoria ----------
+@dataclass(frozen=True)
+class CategoryMonths:
+    group: str
+    category: str
+    kind: str
+    values: list                      # um valor por mês (moeda principal)
+
+    @property
+    def total(self) -> Decimal:
+        return sum(self.values, ZERO)
+
+    @property
+    def average(self) -> Decimal:
+        return (self.total / len(self.values)).quantize(CENT) if self.values else ZERO
+
+
+def category_by_month(s: Session, entity_id: int, months: list[tuple[int, int]]) -> list[CategoryMonths]:
+    """Quanto entrou/saiu em cada categoria, mês a mês (competência). Receitas primeiro; maiores no topo."""
+    first, last = entries.month_range(*months[0])[0], entries.month_range(*months[-1])[1]
+    parent = aliased(Category)
+    q = (select(Entry.competence_date, Entry.kind, Entry.base_amount, Category.name, parent.name)
+         .select_from(Entry).outerjoin(Category, Entry.category_id == Category.id)
+         .outerjoin(parent, Category.parent_id == parent.id)
+         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
+                Entry.competence_date.between(first, last)))
+    index = {ym: i for i, ym in enumerate(months)}
+    acc: dict[tuple, list] = {}
+    for when, kind, amount, cat, group in s.execute(q):
+        key = (group or cat or "Sem categoria", cat or "Sem categoria", kind)
+        vals = acc.setdefault(key, [ZERO] * len(months))
+        vals[index[(when.year, when.month)]] += Decimal(amount)
+    out = [CategoryMonths(g, c, k, [v.quantize(CENT) for v in vals]) for (g, c, k), vals in acc.items()]
+    return sorted(out, key=lambda x: (x.kind != "income", -x.total, x.category.lower()))
+
+
+# ---------- evolução do patrimônio ----------
+@dataclass(frozen=True)
+class BalanceRow:
+    account: str
+    kind: str
+    currency: str
+    values: list                      # saldo no fim de cada mês (na moeda da conta)
+    base_values: list                 # o mesmo, na moeda principal (cotação do fim do mês)
+
+
+def balance_history(s: Session, entity_id: int, months: list[tuple[int, int]]) -> list[BalanceRow]:
+    from finora.models import Account
+    from finora.services import fx
+    conv = fx.Converter(s, entity_id)
+    out = []
+    for acc in s.scalars(select(Account).where(Account.entity_id == entity_id).order_by(Account.kind, Account.name)):
+        vals, base = [], []
+        for y, m in months:
+            end = entries.month_range(y, m)[1]
+            bal = account_statement(s, acc.id, end, end).closing
+            vals.append(bal)
+            base.append(bal if acc.currency == conv.base else conv.convert(bal, acc.currency, end))
+        if acc.is_active or any(vals):
+            out.append(BalanceRow(acc.name, acc.kind, acc.currency, vals, base))
+    return out
+
+
+# ---------- entradas e saídas por mês (realizado) ----------
+@dataclass(frozen=True)
+class MonthCash:
+    year: int
+    month: int
+    inflow: Decimal
+    outflow: Decimal
+
+    @property
+    def result(self) -> Decimal:
+        return self.inflow - self.outflow
+
+
+def cash_history(s: Session, entity_id: int, months: list[tuple[int, int]]) -> list[MonthCash]:
+    """O que entrou e saiu de verdade em cada mês (pela data do pagamento; compra no cartão no vencimento da
+    fatura). Mesma regra da DRE no regime de caixa."""
+    first, last = entries.month_range(*months[0])[0], entries.month_range(*months[-1])[1]
+    q = (select(Entry.paid_date, Entry.kind, Entry.base_amount)
+         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status.in_(("paid", "card")),
+                Entry.paid_date.between(first, last)))
+    sums = {ym: [ZERO, ZERO] for ym in months}
+    for when, kind, amount in s.execute(q):
+        sums[(when.year, when.month)][0 if kind == "income" else 1] += Decimal(amount)
+    return [MonthCash(y, m, v[0].quantize(CENT), v[1].quantize(CENT)) for (y, m), v in sums.items()]

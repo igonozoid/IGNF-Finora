@@ -1,6 +1,6 @@
 """Relatórios em lista: extrato por conta, por categoria, por contato e inadimplência."""
 import re
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from PySide6.QtCore import Qt, Signal
@@ -28,6 +28,7 @@ class TableReport(QWidget):
     open_statement = Signal(int, object)
     COLUMNS: list[tuple[str, int | None, bool]] = []      # (título, largura ou None = estica, é valor?)
     TITLE = ""
+    COMPACT = False          # valores sem o símbolo da moeda (relatórios mês a mês, colunas estreitas)
 
     def __init__(self, profile: Profile, t: dict):
         super().__init__()
@@ -43,15 +44,8 @@ class TableReport(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setShowGrid(False)
         self.table.setWordWrap(False)
-        hdr = self.table.horizontalHeader()
-        hdr.setHighlightSections(False)
-        for i, (_title, width, is_value) in enumerate(self.COLUMNS):
-            if width is None:
-                hdr.setSectionResizeMode(i, QHeaderView.Stretch)
-            else:
-                hdr.setSectionResizeMode(i, QHeaderView.Fixed)
-                hdr.resizeSection(i, width)
-            self.table.horizontalHeaderItem(i).setTextAlignment(R if is_value else L)
+        self.table.horizontalHeader().setHighlightSections(False)
+        self.set_columns(self.COLUMNS)
         self.empty = QLabel(alignment=Qt.AlignCenter, wordWrap=True)
         self.empty.setProperty("role", "muted")
         self.footer = QLabel(wordWrap=True)
@@ -66,6 +60,34 @@ class TableReport(QWidget):
         self._targets: list = []
         self._rows: list[dict] = []
         self.table.cellDoubleClicked.connect(self._double)
+
+    def set_columns(self, columns: list[tuple[str, int | None, bool]]):
+        """Colunas (título, largura ou None = estica, é valor?). Relatórios mês a mês mudam com o período."""
+        self.COLUMNS = list(columns)
+        self.table.setColumnCount(len(columns))
+        self.table.setHorizontalHeaderLabels([c[0] for c in columns])
+        hdr = self.table.horizontalHeader()
+        for i, (_title, width, is_value) in enumerate(columns):
+            if width is None:
+                hdr.setSectionResizeMode(i, QHeaderView.Stretch)
+            else:
+                hdr.setSectionResizeMode(i, QHeaderView.Fixed)
+                hdr.resizeSection(i, width)
+            self.table.horizontalHeaderItem(i).setTextAlignment(R if is_value else L)
+
+    def months_box(self) -> QComboBox:
+        box = QComboBox()
+        for k, label in reports.PERIODS.items():
+            box.addItem(label, k)
+        box.setCurrentIndex(box.findData("6m"))
+        box.currentIndexChanged.connect(self.refresh)
+        return box
+
+    @staticmethod
+    def month_title(y: int, m: int, many_years: bool) -> str:
+        from finora.ui.entries_page import MONTHS
+        short = MONTHS[m - 1][:3].upper()
+        return f"{short}/{str(y)[2:]}" if many_years else short
 
     # ----- ajuda para montar a barra -----
     def period_box(self) -> QComboBox:
@@ -130,7 +152,12 @@ class TableReport(QWidget):
     def cell_text(self, value) -> str:
         if value is None:
             return ""
-        return self.fmt(value) if isinstance(value, Decimal) else str(value)
+        if isinstance(value, Decimal):
+            text = self.fmt(value)
+            if self.COMPACT:                      # "− R$ 1.800,00" -> "−1.800,00"
+                text = text.replace(f"{money.symbol(self.profile.currency)} ", "").replace(" ", "")
+            return text
+        return str(value)
 
     # ----- exportar -----
     def subtitle(self) -> str:
@@ -404,6 +431,160 @@ class AnalyticalView(TableReport):
         exp = sum((e.base_amount for e in data if e.kind == "expense"), Decimal(0))
         self.footer.setText(f"{len(data)} lançamentos &nbsp;·&nbsp; Receitas <b>{self.fmt(inc)}</b> &nbsp;·&nbsp; "
                             f"Despesas <b>{self.fmt(-exp)}</b> &nbsp;·&nbsp; Resultado <b>{self.fmt(inc - exp)}</b>")
+
+
+# ---------- a pagar e a receber ----------
+class AgendaView(TableReport):
+    TITLE = "A pagar e a receber"
+    COLUMNS = [("VENC.", 80, False), ("DESCRIÇÃO", None, False), ("CONTATO", 150, False), ("CONTA", 110, False),
+               ("A RECEBER", 120, True), ("A PAGAR", 120, True)]
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.period = QComboBox()
+        for k, label in reports.AGENDA_PERIODS.items():
+            self.period.addItem(label, k)
+        self.period.currentIndexChanged.connect(self.refresh)
+        self.bar.addWidget(self.period)
+        self.finish_bar("Contas em aberto que vencem no período, semana a semana, com o total de cada semana.\n"
+                        "As já vencidas ficam em Inadimplência. Dois cliques abrem o lançamento.")
+
+    def refresh(self):
+        first, last = reports.agenda_range(self.period.currentData())
+        with Session() as s:
+            data = reports.agenda(s, self.profile.id, first, last)
+        rows, week, rec_w, pay_w = [], None, Decimal(0), Decimal(0)
+
+        def close_week():
+            if week is not None:
+                rows.append({"cells": ["", f"Total da semana de {week:%d/%m}", "", "", rec_w or None,
+                                       -pay_w if pay_w else None], "bold": True})
+
+        for e in data:
+            start = e.due_date - timedelta(days=e.due_date.weekday())
+            if start != week:
+                close_week()
+                week, rec_w, pay_w = start, Decimal(0), Decimal(0)
+            inc = e.base_amount if e.kind == "income" else None
+            out = -e.base_amount if e.kind == "expense" else None
+            rec_w += inc or 0
+            pay_w += -out if out else 0
+            rows.append({"cells": [e.due_date.strftime("%d/%m/%y"), e.description, e.contact or "", e.account, inc, out],
+                         "tones": {4: "pos"}, "target": ("entry", e.id)})
+        close_week()
+        self.fill(rows, "Nenhuma conta em aberto vencendo nesse período.")
+        rec = sum((e.base_amount for e in data if e.kind == "income"), Decimal(0))
+        pay = sum((e.base_amount for e in data if e.kind == "expense"), Decimal(0))
+        self.footer.setText(f"A receber <b>{self.fmt(rec)}</b> &nbsp;·&nbsp; A pagar <b>{self.fmt(-pay)}</b> "
+                            f"&nbsp;·&nbsp; Saldo <b>{self.fmt(rec - pay)}</b>")
+
+
+# ---------- comparativo mensal por categoria ----------
+class CategoryMonthsView(TableReport):
+    TITLE = "Comparativo por categoria"
+    COMPACT = True
+    COLUMNS = [("CATEGORIA", None, False)]
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.period = self.months_box()
+        self.bar.addWidget(self.period)
+        self.finish_bar("Cada categoria mês a mês (pela data da compra/vencimento, pago ou não), com a média\n"
+                        "mensal e o total. Bom para ver o que subiu ou caiu de um mês para o outro.")
+
+    def refresh(self):
+        months = reports.period_months(self.period.currentData())
+        many = len({y for y, _m in months}) > 1
+        self.set_columns([("CATEGORIA", None, False)] + [(self.month_title(y, m, many), 84, True) for y, m in months]
+                         + [("MÉDIA", 90, True), ("TOTAL", 96, True)])
+        with Session() as s:
+            data = reports.category_by_month(s, self.profile.id, months)
+        rows, last_kind = [], None
+        for r in data:
+            if r.kind != last_kind:
+                rows.append({"cells": ["Receitas" if r.kind == "income" else "Despesas"] + [None] * (len(months) + 2),
+                             "bold": True})
+                last_kind = r.kind
+            sign = 1 if r.kind == "income" else -1
+            label = r.category if r.group == r.category else f"{r.group} › {r.category}"
+            rows.append({"cells": [label] + [sign * v if v else None for v in r.values]
+                         + [sign * r.average, sign * r.total],
+                         "tones": {len(months) + 1: "mut"}})
+        self.fill(rows, "Nenhum lançamento com categoria nesse período.")
+        self.footer.setText("Valores na moeda principal. Média = total dividido pelo número de meses do período.")
+
+
+# ---------- evolução do patrimônio ----------
+class BalanceHistoryView(TableReport):
+    TITLE = "Evolução do patrimônio"
+    COMPACT = True
+    COLUMNS = [("CONTA", None, False)]
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.period = self.months_box()
+        self.bar.addWidget(self.period)
+        self.finish_bar("Saldo de cada conta no último dia de cada mês, e o total (sem os cartões, que são\n"
+                        "dívida e aparecem à parte). Contas em outra moeda entram no total pela cotação do mês.")
+
+    def refresh(self):
+        months = reports.period_months(self.period.currentData())
+        many = len({y for y, _m in months}) > 1
+        self.set_columns([("CONTA", None, False)] + [(self.month_title(y, m, many), 92, True) for y, m in months])
+        with Session() as s:
+            data = reports.balance_history(s, self.profile.id, months)
+        rows = []
+        for r in data:
+            label = r.account + ("" if r.currency == self.profile.currency else f" ({r.currency}, convertido)")
+            rows.append({"cells": [label] + list(r.base_values), "muted": r.kind == "card",
+                         "tones": {i + 1: "neg" for i, v in enumerate(r.base_values) if v < 0}})
+        if data:
+            total = [sum((r.base_values[i] for r in data if r.kind != "card"), Decimal(0)) for i in range(len(months))]
+            cards_ = [sum((r.base_values[i] for r in data if r.kind == "card"), Decimal(0)) for i in range(len(months))]
+            rows.append({"cells": ["Total (sem cartões)"] + total, "bold": True})
+            if any(cards_):
+                rows.append({"cells": ["Cartões (dívida)"] + cards_, "muted": True})
+                rows.append({"cells": ["Patrimônio líquido"] + [a + b for a, b in zip(total, cards_)], "bold": True})
+        self.fill(rows, "Nenhuma conta cadastrada.")
+        if data and len(months) > 1:
+            first, last = total[0], total[-1]
+            self.footer.setText(f"Variação no período: <b>{self.fmt(last - first)}</b> (de {self.fmt(first)} para "
+                                f"{self.fmt(last)})")
+        else:
+            self.footer.clear()
+
+
+# ---------- entradas e saídas por mês ----------
+class CashHistoryView(TableReport):
+    TITLE = "Entradas e saídas por mês"
+    COLUMNS = [("MÊS", None, False), ("ENTROU", 130, True), ("SAIU", 130, True), ("RESULTADO", 130, True),
+               ("ACUMULADO", 130, True)]
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.period = self.months_box()
+        self.period.setCurrentIndex(self.period.findData("12m"))
+        self.bar.addWidget(self.period)
+        self.finish_bar("O que entrou e saiu de verdade em cada mês (pela data do pagamento; compras no cartão\n"
+                        "contam no vencimento da fatura). Transferências entre suas contas não entram.")
+
+    def refresh(self):
+        from finora.ui.entries_page import MONTHS
+        months = reports.period_months(self.period.currentData())
+        with Session() as s:
+            data = reports.cash_history(s, self.profile.id, months)
+        rows, acc = [], Decimal(0)
+        for r in data:
+            acc += r.result
+            rows.append({"cells": [f"{MONTHS[r.month - 1].capitalize()} de {r.year}", r.inflow or None,
+                                   -r.outflow if r.outflow else None, r.result, acc],
+                         "tones": {1: "pos", 3: "neg" if r.result < 0 else "pos", 4: "neg" if acc < 0 else None}})
+        self.fill(rows, "Nada pago ou recebido nesse período.")
+        inflow = sum((r.inflow for r in data), Decimal(0))
+        outflow = sum((r.outflow for r in data), Decimal(0))
+        n = len(data) or 1
+        self.footer.setText(f"Entrou <b>{self.fmt(inflow)}</b> &nbsp;·&nbsp; Saiu <b>{self.fmt(-outflow)}</b> "
+                            f"&nbsp;·&nbsp; Média de sobra por mês <b>{self.fmt((inflow - outflow) / n)}</b>")
 
 
 # ---------- inadimplência ----------

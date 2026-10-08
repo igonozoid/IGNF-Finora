@@ -19,7 +19,7 @@ from finora.core.db import Session
 from finora.services import backup, period_lock, setup
 from finora.services.setup import Profile
 from finora.ui import theme
-from finora.ui.widgets import button, help_icon, icon_label, set_tone, show_upgrade, upgrade_box
+from finora.ui.widgets import WrapFrame, button, help_icon, icon_label, set_tone, show_upgrade, upgrade_box
 
 MAX_W = 680
 OLD_BACKUP_DAYS = 30
@@ -27,7 +27,7 @@ CLOUD_MSG = "Backup automático na nuvem é um recurso da edição Plus."
 
 
 def _section(title: str, icon: str, t: dict) -> tuple[QFrame, QVBoxLayout]:
-    box = QFrame(objectName="card")
+    box = WrapFrame(objectName="card")       # altura mínima acompanha o texto que quebra linha e as listas
     box.setMaximumWidth(MAX_W)
     lay = QVBoxLayout(box)
     lay.setContentsMargins(14, theme.SP_L, 14, 14)
@@ -45,6 +45,17 @@ def _muted(text: str) -> QLabel:
     lbl = QLabel(text, wordWrap=True)
     lbl.setProperty("role", "muted")
     return lbl
+
+
+def _fit_list(box: QWidget) -> None:
+    """Lista que muda de tamanho dentro de um quadro com texto que quebra linha: com altura fixa, o Qt não
+    espreme as linhas (a conta de altura pela largura ignorava a lista e cortava os itens)."""
+    lay = box.layout()
+    box.setFixedHeight(sum(lay.itemAt(i).widget().sizeHint().height() if lay.itemAt(i).widget() else 0
+                           for i in range(lay.count())))
+    card = box.parentWidget()
+    if isinstance(card, WrapFrame) and card.width():                 # recalcula já, sem esperar redimensionar
+        card.setMinimumHeight(card.layout().totalHeightForWidth(card.width()))
 
 
 def _open_folder(path: Path):
@@ -89,6 +100,7 @@ class SettingsPage(QWidget):
         scroll = QScrollArea(objectName="pageScroll", widgetResizable=True, frameShape=QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setWidget(body)
+        self.body = body
         root = QVBoxLayout(self)
         root.setContentsMargins(14, theme.SP_L, 14, theme.SP_L)
         root.addWidget(scroll)
@@ -216,9 +228,11 @@ class SettingsPage(QWidget):
         head.addWidget(open_btn)
         lay.addSpacing(theme.SP_S)
         lay.addLayout(head)
-        self.local_rows = QVBoxLayout()
+        self.local_box = QWidget()                # altura fixa, calculada ao preencher (ver _fit_list)
+        self.local_rows = QVBoxLayout(self.local_box)
+        self.local_rows.setContentsMargins(0, 0, 0, 0)
         self.local_rows.setSpacing(0)
-        lay.addLayout(self.local_rows)
+        lay.addWidget(self.local_box)
 
         lay.addSpacing(theme.SP_S)
         if not allowed(current_edition(), "cloud_backup"):
@@ -256,9 +270,11 @@ class SettingsPage(QWidget):
         self.cloud_status = QLabel(wordWrap=True)
         self.cloud_status.setProperty("role", "field")
         lay.addWidget(self.cloud_status)
-        self.cloud_rows = QVBoxLayout()
+        self.cloud_box = QWidget()                # altura fixa, calculada ao preencher (ver _fit_list)
+        self.cloud_rows = QVBoxLayout(self.cloud_box)
+        self.cloud_rows.setContentsMargins(0, 0, 0, 0)
         self.cloud_rows.setSpacing(0)
-        lay.addLayout(self.cloud_rows)
+        lay.addWidget(self.cloud_box)
         self._fill_cloud_box()
         self.cloud_box.activated.connect(self._cloud_chosen)
         self.cloud_now.clicked.connect(self._cloud_now)
@@ -331,6 +347,7 @@ class SettingsPage(QWidget):
                                   + ("" if items else " Ainda não há cópias lá."))
         for b in items[:5]:
             self.cloud_rows.addWidget(self._local_row(b))
+        _fit_list(self.cloud_box)
 
     def _refresh_backup(self):
         last = settings.get_last_backup()
@@ -355,9 +372,11 @@ class SettingsPage(QWidget):
         if not items:
             self.local_rows.addWidget(_muted("Nenhum ainda. O primeiro automático é feito na próxima abertura."))
         self._refresh_cloud()
+        _fit_list(self.local_box)
 
     def _local_row(self, b: backup.BackupInfo) -> QFrame:
         row = QFrame(objectName="listRow")
+        row.setFixedHeight(theme.ROW_H + 8)          # sem isso o quadro achata as linhas e corta a lista
         lay = QHBoxLayout(row)
         lay.setContentsMargins(0, 5, 0, 5)
         lay.setSpacing(theme.SP_M)
@@ -541,7 +560,18 @@ class SettingsPage(QWidget):
         nav.addStretch(1)
         lay.addLayout(nav)
         self.nav_box.activated.connect(lambda i: self.nav_requested.emit(self.nav_box.itemData(i)))
+        self.tabs_icons = QCheckBox("Abas no topo só com ícones (o nome aparece ao passar o mouse)")
+        self.tabs_icons.setChecked(settings.get_tabs_icons())
+        self.tabs_icons.toggled.connect(self._tabs_icons)
+        lay.addWidget(self.tabs_icons)
+        lay.addWidget(_muted("Dica: o botão « ao lado de \"Tema\" recolhe e expande o menu a qualquer momento."))
         return box
+
+    def _tabs_icons(self, on: bool):
+        settings.set_tabs_icons(on)
+        w = self.window()
+        if hasattr(w, "tabs"):
+            w.tabs.set_icons_only(on)
 
     def set_nav_name(self, mode: str):
         self.nav_box.setCurrentIndex(max(0, self.nav_box.findData(mode)))
@@ -658,7 +688,19 @@ class SettingsPage(QWidget):
     # ---------- sobre ----------
     def _about_section(self) -> QFrame:
         box, lay = _section("Sobre", "fa6s.circle-info", self.t)
-        lay.addWidget(QLabel(f"IGNF Finora · versão {__version__}"))
+        lay.addWidget(QLabel(f"IGNF Finora · versão {__version__}", objectName="cardTitle"))
+        from finora.core import vendor
+        dev = QLabel(
+            f"Desenvolvido por <b>{vendor.COMPANY}</b> · CNPJ {vendor.CNPJ}<br>"
+            f"{vendor.ADDRESS}<br>"
+            f'E-mail: <a href="mailto:{vendor.EMAIL}">{vendor.EMAIL}</a> &nbsp;·&nbsp; '
+            f'Telefone / WhatsApp: <a href="{vendor.WHATSAPP}">{vendor.PHONE}</a><br>'
+            f'<a href="{vendor.CONTACT_PAGE}">Suporte e contato</a> &nbsp;·&nbsp; '
+            f'<a href="{vendor.LAB_PAGE}">IGNF LAB (software)</a> &nbsp;·&nbsp; <a href="{vendor.SITE}">ignf.com.br</a>',
+            wordWrap=True, openExternalLinks=True)
+        dev.setTextFormat(Qt.RichText)
+        dev.setProperty("role", "muted")
+        lay.addWidget(dev)
         row = QHBoxLayout()
         path = QLabel(f"Pasta dos dados: {db.DATA_DIR}")
         path.setProperty("role", "muted")

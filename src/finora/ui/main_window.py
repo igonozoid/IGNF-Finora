@@ -134,7 +134,15 @@ class Sidebar(QWidget):
         self.theme_btn = QPushButton(objectName="themeToggle")
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.setIconSize(QSize(14, 14))
-        lay.addWidget(self.theme_btn)
+        self.collapse_btn = QPushButton(objectName="themeToggle")
+        self.collapse_btn.setCursor(Qt.PointingHandCursor)
+        self.collapse_btn.setIconSize(QSize(14, 14))
+        self._bottom = QHBoxLayout()
+        self._bottom.setContentsMargins(0, 0, 0, 0)
+        self._bottom.setSpacing(0)
+        self._bottom.addWidget(self.theme_btn, 1)
+        self._bottom.addWidget(self.collapse_btn)
+        lay.addLayout(self._bottom)
         self._lay = lay
         self._dark = False
 
@@ -163,8 +171,15 @@ class Sidebar(QWidget):
 
     def _theme_text(self):
         self.theme_btn.setText("" if self.mode == "rail" else ("Tema claro" if self._dark else "Tema escuro"))
+        rail = self.mode == "rail"
+        self.collapse_btn.setToolTip("Mostrar o menu com nomes" if rail else "Recolher o menu (só ícones)")
+        self._bottom.setDirection(QHBoxLayout.TopToBottom if rail else QHBoxLayout.LeftToRight)
+        if hasattr(self, "_t"):
+            self.collapse_btn.setIcon(qta.icon("fa6s.angles-right" if rail else "fa6s.angles-left",
+                                               color=self._t["mut"], color_active=self._t["fg"]))
 
     def apply_theme(self, name: str, t: dict):
+        self._t = t
         self._brand_icon.setPixmap(qta.icon("fa6s.coins", color=t["acc"]).pixmap(QSize(16, 16)))
         for b, icon, _label in self.buttons:
             b.setIcon(qta.icon(icon, color=t["mut"], color_active=t["fg"], color_on=t["fg"]))
@@ -206,10 +221,15 @@ class TopTabs(QFrame):
             self.buttons.append((b, icon, label))
             lay.addWidget(b)
         lay.addStretch(1)
+        self.icons_btn = QPushButton(objectName="tabTool")
+        self.icons_btn.setCursor(Qt.PointingHandCursor)
+        lay.addWidget(self.icons_btn)
         self.theme_btn = QPushButton(objectName="tabTool")
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.setToolTip("Alternar entre tema claro e escuro (Ctrl+T)")
         lay.addWidget(self.theme_btn)
+        self.icons_only = settings.get_tabs_icons()
+        self.icons_btn.clicked.connect(lambda: self.set_icons_only(not self.icons_only, save=True))
 
     def set_profile(self, profile: Profile, user_name: str = ""):
         self._name.setText(profile.name)
@@ -221,14 +241,32 @@ class TopTabs(QFrame):
             b.setIcon(qta.icon(icon, color=t["mut"], color_active=t["fg"], color_on=t["fg"]))
         self.theme_btn.setIcon(qta.icon("fa6s.sun" if name == "dark" else "fa6s.moon",
                                         color=t["mut"], color_active=t["fg"]))
+        self._t = t
+        self._icons_icon()
+
+    def _icons_icon(self):
+        if hasattr(self, "_t"):
+            self.icons_btn.setIcon(qta.icon("fa6s.angles-right" if self.icons_only else "fa6s.angles-left",
+                                            color=self._t["mut"], color_active=self._t["fg"]))
+        self.icons_btn.setToolTip("Mostrar os nomes das abas" if self.icons_only else "Abas só com ícones")
+
+    def set_icons_only(self, on: bool, save: bool = False):
+        self.icons_only = on
+        if save:
+            settings.set_tabs_icons(on)
+        self._icons_icon()
+        self._fit()
+
+    def _fit(self):
+        # Só ícones quando o usuário pediu ou quando as abas não cabem com nome (o nome continua na dica).
+        full = sum(b.fontMetrics().horizontalAdvance(label) + 40 for b, _i, label in self.buttons) + 260
+        compact = self.icons_only or self.width() < full
+        for b, _icon, label in self.buttons:
+            b.setText("" if compact else label)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        # Se as abas não cabem com nome, ficam só com ícone (o nome continua na dica).
-        full = sum(b.fontMetrics().horizontalAdvance(label) + 40 for b, _i, label in self.buttons) + 240
-        compact = self.width() < full
-        for b, _icon, label in self.buttons:
-            b.setText("" if compact else label)
+        self._fit()
 
 
 class Header(QFrame):
@@ -330,6 +368,8 @@ class MainWindow(QMainWindow):
         self.page("entries").period_locked.connect(self.header.period.set_locked)
         self.page("reports").open_statement.connect(self.open_statement)
         self.sidebar.theme_btn.clicked.connect(self.toggle_theme)
+        self.sidebar.collapse_btn.clicked.connect(
+            lambda: self.set_nav("sidebar" if self.nav_mode == "rail" else "rail"))
         self.sidebar.brand.clicked.connect(lambda: self._session_menu(self.sidebar.brand))
         self.tabs.chip.clicked.connect(lambda: self._session_menu(self.tabs.chip))
         self.header.new_btn.clicked.connect(self.new_entry)

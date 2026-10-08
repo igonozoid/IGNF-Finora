@@ -61,7 +61,9 @@ da perda de dados sem backup, nos limites da lei.
 
 ## 8. Contato e mudanças
 
-Dúvidas, pedidos sobre dados e suporte: pelo canal informado no site ou na compra da licença. Estes termos
+Desenvolvedor: **IGNF Projetos e Serviços de Engenharia LTDA**, CNPJ 46.896.045/0001-97, R. Dom Pedro II, 862,
+Sala 101-B, Canabarro, Teutônia/RS. Dúvidas, pedidos sobre dados e suporte: contato@ignf.com.br,
+(51) 98101-6345 ou https://ignf.com.br/contato/. Estes termos
 podem mudar em versões novas; quando isso acontecer, o Finora mostra a nova versão para você aceitar.
 
 *Este texto é um modelo inicial e não substitui a revisão de um advogado.*

@@ -141,3 +141,22 @@ def test_periodo_no_cabecalho(window):
     assert not chip.prev.isEnabled()
     window.go_to("categories")
     assert not chip.isVisible()
+
+
+def test_botao_recolhe_menu_e_abas_so_icones(window):
+    window.sidebar.collapse_btn.click()
+    assert window.nav_mode == "rail" and settings.get_nav() == "rail"
+    window.sidebar.collapse_btn.click()
+    assert window.nav_mode == "sidebar"
+    window.set_nav("tabs")
+    window.tabs.icons_btn.click()
+    assert settings.get_tabs_icons() and all(b.text() == "" for b, _i, _l in window.tabs.buttons)
+    window.tabs.icons_btn.click()
+    assert not settings.get_tabs_icons()
+
+
+def test_sobre_mostra_a_desenvolvedora(window):
+    from PySide6.QtWidgets import QLabel
+    window.go_to("settings")
+    texts = " ".join(l.text() for l in window.page("settings").findChildren(QLabel))
+    assert "IGNF Projetos e Serviços de Engenharia" in texts and "ignf.com.br/contato" in texts

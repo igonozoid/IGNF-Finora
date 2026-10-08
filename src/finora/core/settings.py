@@ -111,6 +111,15 @@ def set_nav(mode: str) -> None:
     _s().setValue("ui/nav", mode)
 
 
+def get_tabs_icons() -> bool:
+    """No modo abas: mostrar só os ícones."""
+    return _s().value("ui/tabs_icons", False, type=bool)
+
+
+def set_tabs_icons(on: bool) -> None:
+    _s().setValue("ui/tabs_icons", on)
+
+
 def get_license_key() -> str:
     return str(_s().value("license/key", ""))
 

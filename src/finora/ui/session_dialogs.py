@@ -33,8 +33,9 @@ def _brand(t: dict) -> QHBoxLayout:
 class LoginDialog(QDialog):
     """E-mail e senha. Devolve o usuário em `self.user`."""
 
-    def __init__(self, t: dict, email: str = ""):
+    def __init__(self, t: dict, email: str = "", pin: bool = False):
         super().__init__()
+        self.pin = pin                 # um usuário só, com PIN: pede só o PIN
         self.setWindowTitle("IGNF Finora — Entrar")
         self.setWindowIcon(qta.icon("fa6s.coins", color=t["acc"]))
         self.setMinimumWidth(340)
@@ -46,10 +47,16 @@ class LoginDialog(QDialog):
         lay.addSpacing(theme.SP_M)
         self.email = QLineEdit(email, placeholderText="nome@exemplo.com")
         self.password = QLineEdit(echoMode=QLineEdit.Password, placeholderText="••••••••")
-        lay.addWidget(field_label("E-mail", t))
+        email_lbl = field_label("E-mail", t)
+        lay.addWidget(email_lbl)
         lay.addWidget(self.email)
-        lay.addWidget(field_label("Senha", t))
+        lay.addWidget(field_label("PIN" if pin else "Senha", t))
         lay.addWidget(self.password)
+        if pin:
+            email_lbl.hide()
+            self.email.hide()
+            self.password.setPlaceholderText("seu PIN")
+            self.password.setMaxLength(8)
         self.error = QLabel(wordWrap=True)
         self.error.setProperty("role", "error")
         self.error.hide()
@@ -63,12 +70,13 @@ class LoginDialog(QDialog):
         self.password.returnPressed.connect(self._enter)
         self.email.returnPressed.connect(self.password.setFocus)
         forgot.clicked.connect(self._forgot)
-        (self.password if email else self.email).setFocus()
+        (self.password if email or pin else self.email).setFocus()
 
     def _enter(self):
         try:
             with Session() as s:
-                self.user = users.authenticate(s, self.email.text(), self.password.text())
+                self.user = (users.authenticate_pin(s, self.password.text()) if self.pin else
+                             users.authenticate(s, self.email.text(), self.password.text()))
         except ValueError as e:
             self.error.setText(str(e))
             self.error.show()

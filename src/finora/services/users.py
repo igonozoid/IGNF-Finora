@@ -208,3 +208,35 @@ def ensure_owner(s: Session, entity_id: int, name: str) -> int:
     if s.get(UserEntity, (u.id, entity_id)) is None:
         s.add(UserEntity(user_id=u.id, entity_id=entity_id))
     return u.id
+
+
+# ---------- PIN (um usuário só: pede só o PIN ao abrir) ----------
+def pin_mode(s: Session) -> UserView | None:
+    """Há um único usuário ativo, sem e-mail e com PIN? Então a abertura pede só o PIN (devolve esse usuário)."""
+    active = s.scalars(select(User).where(User.is_active)).all()
+    if len(active) == 1 and not active[0].email and active[0].password_hash:
+        return _view(s, active[0])
+    return None
+
+
+def set_pin(s: Session, user_id: int, pin: str | None) -> None:
+    """PIN de 4 a 8 números para abrir o app (só com um usuário). Vazio tira o PIN."""
+    if active_count(s) > 1:
+        raise ValueError("Com mais de um usuário, cada um entra com e-mail e senha (Administração › Usuários).")
+    u = s.get(User, user_id)
+    if not pin:
+        u.password_hash = None
+    else:
+        if not (pin.isdigit() and 4 <= len(pin) <= 8):
+            raise ValueError("O PIN precisa ter de 4 a 8 números.")
+        u.password_hash = hash_password(pin)
+    s.commit()
+
+
+def authenticate_pin(s: Session, pin: str) -> UserView:
+    u = pin_mode(s)
+    if u is None or not check_password(pin or "", s.get(User, u.id).password_hash):
+        raise ValueError("PIN incorreto.")
+    s.get(User, u.id).last_login = datetime.now()
+    s.commit()
+    return u

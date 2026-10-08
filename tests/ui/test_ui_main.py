@@ -160,3 +160,25 @@ def test_sobre_mostra_a_desenvolvedora(window):
     window.go_to("settings")
     texts = " ".join(l.text() for l in window.page("settings").findChildren(QLabel))
     assert "IGNF Projetos e Serviços de Engenharia" in texts and "ignf.com.br/contato" in texts
+
+
+def test_pin_nas_configuracoes_e_na_entrada(window, app_t, qtbot, dialogs):
+    from finora.ui.session_dialogs import LoginDialog
+    window.go_to("settings")
+    page = window.page("settings")
+    assert not page.pin_row.isHidden() and page.pin_off.isHidden()
+    page.pin1.setText("2468")
+    page.pin2.setText("2468")
+    page.pin_btn.click()
+    assert not page.pin_off.isHidden() and "pedir o PIN" in window.statusBar().currentMessage()
+    dlg = LoginDialog(app_t, pin=True)
+    qtbot.addWidget(dlg)
+    assert dlg.email.isHidden()
+    dlg.password.setText("0000")
+    dlg.ok.click()
+    assert "PIN incorreto" in dlg.error.text()
+    dlg.password.setText("2468")
+    dlg.ok.click()
+    assert dlg.user is not None
+    page.pin_off.click()
+    assert page.pin_off.isHidden()

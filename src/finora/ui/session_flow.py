@@ -15,12 +15,14 @@ def pick_user(t: dict) -> UserView | None:
     with Session() as s:
         need = users.needs_login(s)
         owner = None if need else users.owner(s)
+        pin = users.pin_mode(s) is not None
     if need:
-        dlg = LoginDialog(t, settings.get_last_email())
+        dlg = LoginDialog(t, settings.get_last_email(), pin=pin)
         if dlg.exec() != QDialog.Accepted:
             return None
         user = dlg.user
-        settings.set_last_email(user.email)
+        if user.email:
+            settings.set_last_email(user.email)
         log.info("Login: %s", user.name)
     else:
         user = owner

@@ -91,6 +91,9 @@ class SettingsPage(QWidget):
                                self._backup_section(), self._lock_section()]
         for w in self.admin_sections:
             bl.addWidget(w)
+        self.security = self._security_section()
+        self.admin_sections.append(self.security)
+        bl.addWidget(self.security)
         bl.addWidget(self._appearance_section())
         edition = self._edition_section()
         self.admin_sections.append(edition)
@@ -529,6 +532,73 @@ class SettingsPage(QWidget):
         self.message.emit("Período reaberto: todos os lançamentos podem ser alterados.")
         self._refresh_lock()
 
+    # ---------- segurança (PIN) ----------
+    def _security_section(self) -> QFrame:
+        box, lay = _section("Segurança", "fa6s.lock", self.t)
+        self.sec_text = _muted("")
+        lay.addWidget(self.sec_text)
+        row = QHBoxLayout()
+        row.setSpacing(theme.SP_M)
+        self.pin1 = QLineEdit(echoMode=QLineEdit.Password, placeholderText="PIN (4 a 8 números)", maxLength=8)
+        self.pin2 = QLineEdit(echoMode=QLineEdit.Password, placeholderText="repita o PIN", maxLength=8)
+        for w in (self.pin1, self.pin2):
+            w.setMaximumWidth(160)
+            w.setFont(theme.mono_font())
+        self.pin_btn = button("Pedir PIN ao abrir", "secondary", self.t, "fa6s.lock", "fg")
+        self.pin_off = button("Tirar o PIN", "link", self.t, "fa6s.lock-open")
+        row.addWidget(self.pin1)
+        row.addWidget(self.pin2)
+        row.addWidget(self.pin_btn)
+        row.addStretch(1)
+        row.addWidget(self.pin_off)
+        self.pin_row = QWidget()
+        self.pin_row.setLayout(row)
+        row.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.pin_row)
+        self.pin_btn.clicked.connect(self._set_pin)
+        self.pin_off.clicked.connect(lambda: self._set_pin(off=True))
+        self._refresh_security()
+        return box
+
+    def _refresh_security(self):
+        from finora.services import users
+        with Session() as s:
+            many = users.active_count(s) > 1
+            owner = users.owner(s)
+            pin = users.pin_mode(s) is not None
+            has_pw = bool(owner and owner.has_password)
+        if many:
+            self.sec_text.setText("Com mais de um usuário, cada um entra com o próprio e-mail e senha. Cadastre e "
+                                  "troque senhas em Administração › Usuários.")
+        elif has_pw and not pin:
+            self.sec_text.setText("Seu usuário entra com e-mail e senha (Administração › Usuários).")
+        elif pin:
+            self.sec_text.setText("O Finora pede o PIN ao abrir. Para trocar, digite um PIN novo.")
+        else:
+            self.sec_text.setText("Qualquer pessoa que usar este computador consegue abrir o Finora. Para proteger seus "
+                                  "dados, peça um PIN ao abrir.")
+        self.pin_row.setVisible(not many and not (has_pw and not pin))
+        self.pin_off.setVisible(pin)
+        self.pin_btn.setText("Trocar o PIN" if pin else "Pedir PIN ao abrir")
+
+    def _set_pin(self, off: bool = False):
+        from finora.services import users
+        if not off and self.pin1.text() != self.pin2.text():
+            QMessageBox.warning(self, "PIN", "Os dois PINs estão diferentes.")
+            return
+        try:
+            with Session() as s:
+                users.set_pin(s, users.owner(s).id, None if off else self.pin1.text())
+        except ValueError as e:
+            QMessageBox.warning(self, "PIN", str(e))
+            return
+        self.pin1.clear()
+        self.pin2.clear()
+        self.message.emit("PIN removido: o Finora abre direto." if off else
+                          "Pronto: o Finora vai pedir o PIN ao abrir. Guarde-o bem: sem ele não dá para entrar.")
+        log.info("PIN %s", "removido" if off else "definido")
+        self._refresh_security()
+
     # ---------- aparência ----------
     def _appearance_section(self) -> QFrame:
         box, lay = _section("Aparência", "fa6s.palette", self.t)
@@ -749,6 +819,7 @@ class SettingsPage(QWidget):
         self.currencies.refresh()      # contas novas em outra moeda aparecem aqui
         self.data_location.refresh()
         self._refresh_lock()
+        self._refresh_security()
 
     def apply_theme(self, t: dict):
         self.t = t

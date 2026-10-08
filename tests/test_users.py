@@ -114,3 +114,17 @@ def test_auditoria_registra_quem_e_o_que(session, profile):
     assert changed.changes["amount"][1] in ("120", "120.00")
     assert audit.list_log(s, profile.id, search="baixou")[0].summary.startswith("Baixou")
     current.clear()
+
+
+def test_pin_para_abrir_com_um_usuario(session, profile):
+    s = session
+    u = users.owner(s)
+    with pytest.raises(ValueError, match="4 a 8 números"):
+        users.set_pin(s, u.id, "12a4")
+    users.set_pin(s, u.id, "2468")
+    assert users.needs_login(s) and users.pin_mode(s).id == u.id
+    assert users.authenticate_pin(s, "2468").id == u.id
+    with pytest.raises(ValueError, match="PIN incorreto"):
+        users.authenticate_pin(s, "1111")
+    users.set_pin(s, u.id, None)
+    assert not users.needs_login(s) and users.pin_mode(s) is None

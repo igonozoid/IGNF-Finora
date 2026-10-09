@@ -2,6 +2,7 @@
 # Prepara um Ubuntu (Server ou Desktop) como banco do IGNF Finora para a rede local.
 #
 # Uso (no servidor):   sudo bash servidor-ubuntu.sh
+#   com senha escolhida: sudo FINORA_SENHA='minha-senha' bash servidor-ubuntu.sh
 #
 # O que faz (pode rodar de novo sem problema):
 #   - instala o MariaDB do próprio Ubuntu (apt) e deixa ligado sempre que o servidor ligar;
@@ -35,22 +36,44 @@ systemctl enable mariadb >/dev/null 2>&1
 systemctl restart mariadb
 
 INFO=/root/finora-servidor.txt
-if [ -f "$INFO" ] && grep -q '^senha=' "$INFO"; then
-    SENHA=$(grep '^senha=' "$INFO" | cut -d= -f2)
+if [ -n "${FINORA_SENHA:-}" ]; then                     # senha escolhida: sudo FINORA_SENHA='...' bash ...
+    SENHA="$FINORA_SENHA"
+elif [ -f "$INFO" ] && grep -q '^senha=' "$INFO"; then  # rodando de novo: mantém a mesma
+    SENHA=$(grep '^senha=' "$INFO" | cut -d= -f2-)
 else
-    SENHA=$(tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' </dev/urandom | head -c 12 | sed 's/.\{4\}/&-/g; s/-$//')
-    printf 'senha=%s\n' "$SENHA" > "$INFO"
-    chmod 600 "$INFO"
+    # (o "|| true" evita que o pipefail derrube o script quando o head fecha o tr)
+    SENHA=$( (tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' </dev/urandom || true) | head -c 12 \
+             | sed 's/.\{4\}/&-/g; s/-$//')
+fi
+case "$SENHA" in *\'*|*\\*) echo "A senha não pode ter aspas simples nem barra invertida."; exit 1;; esac
+printf 'senha=%s\n' "$SENHA" > "$INFO"
+chmod 600 "$INFO"
+
+# Entrar como administrador do MariaDB: normalmente o root do Linux entra direto (unix_socket). Se esse servidor
+# já tinha um MariaDB/MySQL com senha no root, pergunta a senha.
+DB="mariadb"
+command -v mariadb >/dev/null 2>&1 || DB="mysql"
+ADMIN=("$DB")
+if ! "${ADMIN[@]}" -e "SELECT 1" >/dev/null 2>&1; then
+    echo "O administrador (root) do MariaDB deste servidor tem senha."
+    read -r -s -p "Senha do root do MariaDB: " ROOTPW </dev/tty
+    echo
+    ADMIN=("$DB" -uroot "-p$ROOTPW")
+    if ! "${ADMIN[@]}" -e "SELECT 1" >/dev/null 2>&1; then
+        echo "Senha do root não confere. Nada foi alterado no banco."
+        exit 1
+    fi
 fi
 
 echo "== Criando o banco e o usuário do Finora…"
-mariadb <<SQL
+"${ADMIN[@]}" <<SQL
 CREATE DATABASE IF NOT EXISTS finora CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'finora'@'%' IDENTIFIED BY '${SENHA}';
 ALTER USER 'finora'@'%' IDENTIFIED BY '${SENHA}';
 GRANT ALL PRIVILEGES ON finora.* TO 'finora'@'%';
 FLUSH PRIVILEGES;
 SQL
+"${ADMIN[@]}" -N -e "SELECT CONCAT('   usuário criado: ', user, '@', host) FROM mysql.user WHERE user='finora'"
 
 REDE=$(ip route | awk '/proto kernel/ && /src/ {print $1; exit}')
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
@@ -65,7 +88,7 @@ cat > /etc/cron.daily/finora-backup <<'CRON'
 #!/bin/sh
 # Backup diário do banco do IGNF Finora (os últimos 14 ficam guardados)
 DEST=/var/backups/finora
-mariadb-dump --single-transaction --routines finora | gzip > "$DEST/finora-$(date +%F).sql.gz"
+$(command -v mariadb-dump || echo mysqldump) --single-transaction --routines finora | gzip > "$DEST/finora-$(date +%F).sql.gz"
 ls -1t "$DEST"/finora-*.sql.gz 2>/dev/null | tail -n +15 | xargs -r rm -f
 CRON
 chmod 755 /etc/cron.daily/finora-backup

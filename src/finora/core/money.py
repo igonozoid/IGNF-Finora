@@ -2,13 +2,37 @@
 import re
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-# código -> (símbolo, nome para o usuário)
+# código -> (símbolo, nome para o usuário). As que a pessoa cadastra (services/currencies) entram aqui ao abrir.
 CURRENCIES = {
     "BRL": ("R$", "Real brasileiro"),
     "USD": ("US$", "Dólar americano"),
     "EUR": ("€", "Euro"),
     "GBP": ("£", "Libra esterlina"),
+    "ARS": ("AR$", "Peso argentino"),
+    "UYU": ("UY$", "Peso uruguaio"),
+    "PYG": ("₲", "Guarani paraguaio"),
+    "CLP": ("CL$", "Peso chileno"),
+    "BOB": ("Bs", "Boliviano"),
+    "PEN": ("S/", "Sol peruano"),
+    "COP": ("CO$", "Peso colombiano"),
+    "MXN": ("MX$", "Peso mexicano"),
+    "CAD": ("CA$", "Dólar canadense"),
+    "AUD": ("AU$", "Dólar australiano"),
+    "CHF": ("CHF", "Franco suíço"),
+    "JPY": ("¥", "Iene japonês"),
+    "CNY": ("CN¥", "Yuan chinês"),
 }
+BUILTIN = frozenset(CURRENCIES)
+
+
+def register(code: str, symbol: str, name: str) -> None:
+    """Moeda cadastrada pela pessoa (fica no banco; ver services/currencies)."""
+    CURRENCIES[code] = (symbol, name)
+
+
+def unregister(code: str) -> None:
+    if code not in BUILTIN:
+        CURRENCIES.pop(code, None)
 
 CENT = Decimal("0.01")
 MINUS = "−"  # sinal de menos tipográfico, como no mockup

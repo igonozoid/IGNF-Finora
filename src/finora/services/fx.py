@@ -17,7 +17,8 @@ from finora.core import money
 from finora.models import Account, Entity, Entry, ExchangeRate
 
 CENT = Decimal("0.01")
-BCB_CURRENCIES = {"USD", "EUR", "GBP"}      # o Banco Central publica a PTAX dessas (e de outras)
+# moedas com PTAX no Banco Central (as outras: cotação digitada)
+BCB_CURRENCIES = {"USD", "EUR", "GBP", "CAD", "AUD", "CHF", "JPY", "DKK", "NOK", "SEK"}
 
 
 class Converter:

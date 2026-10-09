@@ -126,6 +126,13 @@ class CategoryRule(Base):
     description: Mapped[str | None] = mapped_column(String(200))  # descrição para o lançamento (vazio = mantém)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+class Currency(Base):
+    """Moeda que não está na lista do Finora, cadastrada pela pessoa (vale para todas as entidades)."""
+    __tablename__ = "currencies"
+    code: Mapped[str] = mapped_column(String(3), primary_key=True)   # código ISO 4217 (3 letras)
+    symbol: Mapped[str] = mapped_column(String(6))
+    name: Mapped[str] = mapped_column(String(60))
+
 class Goal(Base):
     """Meta (reserva, viagem…): o progresso é o saldo de uma conta ou o valor guardado informado."""
     __tablename__ = "goals"

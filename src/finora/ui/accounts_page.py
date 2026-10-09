@@ -310,7 +310,8 @@ class AccountsPage(QWidget):
         self.form_error.setVisible(bool(msg))
 
     def _set_currency(self, code: str):
-        self.currency_box.setCurrentIndex(max(0, self.currency_box.findData(code)))
+        from finora.ui.widgets import fill_currency_box
+        fill_currency_box(self.currency_box, code)          # pega moedas cadastradas depois de abrir a tela
 
     # ---------- painel: lado a lado, ou no lugar dos cartões em tela estreita ----------
     def _narrow(self) -> bool:

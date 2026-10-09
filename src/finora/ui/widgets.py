@@ -147,3 +147,17 @@ def upgrade_box(reason: str, t: dict, parent=None, compact: bool = False) -> QFr
     else:
         lay.addWidget(more)
     return box
+
+
+def fill_currency_box(box, keep: str | None = None, exclude: str | None = None, style: str = "code") -> None:
+    """Preenche uma lista de moedas com money.CURRENCIES (inclui as cadastradas). style: "code" (USD — Dólar)
+    ou "label" (Dólar americano (US$))."""
+    from finora.core import money
+    keep = keep if keep is not None else box.currentData()
+    box.blockSignals(True)
+    box.clear()
+    for code, (sym, label) in money.CURRENCIES.items():
+        if code != exclude:
+            box.addItem(f"{code} — {label}" if style == "code" else f"{label} ({sym})", code)
+    box.setCurrentIndex(max(0, box.findData(keep)))
+    box.blockSignals(False)

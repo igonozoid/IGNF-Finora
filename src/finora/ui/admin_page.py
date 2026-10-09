@@ -400,6 +400,8 @@ class EntitiesTab(QWidget):
         self.name.clear()
         self.doc.clear()
         self.lookup_note.hide()
+        from finora.ui.widgets import fill_currency_box
+        fill_currency_box(self.currency)
         self.ptype.setCurrentIndex(0)
         self.currency.setEnabled(True)
         self.active.hide()

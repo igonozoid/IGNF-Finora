@@ -54,3 +54,28 @@ def test_moedas_bloqueadas_na_free(window):
     assert sec.locked and "Todas as contas" in sec.intro.text()
     with db.Session() as s:
         assert fx.foreign_currencies(s, window.profile.id) == []
+
+
+def test_cadastrar_outra_moeda_aparece_nas_listas(plus, window, monkeypatch):
+    from finora.core import money
+    from finora.ui.currencies_section import OtherCurrencyDialog
+    sec = window.page("settings").currencies
+
+    def fake_exec(dlg):
+        dlg.code.setText("zar")
+        dlg.symbol.setText("R")
+        dlg.name.setText("Rand sul-africano")
+        dlg.add()
+        assert dlg.error.isHidden() and dlg.list.rowCount() == 1
+        return 0
+
+    monkeypatch.setattr(OtherCurrencyDialog, "exec", fake_exec)
+    try:
+        sec.other_btn.click()
+        assert sec.currency.findData("ZAR") >= 0
+        window.go_to("accounts")
+        page = window.page("accounts")
+        page._set_currency("ZAR")
+        assert page.currency_box.currentData() == "ZAR"
+    finally:
+        money.unregister("ZAR")

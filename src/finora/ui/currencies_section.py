@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QComboBox, QDateEdit, QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+    QAbstractItemView, QApplication, QComboBox, QDateEdit, QDialog, QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
     QTableWidget, QTableWidgetItem, QVBoxLayout,
 )
 
@@ -103,7 +103,14 @@ class CurrenciesSection(QFrame):
                                   "Vale a partir da data escolhida, até a próxima cotação cadastrada.\n"
                                   "Lançamentos nessa moeda são convertidos pela cotação da data deles."))
         lay.addLayout(form)
-        lay.addWidget(self.bcb_btn, 0, Qt.AlignLeft)
+        links = QHBoxLayout()
+        links.addWidget(self.bcb_btn)
+        self.other_btn = button("Cadastrar outra moeda…", "link", t, "fa6s.plus", "acc")
+        self.other_btn.setToolTip("Para moedas que não estão na lista (ex.: rand sul-africano, ZAR)")
+        links.addWidget(self.other_btn)
+        links.addStretch(1)
+        lay.addLayout(links)
+        self.other_btn.clicked.connect(self._other_currency)
         self.error = QLabel(wordWrap=True)
         self.error.setProperty("role", "error")
         self.error.hide()
@@ -236,6 +243,14 @@ class CurrenciesSection(QFrame):
         except ValueError as e:
             self._error(str(e))
 
+    def _other_currency(self):
+        dlg = OtherCurrencyDialog(self, self.t)
+        dlg.exec()
+        if dlg.changed:
+            self._fill_currencies()
+            self.refresh()
+            self.message.emit("Moedas atualizadas. As novas já aparecem nas listas de moeda.")
+
     def _fetch(self):
         cur, day = self.currency.currentData(), self.day.date().toPython()
         QApplication.setOverrideCursor(Qt.WaitCursor)
@@ -261,3 +276,100 @@ class CurrenciesSection(QFrame):
 
     def apply_theme(self, t: dict):
         self.t = t
+
+
+class OtherCurrencyDialog(QDialog):
+    """Cadastrar (ou remover) uma moeda que não está na lista do Finora."""
+
+    def __init__(self, parent, t: dict):
+        super().__init__(parent)
+        from finora.services import currencies
+        self.changed = False
+        self.setObjectName("wizard")
+        self.setWindowTitle("Outras moedas")
+        self.setMinimumWidth(460)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(18, 14, 18, 14)
+        lay.setSpacing(theme.SP_M)
+        intro = QLabel("Use para uma moeda que não está na lista. O código tem 3 letras (padrão internacional "
+                       "ISO 4217, ex.: ZAR); o símbolo aparece nos valores. A cotação é digitada à mão.",
+                       wordWrap=True)
+        intro.setProperty("role", "muted")
+        lay.addWidget(intro)
+        row = QHBoxLayout()
+        self.code = QLineEdit(maxLength=3, placeholderText="ZAR")
+        self.code.setMaximumWidth(70)
+        self.symbol = QLineEdit(maxLength=6, placeholderText="R")
+        self.symbol.setMaximumWidth(80)
+        self.name = QLineEdit(maxLength=60, placeholderText="Rand sul-africano")
+        add = button("Cadastrar", "primary")
+        for w in (self.code, self.symbol, self.name):
+            row.addWidget(w)
+        row.addWidget(add)
+        lay.addLayout(row)
+        self.error = QLabel(wordWrap=True)
+        self.error.setProperty("role", "error")
+        self.error.hide()
+        lay.addWidget(self.error)
+        lay.addWidget(field_label("Cadastradas", t))
+        self.list = QTableWidget(0, 3)
+        self.list.setHorizontalHeaderLabels(["CÓDIGO", "SÍMBOLO", "NOME"])
+        self.list.verticalHeader().hide()
+        self.list.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.list.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.list.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.list.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        lay.addWidget(self.list)
+        bottom = QHBoxLayout()
+        remove = button("Remover selecionada", "link")
+        close = button("Fechar", "secondary")
+        bottom.addWidget(remove)
+        bottom.addStretch(1)
+        bottom.addWidget(close)
+        lay.addLayout(bottom)
+        add.clicked.connect(self.add)
+        self.name.returnPressed.connect(self.add)
+        remove.clicked.connect(self.remove)
+        close.clicked.connect(self.accept)
+        self._svc = currencies
+        self.refresh()
+
+    def refresh(self):
+        with Session() as s:
+            rows = [(c.code, c.symbol, c.name) for c in self._svc.list_custom(s)]
+        self.list.setRowCount(len(rows))
+        for r, cells in enumerate(rows):
+            for c, text in enumerate(cells):
+                self.list.setItem(r, c, QTableWidgetItem(text))
+
+    def _err(self, text: str | None):
+        self.error.setText(text or "")
+        self.error.setVisible(bool(text))
+
+    def add(self):
+        try:
+            with Session() as s:
+                self._svc.add(s, self.code.text(), self.symbol.text(), self.name.text())
+        except ValueError as e:
+            self._err(str(e))
+            return
+        self._err(None)
+        self.changed = True
+        for w in (self.code, self.symbol, self.name):
+            w.clear()
+        self.refresh()
+
+    def remove(self):
+        r = self.list.currentRow()
+        if r < 0:
+            return
+        code = self.list.item(r, 0).text()
+        try:
+            with Session() as s:
+                self._svc.remove(s, code)
+        except ValueError as e:
+            self._err(str(e))
+            return
+        self._err(None)
+        self.changed = True
+        self.refresh()

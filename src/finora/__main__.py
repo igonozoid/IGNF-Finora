@@ -112,6 +112,8 @@ def main():
         log.info("Banco atualizado; cópia de antes da atualização em %s", safety)
 
     with Session() as s:
+        from finora.services import currencies
+        currencies.load(s)                  # moedas cadastradas entram nas listas
         profile = setup.current_profile(s)
     if profile is None:
         wizard = FirstRunWizard(t)

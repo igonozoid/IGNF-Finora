@@ -12,7 +12,7 @@
 #   - agenda um backup diário do banco em /var/backups/finora (guarda os últimos 14).
 # No fim mostra o endereço, a porta e a senha para configurar os PCs com o Finora
 # (Configurações › Onde ficam os dados › Num servidor da rede).
-set -euo pipefail
+set -eu   # sem pipefail: "ip route | awk … exit" e "grep -q" fecham o cano cedo e derrubariam o script
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Rode com sudo:  sudo bash $0"

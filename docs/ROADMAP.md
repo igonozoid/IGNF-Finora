@@ -110,6 +110,10 @@ finanças pessoais. Podem virar módulos opcionais no futuro.
 - [x] Ajuda (F1) por tela e "Enviar relatório de problema"
 - [x] Termos de uso e aviso de privacidade (LGPD): aceite na 1ª abertura e em Configurações › Sobre (revisar com advogado)
 - [ ] Assinatura digital: build pronto (`FINORA_SIGN_PFX`), falta comprar o certificado (ver `docs/ASSINATURA.md`)
+- [ ] Instalador Windows (além do portátil, que continua): instala em `C:\IGNF-Finora` (raiz do C:, onde o app
+      grava a pasta `data`; nunca em Arquivos de Programas), atalhos no menu Iniciar/Área de trabalho, aparece em
+      "Aplicativos instalados" para desinstalar (sem apagar `data`). Publicar os dois na release:
+      `…-windows.zip` (portátil) e `…-windows-setup.exe` (instalador)
 
 ## Fase F — Maturidade (out/2026)
 

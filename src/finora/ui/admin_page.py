@@ -13,7 +13,7 @@ from finora.core.licensing import LimitError, allowed, current_edition
 from finora.services import audit, entity_admin, period_lock, permissions, users
 from finora.services.setup import Profile
 from finora.ui import theme
-from finora.ui.widgets import button, field_label, upgrade_box
+from finora.ui.widgets import button, field_label, lock_icon, show_upgrade, upgrade_box
 
 PANEL_W = 300
 AUDIT_MSG = "O histórico de alterações (quem fez o quê e quando) é um recurso das edições Plus e Pro."
@@ -309,10 +309,22 @@ class EntitiesTab(QWidget):
         fl.addLayout(logo_row)
         self._logo: bytes | None = None
         self._logo_changed = False
-        for label, w in (("Nome", self.name), ("Tipo", self.ptype), ("CPF/CNPJ", self.doc),
+        # CPF/CNPJ com "Autopreencher" (dados públicos da Receita, como no cadastro de contatos)
+        self.lookup = button("Autopreencher", "secondary", t, "fa6s.wand-magic-sparkles", "acc")
+        self.lookup.setToolTip("Busca razão social, telefone, e-mail e endereço do CNPJ na Receita Federal.")
+        doc_row = QHBoxLayout()
+        doc_row.setSpacing(theme.SP_S)
+        doc_row.addWidget(self.doc, 1)
+        doc_row.addWidget(self.lookup)
+        from finora.core.licensing import allowed, current_edition
+        if not allowed(current_edition(), "doc_lookup"):
+            from finora.ui.contacts_page import LOOKUP_MSG
+            self.lookup.setToolTip(LOOKUP_MSG)
+            doc_row.addWidget(lock_icon(LOOKUP_MSG, t))
+        for label, w in (("Nome", self.name), ("Tipo", self.ptype), ("CPF/CNPJ", doc_row),
                          ("Moeda principal", self.currency)):
             fl.addWidget(field_label(label, t))
-            fl.addWidget(w)
+            fl.addLayout(w) if isinstance(w, QHBoxLayout) else fl.addWidget(w)
         self.det = {}
         for key, label, ph in (("document2", "Inscrição estadual/municipal", "Opcional"),
                                ("address", "Endereço", "Rua, número, sala"), ("city", "Cidade", ""),
@@ -324,6 +336,15 @@ class EntitiesTab(QWidget):
             fl.addWidget(field_label(label, t))
             fl.addWidget(w)
         self.det["state"].setMaximumWidth(60)
+        self.cep_btn = button("Buscar CEP", "link", t, "fa6s.magnifying-glass")
+        self.cep_btn.setToolTip("Preenche endereço, cidade e UF pelo CEP")
+        fl.addWidget(self.cep_btn, 0, Qt.AlignLeft)
+        self.lookup_note = QLabel(wordWrap=True)
+        self.lookup_note.setProperty("role", "field")
+        self.lookup_note.hide()
+        fl.addWidget(self.lookup_note)
+        self.lookup.clicked.connect(self._lookup)
+        self.cep_btn.clicked.connect(self._lookup_cep)
         fl.addWidget(self.active)
         self.logo_pick.clicked.connect(self._pick_logo)
         self.logo_clear.clicked.connect(lambda: self._set_logo(None))
@@ -378,6 +399,7 @@ class EntitiesTab(QWidget):
         self.title.setText("Nova entidade")
         self.name.clear()
         self.doc.clear()
+        self.lookup_note.hide()
         self.ptype.setCurrentIndex(0)
         self.currency.setEnabled(True)
         self.active.hide()
@@ -393,6 +415,7 @@ class EntitiesTab(QWidget):
         self.name.setText(e.name)
         self.ptype.setCurrentIndex(max(0, self.ptype.findData(e.person_type)))
         self.doc.setText(e.document_fmt)
+        self.lookup_note.hide()
         self.currency.setCurrentIndex(max(0, self.currency.findData(e.currency)))
         self.currency.setEnabled(False)
         self.currency.setToolTip("A moeda principal muda em Configurações › Seu perfil, com a entidade aberta.")
@@ -417,6 +440,65 @@ class EntitiesTab(QWidget):
             self.logo_view.setPixmap(QPixmap())
             self.logo_view.setText("sem\nlogo")
         self.logo_clear.setVisible(png is not None)
+
+    def _lookup(self):
+        from finora.core import documents
+        from finora.core.licensing import allowed, current_edition
+        from finora.services import doc_lookup
+        from finora.ui.contacts_page import LOOKUP_MSG, _busy
+        if not allowed(current_edition(), "doc_lookup"):
+            show_upgrade(self, LOOKUP_MSG)
+            return
+        if self.ptype.currentData() == "PF" and len(documents.digits(self.doc.text())) != 14:
+            self._lookup_msg("CPF não tem consulta pública (são dados pessoais). Para empresa, escolha o tipo PJ "
+                             "e digite o CNPJ.", error=True)
+            return
+        try:
+            with _busy():
+                data = doc_lookup.cnpj(self.doc.text())
+        except ValueError as e:
+            self._lookup_msg(str(e), error=True)
+            return
+        self.ptype.setCurrentIndex(max(0, self.ptype.findData("PJ")))
+        self.doc.setText(documents.fmt(documents.digits(self.doc.text())))
+        if not self.name.text().strip():
+            self.name.setText(data.trade_name or data.name)
+        filled = [k for k, v in data.details.items() if v and k in self.det and not self.det[k].text().strip()]
+        for k in filled:
+            self.det[k].setText(data.details[k])
+        labels = {"phone": "telefone", "email": "e-mail", "zip_code": "CEP", "address": "endereço",
+                  "city": "cidade", "state": "UF"}
+        note = f"Dados da Receita: {data.name}"
+        if data.status and data.status.upper() != "ATIVA":
+            note += f" — situação {data.status}"
+        if filled:
+            note += ". Preenchi: " + ", ".join(labels.get(k, k) for k in filled) + "."
+        self._lookup_msg(note + " Confira e clique em Salvar.")
+
+    def _lookup_cep(self):
+        from finora.core.licensing import allowed, current_edition
+        from finora.services import doc_lookup
+        from finora.ui.contacts_page import LOOKUP_MSG, _busy
+        if not allowed(current_edition(), "doc_lookup"):
+            show_upgrade(self, LOOKUP_MSG)
+            return
+        try:
+            with _busy():
+                addr = doc_lookup.cep(self.det["zip_code"].text())
+        except ValueError as e:
+            self._lookup_msg(str(e), error=True)
+            return
+        self.det["zip_code"].setText(addr.zip_code)
+        for key, value in (("address", addr.address), ("city", addr.city), ("state", addr.state)):
+            if value:
+                self.det[key].setText(value)
+        self._lookup_msg("Endereço preenchido pelo CEP. Complete o número e clique em Salvar.")
+
+    def _lookup_msg(self, text: str, error: bool = False):
+        self.lookup_note.setProperty("role", "error" if error else "field")
+        self.lookup_note.setText(text)
+        self.lookup_note.style().polish(self.lookup_note)
+        self.lookup_note.show()
 
     def _pick_logo(self):
         path, _ = QFileDialog.getOpenFileName(self, "Logotipo da entidade", "", "Imagens (*.png *.jpg *.jpeg *.bmp)")

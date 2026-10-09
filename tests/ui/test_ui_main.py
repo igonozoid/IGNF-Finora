@@ -228,3 +228,12 @@ def test_aviso_de_versao_nova_abre_a_atualizacao(window, monkeypatch):
     dlg = opened[0]
     assert not dlg.go.isEnabled() and "código" not in dlg.status.text()   # rodando pelo código: só pelo site
     assert "site" in dlg.status.text()
+
+
+def test_sobre_rola_ate_a_secao_com_destaque(window, qtbot):
+    cfg = window.page("settings")
+    window.show_about()
+    qtbot.waitUntil(lambda: cfg.about.graphicsEffect() is not None, timeout=2000)
+    assert window.current_key() == "settings"
+    bar = cfg.scroll.verticalScrollBar()
+    assert bar.maximum() == 0 or bar.value() > 0                 # rolou para baixo (Sobre é a última seção)

@@ -2,7 +2,7 @@
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QStandardPaths, Qt, QUrl, Signal
+from PySide6.QtCore import QDate, QPointF, QStandardPaths, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDateEdit, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
@@ -99,15 +99,36 @@ class SettingsPage(QWidget):
         edition = self._edition_section()
         self.admin_sections.append(edition)
         bl.addWidget(edition)
-        bl.addWidget(self._about_section())
+        self.about = self._about_section()
+        bl.addWidget(self.about)
         bl.addStretch(1)
         scroll = QScrollArea(objectName="pageScroll", widgetResizable=True, frameShape=QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setWidget(body)
+        self.scroll = scroll
         self.body = body
         root = QVBoxLayout(self)
         root.setContentsMargins(14, theme.SP_L, 14, theme.SP_L)
         root.addWidget(scroll)
+
+    def reveal(self, section: QWidget):
+        """Rola até a seção e dá um brilho que some aos poucos (Ajuda › Sobre, por exemplo)."""
+        from PySide6.QtCore import QTimer, QVariantAnimation
+        from PySide6.QtGui import QColor
+        from PySide6.QtWidgets import QGraphicsDropShadowEffect
+
+        def go():
+            self.scroll.ensureWidgetVisible(section, 0, 40)
+            glow = QGraphicsDropShadowEffect(section, offset=QPointF(0, 0), blurRadius=32)
+            color = QColor(self.t["acc"])
+            glow.setColor(color)
+            section.setGraphicsEffect(glow)
+            anim = QVariantAnimation(section, startValue=255, endValue=0, duration=2600)
+            anim.valueChanged.connect(lambda a: (color.setAlpha(int(a)), glow.setColor(color)))
+            anim.finished.connect(lambda: section.setGraphicsEffect(None))
+            anim.start()
+            self._glow = anim
+        QTimer.singleShot(60, go)          # depois de a página aparecer e calcular as alturas
 
     # ---------- perfil ----------
     def _profile_section(self) -> QFrame:

@@ -135,3 +135,16 @@ def test_trocar_entidade_com_uma_so_explica(window, dialogs):
     assert window.next_action is None and any("uma entidade só" in m for m in dialogs.shown)
     window._new_entity()
     assert window.current_key() == "admin" and window.page("admin").tabs["entities"].title.text() == "Nova entidade"
+
+
+def test_entidade_autopreenche_pelo_cnpj(plus, window, monkeypatch):
+    from finora.services import doc_lookup
+    window.go_to("admin")
+    tab = window.page("admin").tabs["entities"]
+    tab._new()
+    monkeypatch.setattr(doc_lookup, "cnpj", lambda n: doc_lookup.CompanyData(
+        "IGNF PROJETOS LTDA", "IGNF", "ATIVA", {"city": "Teutônia", "state": "RS", "phone": "(51) 98101-6345"}))
+    tab.doc.setText("46896045000197")
+    tab.lookup.click()
+    assert tab.ptype.currentData() == "PJ" and tab.name.text() == "IGNF"
+    assert tab.det["city"].text() == "Teutônia" and "Preenchi" in tab.lookup_note.text()

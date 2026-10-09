@@ -371,7 +371,7 @@ class MainWindow(QMainWindow):
         help_menu.addAction("Primeiros passos", lambda: self.show_help("inicio"))
         help_menu.addSeparator()
         help_menu.addAction("Enviar relatório de problema…", self.report_problem)
-        help_menu.addAction("Sobre o IGNF Finora", lambda: self.go_to("settings"))
+        help_menu.addAction("Sobre o IGNF Finora", self.show_about)
         self.header.help_btn.setMenu(help_menu)
 
         self.theme_name = settings.get_theme(theme.DEFAULT_THEME)
@@ -529,6 +529,11 @@ class MainWindow(QMainWindow):
         dlg.show()
         self._help = dlg
         return dlg
+
+    def show_about(self):
+        self.go_to("settings")
+        cfg = self.page("settings")
+        cfg.reveal(cfg.about)
 
     def report_problem(self):
         from finora.ui.help import ProblemDialog

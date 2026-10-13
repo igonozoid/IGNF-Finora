@@ -25,8 +25,8 @@ UNITS = ["un", "kg", "g", "t", "L", "mL", "cx", "pct", "dz", "garrafa", "pote", 
          "cabeça"]
 MOVES = {"in": "Entrada", "out": "Saída / consumo", "loss": "Perda", "adjust": "Inventário (ajuste)",
          "transfer": "Transferência", "sale": "Venda", "prod_in": "Produção (entrou)", "prod_out": "Produção (usou)",
-         "farm_out": "Usado na lavoura", "harvest": "Colheita"}
-OUT_KINDS = {"out", "loss", "sale", "prod_out", "farm_out"}
+         "farm_out": "Usado na lavoura", "harvest": "Colheita", "herd_out": "Usado no rebanho"}
+OUT_KINDS = {"out", "loss", "sale", "prod_out", "farm_out", "herd_out"}
 Q3 = Decimal("0.001")
 Q4 = Decimal("0.0001")
 ZERO = Decimal("0")
@@ -379,6 +379,8 @@ def delete_move(s: Session, move_id: int) -> int | None:
         raise ValueError("Esse movimento é de um pedido de venda: cancele o pedido em Vendas.")
     if m.production_id is not None:
         raise ValueError("Esse movimento é de um lote de produção: reabra o lote em Produção.")
+    if m.herd_event_id is not None:
+        raise ValueError("Esse movimento é de um registro do rebanho: altere ou exclua o registro em Pecuária.")
     if m.activity_id is not None:
         raise ValueError("Esse movimento é de uma atividade da lavoura: altere ou exclua a atividade em Agricultura.")
     _check_day(s, m.entity_id, m.day)

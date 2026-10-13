@@ -175,6 +175,7 @@ class StockMove(Base):
     sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales.id", ondelete="CASCADE"), index=True)
     production_id: Mapped[int | None] = mapped_column(ForeignKey("productions.id", ondelete="CASCADE"), index=True)
     activity_id: Mapped[int | None] = mapped_column(ForeignKey("farm_activities.id", ondelete="CASCADE"), index=True)
+    herd_event_id: Mapped[int | None] = mapped_column(ForeignKey("herd_events.id", ondelete="CASCADE"), index=True)
     document_no: Mapped[str | None] = mapped_column(String(40))
     notes: Mapped[str | None] = mapped_column(String(300))
 
@@ -272,6 +273,41 @@ class FarmActivity(Base):
     inputs_cost: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0"))  # gravado: insumos usados
     harvest_cost: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0")) # custo que foi p/ colheita
     location_id: Mapped[int | None] = mapped_column(ForeignKey("stock_locations.id"))
+    notes: Mapped[str | None] = mapped_column(String(300))
+
+class HerdLot(Base):
+    """Lote de animais (módulo Pecuária): a contagem de cabeças sai dos registros (HerdEvent)."""
+    __tablename__ = "herd_lots"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))                          # "Vacas de cria", "Recria 2026"
+    species: Mapped[str] = mapped_column(String(12), default="cattle")    # cattle|sheep|goat|horse|pig|poultry|other
+    category: Mapped[str | None] = mapped_column(String(40))               # vaca, novilha, bezerro, boi…
+    area_id: Mapped[int | None] = mapped_column(ForeignKey("farm_areas.id", ondelete="SET NULL"))   # piquete atual
+    notes: Mapped[str | None] = mapped_column(String(300))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class HerdEvent(Base):
+    """Registro do lote: nascimento, compra, venda, morte, transferência entre lotes, troca de piquete,
+    pesagem, sanidade (vacina/remédio), alimentação, ocorrência. `heads` tem sinal (+ entrou, − saiu)."""
+    __tablename__ = "herd_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    lot_id: Mapped[int] = mapped_column(ForeignKey("herd_lots.id"), index=True)
+    day: Mapped[date]
+    kind: Mapped[str] = mapped_column(String(12))
+    heads: Mapped[int] = mapped_column(default=0)
+    weight: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))         # peso médio por cabeça (kg)
+    value: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0"))        # compra/venda
+    other_cost: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0"))   # veterinário, frete…
+    inputs_cost: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0"))  # gravado: insumos usados
+    area_id: Mapped[int | None] = mapped_column(ForeignKey("farm_areas.id", ondelete="SET NULL"))  # piquete destino
+    other_lot_id: Mapped[int | None] = mapped_column(ForeignKey("herd_lots.id"))                     # transferência
+    transfer_id: Mapped[str | None] = mapped_column(String(32), index=True)
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"))
+    entry_id: Mapped[int | None] = mapped_column(ForeignKey("entries.id", ondelete="SET NULL"))     # a pagar/receber
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("stock_locations.id"))
+    description: Mapped[str | None] = mapped_column(String(200))
     notes: Mapped[str | None] = mapped_column(String(300))
 
 class Currency(Base):

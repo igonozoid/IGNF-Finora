@@ -9,7 +9,7 @@ from finora.services.entries import EntryData
 
 @pytest.fixture
 def two(session, profile, plus):
-    other = entity_admin.create(session, name="Padaria Sol", person_type="PJ")
+    other = entity_admin.create(session, name="Padaria Sol", person_type="PJ", dre_model="personal")
     return session, profile.id, other
 
 

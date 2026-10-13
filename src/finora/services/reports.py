@@ -80,13 +80,15 @@ class DreRow:
 class DreReport:
     months: list[tuple[int, int]]
     rows: list[DreRow] = field(default_factory=list)
+    base_key: str = "receitas"         # linha que vale 100% na análise vertical (receitas ou receita bruta)
+    model: str = "personal"
 
     def row(self, key: str) -> DreRow:
         return next(r for r in self.rows if r.key == key)
 
     def share(self, row: DreRow) -> Decimal | None:
         """Análise vertical: quanto a linha representa das receitas do período (%)."""
-        base = self.row("receitas").total
+        base = self.row(self.base_key).total
         if base == 0:
             return None
         return (abs(row.total) * 100 / base).quantize(Decimal("0.1"))
@@ -105,16 +107,20 @@ def _movements(s: Session, entity_id: int, first: date, last: date, regime: str)
 
 def dre(s: Session, entity_id: int, months: list[tuple[int, int]], regime: str = "accrual",
         details: bool = False) -> DreReport:
+    """DRE no modelo da entidade (pessoal ou empresa; ver services/dre)."""
+    from finora.models import Entity
+    from finora.services import dre as dre_mod
+    model = getattr(s.get(Entity, entity_id), "dre_model", None) or "personal"
+    groups_def = dre_mod.groups_for(model)
     first = entries.month_range(*months[0])[0]
     last = entries.month_range(*months[-1])[1]
     index = {ym: i for i, ym in enumerate(months)}
     n = len(months)
-    groups: dict[str, list[Decimal]] = {g: [ZERO] * n for g in GROUPS}
-    subs: dict[str, dict[str, list[Decimal]]] = {g: {} for g in GROUPS}
+    groups: dict[str, list[Decimal]] = {g: [ZERO] * n for g in groups_def}
+    subs: dict[str, dict[str, list[Decimal]]] = {g: {} for g in groups_def}
 
     for when, kind, amount, group, cat_name in _movements(s, entity_id, first, last, regime):
-        if group not in GROUPS:
-            group = "receitas" if kind == "income" else "outras"
+        group = dre_mod.normalize(group, kind, model)
         # Na DRE, receita soma e despesa subtrai — mesmo se alguém lançou despesa num grupo de receita.
         value = Decimal(amount) if kind == "income" else -Decimal(amount)
         i = index[(when.year, when.month)]
@@ -122,13 +128,43 @@ def dre(s: Session, entity_id: int, months: list[tuple[int, int]], regime: str =
         sub = subs[group].setdefault(cat_name or "Sem categoria", [ZERO] * n)
         sub[i] += value
 
-    rep = DreReport(months)
+    rep = DreReport(months, base_key="receitas" if model != "business" else "receita_bruta", model=model)
 
     def add(key, style, values, label=None, help=None):
-        rep.rows.append(DreRow(key, label or GROUPS.get(key, key), style, [v.quantize(CENT) for v in values], help))
+        rep.rows.append(DreRow(key, label or groups_def.get(key, key), style, [v.quantize(CENT) for v in values],
+                               help))
         if details and style in ("line", "total") and key in subs:
             for name, vals in sorted(subs[key].items(), key=lambda kv: -abs(sum(kv[1], ZERO))):
                 rep.rows.append(DreRow(f"{key}:{name}", name, "detail", [v.quantize(CENT) for v in vals]))
+
+    def plus(*parts):
+        return [sum((p[i] for p in parts), ZERO) for i in range(n)]
+
+    if model == "business":
+        g, h = groups, dre_mod.HELP
+        add("receita_bruta", "total", g["receita_bruta"], help=h["receita_bruta"])
+        add("deducoes", "line", g["deducoes"], label="(−) Impostos sobre vendas", help=h["deducoes"])
+        liquida = plus(g["receita_bruta"], g["deducoes"])
+        add("liquida", "total", liquida, label="= Receita líquida", help=h["liquida"])
+        add("custos", "line", g["custos"], label="(−) Custos dos produtos e serviços", help=h["custos"])
+        bruto = plus(liquida, g["custos"])
+        add("bruto", "total", bruto, label="= Lucro bruto", help=h["bruto"])
+        for k in ("pessoal", "administrativas", "comerciais"):
+            add(k, "line", g[k], label=f"(−) {groups_def[k]}")
+        oper = plus(bruto, g["pessoal"], g["administrativas"], g["comerciais"])
+        add("operacional", "total", oper, label="= Resultado operacional", help=h["operacional"])
+        add("receitas_fin", "line", g["receitas_fin"], label="(+) Receitas financeiras e outras")
+        add("despesas_fin", "line", g["despesas_fin"], label="(−) Despesas financeiras")
+        antes = plus(oper, g["receitas_fin"], g["despesas_fin"])
+        add("antes_ir", "total", antes, label="= Resultado antes do IR", help=h["antes_ir"])
+        add("impostos_lucro", "line", g["impostos_lucro"], label="(−) IRPJ e CSLL")
+        liquido = plus(antes, g["impostos_lucro"])
+        add("liquido", "result", liquido, label="= Lucro líquido", help=h["liquido"])
+        add("retiradas", "line", g["retiradas"], label="(−) Retiradas e distribuição de lucros")
+        add("imobilizado", "line", g["imobilizado"], label="(−) Investimentos e imobilizado")
+        add("saldo", "result", plus(liquido, g["retiradas"], g["imobilizado"]), label="= Saldo do período",
+            help=h["saldo"])
+        return rep
 
     add("receitas", "total", groups["receitas"], help=HELP["receitas"])
     for g in EXPENSE_GROUPS:

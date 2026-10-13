@@ -41,7 +41,8 @@ def _d(v) -> Decimal:
 
 def _not_investment():
     """Lançamento sem categoria, ou com categoria fora do grupo Investimentos/Reserva."""
-    return (Entry.category_id.is_(None)) | (Category.dre_group.is_(None)) | (Category.dre_group != "investimentos")
+    from finora.services.dre import NOT_RESULT
+    return (Entry.category_id.is_(None)) | (Category.dre_group.is_(None)) | (Category.dre_group.not_in(NOT_RESULT))
 
 
 def month_result(s: Session, entity_id: int, year: int, month: int) -> Decimal:

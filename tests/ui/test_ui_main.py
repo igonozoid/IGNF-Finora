@@ -237,3 +237,10 @@ def test_sobre_rola_ate_a_secao_com_destaque(window, qtbot):
     assert window.current_key() == "settings"
     bar = cfg.scroll.verticalScrollBar()
     assert bar.maximum() == 0 or bar.value() > 0                 # rolou para baixo (Sobre é a última seção)
+
+
+def test_modulos_em_construcao_aparecem_desligados(window):
+    from finora.services import modules
+    cfg = window.page("settings")
+    assert set(cfg.module_checks) == set(modules.CATALOG)
+    assert all(not c.isEnabled() for k, c in cfg.module_checks.items() if not modules.CATALOG[k].ready)

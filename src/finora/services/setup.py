@@ -117,8 +117,33 @@ def run_first_setup(s: Session, *, name: str, currency: str, account_name: str, 
     return profile
 
 
-def _add_default_categories(s: Session, entity_id: int) -> None:
-    for gi, (group, kind, gname, children) in enumerate(DEFAULT_CATEGORIES, start=1):
+DEFAULT_BUSINESS = [
+    ("receita_bruta", "income", "Receitas de vendas e serviços", ["Venda de produtos", "Prestação de serviços",
+                                                                  "Outras receitas operacionais"]),
+    ("deducoes", "expense", "Impostos sobre vendas", ["Simples Nacional (DAS)", "ISS", "ICMS", "PIS e COFINS",
+                                                      "Devoluções e descontos"]),
+    ("custos", "expense", "Custos", ["Mercadorias e matéria-prima", "Insumos de produção", "Mão de obra direta",
+                                     "Fretes de compra", "Serviços terceirizados"]),
+    ("pessoal", "expense", "Pessoal", ["Salários", "Pró-labore", "Encargos (INSS e FGTS)", "Benefícios",
+                                       "Férias e 13º"]),
+    ("administrativas", "expense", "Administrativas", ["Aluguel", "Energia", "Água", "Internet e telefone",
+                                                       "Contabilidade", "Softwares e sistemas",
+                                                       "Material de escritório", "Manutenção", "Seguros",
+                                                       "Taxas e alvarás"]),
+    ("comerciais", "expense", "Comerciais", ["Marketing e publicidade", "Comissões", "Fretes de venda",
+                                             "Embalagens"]),
+    ("receitas_fin", "income", "Receitas financeiras", ["Rendimentos de aplicações", "Juros recebidos",
+                                                        "Outras receitas"]),
+    ("despesas_fin", "expense", "Despesas financeiras", ["Tarifas bancárias", "Juros e multas", "Taxas de cartão"]),
+    ("impostos_lucro", "expense", "IRPJ e CSLL", ["IRPJ", "CSLL"]),
+    ("retiradas", "expense", "Retiradas dos sócios", ["Distribuição de lucros", "Retiradas"]),
+    ("imobilizado", "expense", "Investimentos", ["Máquinas e equipamentos", "Veículos", "Obras e benfeitorias"]),
+]
+
+
+def _add_default_categories(s: Session, entity_id: int, model: str = "personal") -> None:
+    defaults = DEFAULT_BUSINESS if model == "business" else DEFAULT_CATEGORIES
+    for gi, (group, kind, gname, children) in enumerate(defaults, start=1):
         parent = Category(entity_id=entity_id, code=str(gi), name=gname, kind=kind, dre_group=group,
                           is_active=True)
         s.add(parent)

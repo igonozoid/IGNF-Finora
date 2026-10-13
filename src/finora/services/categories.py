@@ -28,11 +28,20 @@ class CategoryView:
 
 
 def kind_for(dre_group: str) -> str:
-    return "income" if dre_group == "receitas" else "expense"
+    from finora.services.dre import INCOME_GROUPS
+    return "income" if dre_group in INCOME_GROUPS else "expense"
 
 
 def _code_key(code: str) -> tuple:
     return tuple(int(p) if p.isdigit() else 0 for p in code.split("."))
+
+
+def model_groups(s: Session, entity_id: int) -> dict[str, str]:
+    """Linhas da DRE do modelo da entidade (pessoal ou empresa)."""
+    from finora.models import Entity
+    from finora.services import dre
+    e = s.get(Entity, entity_id)
+    return dre.groups_for(getattr(e, "dre_model", None))
 
 
 def tree(s: Session, entity_id: int, include_inactive: bool = False) -> list[CategoryView]:
@@ -49,7 +58,7 @@ def tree(s: Session, entity_id: int, include_inactive: bool = False) -> list[Cat
             roots.append(r)
         elif r.parent_id in by_id:  # subcategoria de grupo filtrado (inativo) não aparece
             by_id[r.parent_id].children.append(r)
-    order = list(GROUPS)
+    order = list(model_groups(s, entity_id)) + [g for g in GROUPS if g not in model_groups(s, entity_id)]
     roots.sort(key=lambda r: (order.index(r.dre_group) if r.dre_group in order else len(order), _code_key(r.code)))
     for r in roots:
         r.children.sort(key=lambda c: _code_key(c.code))
@@ -97,6 +106,22 @@ def _check_name(s: Session, entity_id: int, name: str, parent_id: int | None, ex
     return name
 
 
+def convert_model(s: Session, entity_id: int, model: str) -> int:
+    """Troca o modelo da DRE da entidade: cada grupo desta entidade vai para a linha equivalente do outro modelo
+    (ex.: Moradia -> Despesas administrativas). Sem commit. Devolve quantos grupos mudaram de linha."""
+    from finora.services import dre
+    if model not in dre.MODELS:
+        raise ValueError("Modelo de DRE inválido.")
+    mapping = dre.TO_BUSINESS if model == "business" else dre.TO_PERSONAL
+    n = 0
+    for c in s.scalars(select(Category).where(Category.entity_id == entity_id)):
+        new = mapping.get(c.dre_group or "")
+        if new and new != c.dre_group:
+            c.dre_group, c.kind = new, kind_for(new)
+            n += 1 if c.parent_id is None else 0
+    return n
+
+
 def create(s: Session, entity_id: int, *, name: str, parent_id: int | None = None,
            dre_group: str | None = None, shared: bool = False) -> int:
     """Subcategoria herda tipo e linha da DRE do grupo; grupo novo precisa de `dre_group`."""
@@ -107,7 +132,7 @@ def create(s: Session, entity_id: int, *, name: str, parent_id: int | None = Non
     if parent is not None:
         dre_group, kind = parent.dre_group, parent.kind
     else:
-        if dre_group not in GROUPS:
+        if dre_group not in model_groups(s, entity_id):
             raise ValueError("Escolha em qual linha da DRE esta categoria aparece.")
         kind = kind_for(dre_group)
     c = Category(entity_id=entity_id, parent_id=parent_id, code=_next_code(s, entity_id, parent), name=name,

@@ -26,6 +26,7 @@ class EntityView:
     users: int
     accounts: int
     entries: int
+    dre_model: str = "personal"
 
     @property
     def document_fmt(self) -> str:
@@ -53,7 +54,7 @@ def list_entities(s: Session, user_id: int | None = None, include_inactive: bool
         accs = s.scalar(select(func.count(Account.id)).where(Account.entity_id == e.id))
         ents = s.scalar(select(func.count(Entry.id)).where(Entry.entity_id == e.id))
         out.append(EntityView(e.id, e.name, e.currency, e.person_type or "PF", e.document, e.is_active,
-                              users, accs, ents))
+                              users, accs, ents, e.dre_model or "personal"))
     return out
 
 
@@ -79,21 +80,27 @@ def _check(s: Session, name: str, person_type: str, document: str | None, curren
 
 def create(s: Session, *, name: str, person_type: str = "PF", document: str | None = None, currency: str = "BRL",
            account_name: str = "Conta principal", default_categories: bool = True,
-           user_ids: list[int] | None = None) -> int:
-    """Nova entidade com 1 conta e as categorias padrão. Os administradores ganham acesso; outros, se indicados."""
+           user_ids: list[int] | None = None, dre_model: str | None = None) -> int:
+    """Nova entidade com 1 conta e as categorias padrão. Os administradores ganham acesso; outros, se indicados.
+    Modelo da DRE: o indicado, ou empresa para PJ e pessoal para PF (as categorias padrão seguem o modelo)."""
+    from finora.services.dre import MODELS
+    dre_model = dre_model or ("business" if person_type == "PJ" else "personal")
+    if dre_model not in MODELS:
+        raise ValueError("Modelo de DRE inválido.")
     lim = limit()
     if lim is not None and active_count(s) >= lim:
         raise LimitError(f"Sua edição permite até {lim} {'entidade' if lim == 1 else 'entidades'}. "
                          "Inative uma ou faça upgrade.")
     name, doc = _check(s, name, person_type, document, currency)
     from finora.services.setup import _add_default_categories
-    e = Entity(name=name, currency=currency, person_type=person_type, document=doc, is_active=True)
+    e = Entity(name=name, currency=currency, person_type=person_type, document=doc, is_active=True,
+               dre_model=dre_model)
     s.add(e)
     s.flush()
     s.add(Account(entity_id=e.id, name=account_name.strip() or "Conta principal", kind="bank", currency=currency,
                   opening_balance=0, is_active=True))
     if default_categories:
-        _add_default_categories(s, e.id)
+        _add_default_categories(s, e.id, dre_model)
     ids = set(user_ids or []) | set(s.scalars(select(User.id).where(User.is_admin)))
     for uid in ids:
         s.add(UserEntity(user_id=uid, entity_id=e.id))
@@ -102,8 +109,13 @@ def create(s: Session, *, name: str, person_type: str = "PF", document: str | No
 
 
 def update(s: Session, entity_id: int, *, name: str, person_type: str, document: str | None,
-           is_active: bool = True) -> None:
+           is_active: bool = True, dre_model: str | None = None) -> None:
+    """Trocar o modelo da DRE remapeia as linhas da DRE das categorias desta entidade (services/dre)."""
     e = s.get(Entity, entity_id)
+    if dre_model is not None and dre_model != (e.dre_model or "personal"):
+        from finora.services import categories
+        categories.convert_model(s, entity_id, dre_model)      # grava junto com o resto, no commit abaixo
+        e.dre_model = dre_model
     name, doc = _check(s, name, person_type, document, e.currency, exclude_id=entity_id)
     if e.is_active and not is_active and active_count(s) <= 1:
         raise ValueError("Precisa ficar pelo menos uma entidade ativa.")

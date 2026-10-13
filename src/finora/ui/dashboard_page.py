@@ -309,6 +309,8 @@ class DashboardPage(QWidget):
             k = dashboard.kpis(s, self.profile.id, today)
             result = dashboard.month_result(s, self.profile.id, year, month)
             prev_result = dashboard.month_result(s, self.profile.id, prev.year, prev.month)
+            from finora.models import Entity
+            business = getattr(s.get(Entity, self.profile.id), "dre_model", "") == "business"
             flow = dashboard.monthly_flow(s, self.profile.id, 6, ref)
             accs = accounts.list_accounts(s, self.profile.id)
             due = dashboard.due_soon(s, self.profile.id, 7, today)
@@ -331,6 +333,7 @@ class DashboardPage(QWidget):
             note = f"{money.fmt(abs(diff), cur)} {'a mais' if diff > 0 else 'a menos'} que em {prev_name}"
         self.k_result.label.setText("Sobra do mês" if (year, month) == (today.year, today.month)
                                     else f"Sobra de {MONTHS[month - 1]}")
+        self.k_result.label.setText("Resultado do mês" if business else "Sobra do mês")
         self.k_result.set(money.fmt(result, cur), note,
                           "pos" if result > 0 else "neg" if result < 0 else None)
 

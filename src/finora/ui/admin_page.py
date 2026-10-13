@@ -321,8 +321,16 @@ class EntitiesTab(QWidget):
             from finora.ui.contacts_page import LOOKUP_MSG
             self.lookup.setToolTip(LOOKUP_MSG)
             doc_row.addWidget(lock_icon(LOOKUP_MSG, t))
+        from finora.services import dre as dre_mod
+        self.dre_model = QComboBox()
+        for k, label in dre_mod.MODELS.items():
+            self.dre_model.addItem(label, k)
+        self.dre_model.setToolTip("Pessoal: Moradia, Alimentação, Sobra do mês…\n"
+                                  "Empresa: Receita bruta, Impostos, Custos, Lucro bruto, Lucro líquido…\n"
+                                  "Trocar adapta as categorias desta entidade para as linhas do outro modelo.")
+        self.ptype.currentIndexChanged.connect(self._ptype_changed)
         for label, w in (("Nome", self.name), ("Tipo", self.ptype), ("CPF/CNPJ", doc_row),
-                         ("Moeda principal", self.currency)):
+                         ("Moeda principal", self.currency), ("Modelo da DRE", self.dre_model)):
             fl.addWidget(field_label(label, t))
             fl.addLayout(w) if isinstance(w, QHBoxLayout) else fl.addWidget(w)
         self.det = {}
@@ -403,6 +411,7 @@ class EntitiesTab(QWidget):
         from finora.ui.widgets import fill_currency_box
         fill_currency_box(self.currency)
         self.ptype.setCurrentIndex(0)
+        self.dre_model.setCurrentIndex(self.dre_model.findData("personal"))
         self.currency.setEnabled(True)
         self.active.hide()
         for w in self.det.values():
@@ -415,7 +424,10 @@ class EntitiesTab(QWidget):
         self.editing = e
         self.title.setText("Editar entidade")
         self.name.setText(e.name)
+        self.ptype.blockSignals(True)
         self.ptype.setCurrentIndex(max(0, self.ptype.findData(e.person_type)))
+        self.ptype.blockSignals(False)
+        self.dre_model.setCurrentIndex(max(0, self.dre_model.findData(e.dre_model)))
         self.doc.setText(e.document_fmt)
         self.lookup_note.hide()
         self.currency.setCurrentIndex(max(0, self.currency.findData(e.currency)))
@@ -442,6 +454,12 @@ class EntitiesTab(QWidget):
             self.logo_view.setPixmap(QPixmap())
             self.logo_view.setText("sem\nlogo")
         self.logo_clear.setVisible(png is not None)
+
+    def _ptype_changed(self):
+        """Entidade nova: PJ sugere a DRE de empresa; PF, a pessoal."""
+        if self.editing is None:
+            self.dre_model.setCurrentIndex(self.dre_model.findData(
+                "business" if self.ptype.currentData() == "PJ" else "personal"))
 
     def _lookup(self):
         from finora.core import documents
@@ -516,12 +534,23 @@ class EntitiesTab(QWidget):
             with Session() as s:
                 if self.editing is None:
                     eid = entity_admin.create(s, name=self.name.text(), person_type=self.ptype.currentData(),
-                                              document=self.doc.text(), currency=self.currency.currentData())
+                                              document=self.doc.text(), currency=self.currency.currentData(),
+                                              dre_model=self.dre_model.currentData())
                     msg = "Entidade criada. Para abri-la, clique no seu nome no alto do menu › Trocar entidade."
                 else:
                     eid = self.editing.id
+                    model = self.dre_model.currentData()
+                    if model != self.editing.dre_model and QMessageBox.question(
+                            self, "Modelo da DRE",
+                            f"Trocar a DRE de \"{self.editing.name}\" para o modelo {self.dre_model.currentText()}?"
+                            "\n\nAs categorias desta entidade passam para as linhas equivalentes do novo modelo "
+                            "(ex.: Moradia vira Despesas administrativas). Depois confira em Categorias e ajuste o "
+                            "que precisar. Nenhum lançamento muda.",
+                            QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+                        return
                     entity_admin.update(s, eid, name=self.name.text(), person_type=self.ptype.currentData(),
-                                        document=self.doc.text(), is_active=self.active.isChecked())
+                                        document=self.doc.text(), is_active=self.active.isChecked(),
+                                        dre_model=model)
                     msg = "Entidade atualizada."
                 entity_admin.update_details(s, eid, **{k: w.text() for k, w in self.det.items()})
                 if self._logo_changed:

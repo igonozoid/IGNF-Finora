@@ -64,6 +64,7 @@ def _open_folder(path: Path):
 
 
 class SettingsPage(QWidget):
+    modules_changed = Signal()           # ligou/desligou um módulo: o menu se atualiza
     message = Signal(str)
     theme_requested = Signal(str)
     nav_requested = Signal(str)
@@ -94,6 +95,9 @@ class SettingsPage(QWidget):
         self.security = self._security_section()
         self.admin_sections.append(self.security)
         bl.addWidget(self.security)
+        self.modules_box = self._modules_section()
+        self.admin_sections.append(self.modules_box)
+        bl.addWidget(self.modules_box)
         bl.addWidget(self._appearance_section())
         bl.addWidget(self._reminders_section())
         edition = self._edition_section()
@@ -659,6 +663,49 @@ class SettingsPage(QWidget):
         lay.addWidget(_muted("Dica: o botão « ao lado de \"Tema\" recolhe e expande o menu a qualquer momento."))
         return box
 
+    # ---------- módulos da entidade ----------
+    def _modules_section(self) -> QFrame:
+        from finora.services import modules
+        box, lay = _section("Módulos desta entidade", "fa6s.puzzle-piece", self.t)
+        lay.addWidget(_muted("Ligue só o que esta entidade usa: um escritório não precisa de vendas; uma fazenda usa "
+                             "o rural. Desligar esconde o módulo, mas não apaga nada."))
+        self.module_checks = {}
+        for m in modules.CATALOG.values():
+            row = QHBoxLayout()
+            row.setSpacing(theme.SP_M)
+            chk = QCheckBox(m.label + ("" if m.ready else "  (em construção)"))
+            chk.setEnabled(m.ready)
+            row.addWidget(chk)
+            row.addStretch(1)
+            lay.addLayout(row)
+            needs = (" Precisa de: " + ", ".join(modules.CATALOG[r].label for r in m.requires) + ".") if m.requires \
+                else ""
+            lay.addWidget(_muted(m.description + needs))
+            chk.toggled.connect(lambda on, k=m.key: self._module_toggled(k, on))
+            self.module_checks[m.key] = chk
+        self._refresh_modules()
+        return box
+
+    def _refresh_modules(self):
+        from finora.services import modules
+        with Session() as s:
+            on = modules.enabled(s, self.profile.id)
+        for k, chk in self.module_checks.items():
+            chk.blockSignals(True)
+            chk.setChecked(k in on)
+            chk.blockSignals(False)
+
+    def _module_toggled(self, key: str, on: bool):
+        from finora.services import modules
+        with Session() as s:
+            final = modules.set_enabled(s, self.profile.id, key, on)
+        self._refresh_modules()
+        label = modules.CATALOG[key].label
+        extra = sorted(modules.CATALOG[k].label for k in (final - {key}) if on) if on else []
+        self.message.emit(f"{label} ligado" + (f" (junto: {', '.join(extra)})" if extra else "") + "."
+                          if on else f"{label} desligado (os dados ficam guardados).")
+        self.modules_changed.emit()
+
     # ---------- lembretes ----------
     def _reminders_section(self) -> QFrame:
         box, lay = _section("Lembretes de vencimento", "fa6s.bell", self.t)
@@ -924,6 +971,7 @@ class SettingsPage(QWidget):
         self.data_location.refresh()
         self._refresh_lock()
         self._refresh_security()
+        self._refresh_modules()
 
     def apply_theme(self, t: dict):
         self.t = t

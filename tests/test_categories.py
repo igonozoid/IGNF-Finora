@@ -14,7 +14,7 @@ def _find(tree, name):
 
 def test_arvore_na_ordem_da_dre(session, profile):
     tree = categories.tree(session, profile.id)
-    assert [g.dre_group for g in tree] == list(dre.GROUPS)
+    assert [g.dre_group for g in tree] == list(dre.PERSONAL)
     assert all(c.dre_group == g.dre_group for g in tree for c in g.children)
 
 
@@ -30,7 +30,7 @@ def test_grupo_novo_precisa_de_linha_dre(session, profile):
     with pytest.raises(ValueError):
         categories.create(session, profile.id, name="Pets")
     categories.create(session, profile.id, name="Pets", dre_group="outras")
-    assert _find(categories.tree(session, profile.id), "Pets").code == str(len(dre.GROUPS) + 1)
+    assert _find(categories.tree(session, profile.id), "Pets").code == str(len(dre.PERSONAL) + 1)
 
 
 def test_receita_tem_tipo_income(session, profile):

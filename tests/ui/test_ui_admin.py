@@ -148,3 +148,23 @@ def test_entidade_autopreenche_pelo_cnpj(plus, window, monkeypatch):
     tab.lookup.click()
     assert tab.ptype.currentData() == "PJ" and tab.name.text() == "IGNF"
     assert tab.det["city"].text() == "Teutônia" and "Preenchi" in tab.lookup_note.text()
+
+
+def test_entidade_pj_sugere_dre_de_empresa_e_troca_com_confirmacao(plus, window, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    window.go_to("admin")
+    tab = window.page("admin").tabs["entities"]
+    tab._new()
+    tab.ptype.setCurrentIndex(tab.ptype.findData("PJ"))
+    assert tab.dre_model.currentData() == "business"
+    tab.ptype.setCurrentIndex(tab.ptype.findData("PF"))
+    assert tab.dre_model.currentData() == "personal"
+    tab.refresh()
+    tab._edit(next(e for e in tab.items if e.id == window.profile.id))
+    tab.dre_model.setCurrentIndex(tab.dre_model.findData("business"))
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    tab._save()
+    assert next(e for e in tab.items if e.id == window.profile.id).dre_model == "business"
+    window.go_to("categories")
+    page = window.page("categories")
+    assert page.dre_box.findData("receita_bruta") >= 0 and page.dre_box.findData("moradia") < 0

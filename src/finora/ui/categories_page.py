@@ -19,9 +19,9 @@ COL_NAME, COL_CODE, COL_DRE = range(3)
 
 
 def _group_icon(c: categories.CategoryView) -> tuple[str, str]:
-    if c.dre_group == "receitas":
+    if c.dre_group in dre.INCOME_GROUPS:
         return "fa6s.arrow-down", "pos"
-    if c.dre_group == "investimentos":
+    if c.dre_group in dre.NOT_RESULT:
         return "fa6s.piggy-bank", "acc"
     return "fa6s.arrow-up", "neg"
 
@@ -113,8 +113,7 @@ class CategoriesPage(QWidget):
         lay.addWidget(self.parent_val)
 
         self.dre_box = QComboBox()
-        for key, label in dre.GROUPS.items():
-            self.dre_box.addItem(label, key)
+        self._fill_dre_box()
         self.dre_lbl = field_label("Linha da DRE", self.t, DRE_HELP)
         lay.addWidget(self.dre_lbl)
         lay.addWidget(self.dre_box)
@@ -257,6 +256,7 @@ class CategoriesPage(QWidget):
             select_id = self.current.id if self.current else None
         collapsed = {self.tree.topLevelItem(i).data(0, Qt.UserRole) for i in range(self.tree.topLevelItemCount())
                      if not self.tree.topLevelItem(i).isExpanded()}
+        self._fill_dre_box()                      # o modelo da DRE da entidade pode ter mudado
         with Session() as s:
             roots = categories.tree(s, self.profile.id, self.show_inactive.isChecked())
 
@@ -327,3 +327,14 @@ class CategoriesPage(QWidget):
         dlg.exec()
         if dlg.changed:
             self.message.emit("Regras automáticas salvas.")
+
+    def _fill_dre_box(self):
+        with Session() as s:
+            groups = categories.model_groups(s, self.profile.id)
+        keep = self.dre_box.currentData()
+        self.dre_box.blockSignals(True)
+        self.dre_box.clear()
+        for key, label in groups.items():
+            self.dre_box.addItem(label, key)
+        self.dre_box.setCurrentIndex(max(0, self.dre_box.findData(keep)))
+        self.dre_box.blockSignals(False)

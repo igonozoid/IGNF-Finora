@@ -26,6 +26,15 @@ class Entity(Base):
     email: Mapped[str | None] = mapped_column(String(120))
     website: Mapped[str | None] = mapped_column(String(120))
     logo: Mapped[bytes | None] = mapped_column(LargeBinary(length=2_000_000), deferred=True)   # PNG, até 512 px
+    # Modelo da DRE: personal (Moradia, Alimentação…) ou business (Receita bruta, Custos, Lucro…); ver services/dre
+    dre_model: Mapped[str] = mapped_column(String(10), default="personal", server_default="personal")
+
+
+class EntityModule(Base):
+    """Módulo ligado numa entidade (estoque, vendas, produção, rural…; ver services/modules)."""
+    __tablename__ = "entity_modules"
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), primary_key=True)
+    module: Mapped[str] = mapped_column(String(20), primary_key=True)
 
 class Account(Base):
     __tablename__ = "accounts"

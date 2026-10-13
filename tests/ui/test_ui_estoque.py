@@ -58,3 +58,25 @@ def test_cadastrar_item_entrada_com_conta_a_pagar_e_saida(window, monkeypatch):
     assert page.hist.rowCount() == 2 and page.export_sheet().rows[0][1] == "Garrafa 500 mL"
     with db.Session() as s:
         assert stock.low_stock(s, window.profile.id)[0].name == "Garrafa 500 mL"
+
+
+def test_nova_categoria_direto_na_lista(window):
+    from finora.services import categories
+    from finora.ui import category_pick
+    with db.Session() as s:
+        modules.set_enabled(s, window.profile.id, "stock", True)
+    window._apply_access()
+    window.go_to("stock")
+    page = window.page("stock")
+    page.new_item()
+    page.f_kind.setCurrentIndex(page.f_kind.findData("product"))
+    combo = page.f_cat
+    assert combo.itemText(combo.count() - 1) == category_pick.NEW_LABEL
+    combo.setCurrentIndex(combo.count() - 1)
+    new_id = category_pick.picked(combo, page.t, name="Vendas de azeite")
+    assert new_id and combo.currentData() == new_id and "Vendas de azeite" in combo.currentText()
+    with db.Session() as s:
+        assert any(cid == new_id for cid, _l in categories.choices(s, window.profile.id, "income"))
+    combo.setCurrentIndex(combo.count() - 1)                          # nome repetido: volta para a anterior
+    assert category_pick.picked(combo, page.t, name="Vendas de azeite") is None
+    assert combo.currentData() == new_id

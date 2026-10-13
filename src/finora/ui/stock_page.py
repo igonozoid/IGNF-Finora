@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 
 from finora.core import money
 from finora.core.db import Session
-from finora.services import categories, export, stock
+from finora.services import export, stock
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.widgets import button, field_label, help_icon, set_tone
@@ -282,14 +282,9 @@ class StockPage(QWidget):
         sells = self.f_kind.currentData() in ("product", "produced")
         self.price_lbl.setVisible(sells)
         self.f_price.setVisible(sells)
-        keep = self.f_cat.currentData()
-        with Session() as s:
-            cats = categories.choices(s, self.profile.id, "income" if sells else "expense")
-        self.f_cat.clear()
-        self.f_cat.addItem("Nenhuma", None)
-        for cid, label in cats:
-            self.f_cat.addItem(label, cid)
-        self.f_cat.setCurrentIndex(max(0, self.f_cat.findData(keep)))
+        from finora.ui import category_pick
+        category_pick.fill(self.f_cat, self.profile.id, "income" if sells else "expense", self.f_cat.currentData(),
+                           empty="Nenhuma", t=self.t)
 
     def new_item(self):
         self.editing = None

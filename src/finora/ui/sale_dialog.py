@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 
 from finora.core import money
 from finora.core.db import Session
-from finora.services import accounts, categories, contacts, export, sales, stock
+from finora.services import accounts, contacts, export, sales, stock
 from finora.services.sales import SaleData, SaleLine
 from finora.ui import theme
 from finora.ui.stock_dialogs import parse_qty
@@ -38,7 +38,6 @@ class SaleDialog(QDialog):
             self.sellable = [i for i in self.items.values() if i.kind in ("product", "produced")] or \
                 list(self.items.values())
             accs = [(a.id, a.name) for a in accounts.list_accounts(s, entity_id)]
-            cats = categories.choices(s, entity_id, "income")
             people = contacts.names(s, entity_id)
             self.locs = [(loc.id, loc.name) for loc in stock.locations(s, entity_id)]
             self.detail = sales.get(s, sale_id) if sale_id else None
@@ -139,9 +138,8 @@ class SaleDialog(QDialog):
         self.first_due = QDateEdit(_qdate(date.today()), calendarPopup=True, displayFormat="dd/MM/yyyy")
         self.paid_now = QCheckBox("Já recebido (à vista)")
         self.category = QComboBox()
-        self.category.addItem("Automática (do item)", None)
-        for cid, label in cats:
-            self.category.addItem(label, cid)
+        from finora.ui import category_pick
+        category_pick.fill(self.category, entity_id, "income", empty="Automática (do item)", t=t)
         self.loc = QComboBox()
         for lid, name in self.locs:
             self.loc.addItem(name, lid)

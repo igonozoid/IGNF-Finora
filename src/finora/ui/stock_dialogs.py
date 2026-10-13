@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 
 from finora.core import money
 from finora.core.db import Session
-from finora.services import accounts, categories, contacts, stock
+from finora.services import accounts, contacts, stock
 from finora.ui import theme
 from finora.ui.widgets import button, field_label
 
@@ -50,7 +50,6 @@ class MoveDialog(QDialog):
             self.locs = [(loc.id, loc.name) for loc in stock.locations(s, entity_id)]
             accs = [(a.id, a.name) for a in accounts.list_accounts(s, entity_id) if a.kind != "card"]
             cards_ = [(a.id, a.name) for a in accounts.list_accounts(s, entity_id) if a.kind == "card"]
-            cats = categories.choices(s, entity_id, "expense")
             people = contacts.names(s, entity_id)
 
         lay = QVBoxLayout(self)
@@ -124,9 +123,8 @@ class MoveDialog(QDialog):
         self.pay_due = QDateEdit(_qdate(date.today()), calendarPopup=True, displayFormat="dd/MM/yyyy")
         self.pay_paid = QCheckBox("Já foi paga")
         self.pay_cat = QComboBox()
-        self.pay_cat.addItem("Categoria do item", None)
-        for cid, label in cats:
-            self.pay_cat.addItem(label, cid)
+        from finora.ui import category_pick
+        category_pick.fill(self.pay_cat, entity_id, "expense", empty="Categoria do item", t=t)
         self.pay_box = QWidget()
         pb = QGridLayout(self.pay_box)
         pb.setContentsMargins(0, 0, 0, 0)

@@ -123,6 +123,21 @@ class WrapFrame(QFrame):
                 self.setMinimumHeight(need)
 
 
+class WrapLabel(QLabel):
+    """QLabel que quebra linha e reserva a altura das linhas na largura que recebeu (vários textos longos
+    no mesmo quadro: sem isso o Qt deixa cada um com uma linha só e sobra espaço vazio embaixo)."""
+
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(text, parent)
+        self.setWordWrap(True)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        need = self.heightForWidth(self.width())
+        if need > 0 and need != self.minimumHeight():
+            self.setMinimumHeight(need)
+
+
 def upgrade_box(reason: str, t: dict, parent=None, compact: bool = False) -> QFrame:
     """Aviso de limite da edição Free, com cadeado e convite para upgrade.
     `compact`: botão embaixo do texto, para painéis estreitos."""

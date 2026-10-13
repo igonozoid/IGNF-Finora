@@ -505,13 +505,12 @@ class EntryForm(QFrame):
         self._set_visible(self.cc_box, self._has_cc and self._kind() != "transfer")
 
     def _load_categories(self, keep: int | None = None):
-        with Session() as s:
-            items = categories.choices(s, self.profile.id, self._kind()) if self._kind() != "transfer" else []
-        self.category.clear()
-        self.category.addItem("Sem categoria", None)
-        for cid, label in items:
-            self.category.addItem(label, cid)
-        self.category.setCurrentIndex(max(0, self.category.findData(keep)) if keep else 0)
+        from finora.ui import category_pick
+        if self._kind() == "transfer":            # transferência não tem categoria (o campo fica escondido)
+            self.category.clear()
+            self.category.addItem("Sem categoria", None)
+            return
+        category_pick.fill(self.category, self.profile.id, self._kind(), keep, t=self.t)
 
     def _kind_changed(self):
         k = self._kind()

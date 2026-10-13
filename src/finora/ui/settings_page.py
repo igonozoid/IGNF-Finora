@@ -42,7 +42,8 @@ def _section(title: str, icon: str, t: dict) -> tuple[QFrame, QVBoxLayout]:
 
 
 def _muted(text: str) -> QLabel:
-    lbl = QLabel(text, wordWrap=True)
+    from finora.ui.widgets import WrapLabel
+    lbl = WrapLabel(text)
     lbl.setProperty("role", "muted")
     return lbl
 

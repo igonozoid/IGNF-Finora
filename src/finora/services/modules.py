@@ -36,7 +36,7 @@ CATALOG = {m.key: m for m in (
            "de insumos e custo por área.", ("stock",), ready=True),
     Module("livestock", "Rural: pecuária", "fa6s.cow",
            "Rebanho por lote: nascimentos, compras, vendas, mortes, troca de piquete, vacinas e pesagens.",
-           ("rural",)),
+           ("rural",), ready=True),
 )}
 
 

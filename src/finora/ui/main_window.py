@@ -31,6 +31,7 @@ from finora.ui.pages import PlaceholderPage
 from finora.ui.reconcile_page import ReconcilePage
 from finora.ui.reports_page import ReportsPage
 from finora.ui.settings_page import SettingsPage
+from finora.ui.livestock_page import LivestockPage
 from finora.ui.production_page import ProductionPage
 from finora.ui.rural_page import RuralPage
 from finora.ui.sales_page import SalesPage
@@ -59,6 +60,8 @@ NAV = [
      "Aqui você registra a produção: o que foi usado, o que foi produzido e quanto custou cada unidade."),
     ("rural", "fa6s.seedling", "Agricultura", "Propriedades, áreas, atividades e colheitas",
      "Aqui você registra o que acontece em cada área: adubação, poda, colheita, ocorrências e o custo de cada uma."),
+    ("livestock", "fa6s.cow", "Pecuária", "Rebanho por lote, registros e custos",
+     "Aqui você acompanha o rebanho por lote: nascimentos, compras, vendas, sanidade, pesagens e custos."),
     ("reconcile", "fa6s.scale-balanced", "Conciliação", "Extrato do banco x seus lançamentos",
      "Aqui você importa o extrato do banco e confere se tudo foi lançado."),
     ("reports", "fa6s.file-lines", "Relatórios", "DRE, fluxo de caixa, extratos, orçamento e atrasados",
@@ -401,7 +404,8 @@ class MainWindow(QMainWindow):
                  "categories": CategoriesPage, "cost_centers": CostCentersPage, "contacts": ContactsPage,
                  "reconcile": ReconcilePage, "reports": ReportsPage, "admin": AdminPage, "settings": SettingsPage,
                  "stock": StockPage, "sales": SalesPage,
-                 "production": ProductionPage, "rural": RuralPage}
+                 "production": ProductionPage, "rural": RuralPage,
+                 "livestock": LivestockPage}
         for old in self.pages:
             self.stack.removeWidget(old)
             old.deleteLater()

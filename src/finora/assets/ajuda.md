@@ -114,6 +114,25 @@ Módulo opcional (precisa do Estoque): ligue em **Configurações › Módulos d
 - **Áreas** mostra o **custo a apropriar** de cada uma (gasto que ainda não foi para uma colheita).
 - **Custo por área**: insumos, outros custos, total, **custo por hectare** e o que foi colhido no período.
 
+## Pecuária {#livestock}
+
+Módulo opcional (precisa da Agricultura, onde ficam os piquetes): ligue em **Configurações › Módulos desta
+entidade**. O rebanho é controlado **por lote**, não por animal.
+
+- **Mais › Novo lote**: nome (ex.: Vacas de cria, Recria 2026), espécie, categoria e o piquete onde está.
+- **Novo registro**: escolha o lote, a data e o tipo:
+  - **Nascimento**, **Compra**, **Venda**, **Morte**: informe as cabeças (e o peso médio, se tiver). Compra e venda
+    podem ir direto para **Contas a pagar / a receber**.
+  - **Transferência para outro lote**: ex.: desmama (bezerros saem do lote das vacas para o lote de recria).
+  - **Troca de piquete**: o lote passa para outra área a partir da data.
+  - **Pesagem**: peso médio por cabeça. Com duas pesagens, aparece o **GMD** (ganho médio por dia).
+  - **Sanidade** (vacina, vermífugo, remédio) e **Alimentação** (ração, silagem, feno, sal): os insumos saem do
+    estoque pelo custo médio. A silagem e o feno colhidos na **Agricultura** entram no estoque e podem ser usados
+    aqui.
+  - **Outros custos** (veterinário, frete) entram só no custo do lote.
+- As **cabeças** nunca são digitadas: saem dos registros. Para corrigir, abra o registro (dois cliques) e altere.
+- **Custo por lote**: nascimentos, mortes, compras, vendas e o custo de sanidade e trato no período, por cabeça.
+
 ## Vendas {#sales}
 
 Módulo opcional (precisa do Estoque): ligue em **Configurações › Módulos desta entidade**.

@@ -79,8 +79,8 @@ Ordem de implementação:
 - [x] Do IgnControl: previsão de caixa dia a dia (pior saldo projetado) e relatório analítico
 - [x] App de licenças: repositório privado `igonozoid/IGNF-Finora-Licencas` (pasta `../IGNF-Finora-Licencas`)
 
-Do IgnControl **não** trazemos: estoque, vendas, RH, rural, agenda de tarefas e cofre de senhas — fogem de
-finanças pessoais. Podem virar módulos opcionais no futuro.
+Do IgnControl **não** trazemos: RH, agenda de tarefas e cofre de senhas. Estoque, vendas e rural viraram módulos
+opcionais (Fase G).
 
 ## Fase E — Multiusuário, multiempresa e rede local (Plus/Pro)
 
@@ -125,6 +125,19 @@ finanças pessoais. Podem virar módulos opcionais no futuro.
 - [x] Lembretes de vencimento (aviso do sistema, ícone ao lado do relógio)
 - [x] Metas e objetivos no Dashboard
 - [x] Gráficos nos relatórios, também na impressão
+
+## Fase G — Módulos por entidade (out/2026, uso interno no BPO primeiro)
+
+Ligados em Configurações › Módulos desta entidade; desligar esconde, não apaga. As edições vêm depois.
+
+- [x] Base: DRE de empresa (modelo por entidade, conversão das categorias) e catálogo de módulos com dependências
+- [x] Produtos e estoque: itens, locais, entradas (com conta a pagar), saídas, perdas, inventário, custo médio
+- [x] Vendas por pedido: orçamento, confirmação (baixa estoque, contas a receber), doação/bonificação, margem
+- [x] Produção por lote: insumos → produtos, outros custos, rateio, rendimento, custo por unidade
+- [x] Agricultura: propriedades e áreas, atividades com insumos, ocorrências, colheita com custo, custo por hectare
+- [x] Pecuária por lote: cabeças pelos registros, compra/venda com contas, sanidade, alimentação, pesagem/GMD
+- [ ] NF-e (quando for preciso)
+- [ ] Pecuária por animal (brinco), se algum cliente pedir
 
 ## Futuro (a estudar)
 

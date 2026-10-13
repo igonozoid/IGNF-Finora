@@ -24,8 +24,9 @@ KINDS = {"product": "Produto para venda", "input": "Insumo / matéria-prima", "m
 UNITS = ["un", "kg", "g", "t", "L", "mL", "cx", "pct", "dz", "garrafa", "pote", "saco", "fardo", "m", "m²", "m³",
          "cabeça"]
 MOVES = {"in": "Entrada", "out": "Saída / consumo", "loss": "Perda", "adjust": "Inventário (ajuste)",
-         "transfer": "Transferência", "sale": "Venda", "prod_in": "Produção (entrou)", "prod_out": "Produção (usou)"}
-OUT_KINDS = {"out", "loss", "sale", "prod_out"}
+         "transfer": "Transferência", "sale": "Venda", "prod_in": "Produção (entrou)", "prod_out": "Produção (usou)",
+         "farm_out": "Usado na lavoura", "harvest": "Colheita"}
+OUT_KINDS = {"out", "loss", "sale", "prod_out", "farm_out"}
 Q3 = Decimal("0.001")
 Q4 = Decimal("0.0001")
 ZERO = Decimal("0")
@@ -378,6 +379,8 @@ def delete_move(s: Session, move_id: int) -> int | None:
         raise ValueError("Esse movimento é de um pedido de venda: cancele o pedido em Vendas.")
     if m.production_id is not None:
         raise ValueError("Esse movimento é de um lote de produção: reabra o lote em Produção.")
+    if m.activity_id is not None:
+        raise ValueError("Esse movimento é de uma atividade da lavoura: altere ou exclua a atividade em Agricultura.")
     _check_day(s, m.entity_id, m.day)
     entry_id = m.entry_id
     pair = list(s.scalars(select(StockMove).where(StockMove.transfer_id == m.transfer_id))) if m.transfer_id else [m]

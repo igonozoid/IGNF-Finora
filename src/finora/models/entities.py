@@ -174,6 +174,7 @@ class StockMove(Base):
     transfer_id: Mapped[str | None] = mapped_column(String(32), index=True)   # liga a saída e a entrada
     sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales.id", ondelete="CASCADE"), index=True)
     production_id: Mapped[int | None] = mapped_column(ForeignKey("productions.id", ondelete="CASCADE"), index=True)
+    activity_id: Mapped[int | None] = mapped_column(ForeignKey("farm_activities.id", ondelete="CASCADE"), index=True)
     document_no: Mapped[str | None] = mapped_column(String(40))
     notes: Mapped[str | None] = mapped_column(String(300))
 
@@ -232,6 +233,46 @@ class ProductionLine(Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(15, 3))
     share: Mapped[Decimal | None] = mapped_column(Numeric(7, 3))           # só nos produtos; vazio = rateio pela qtd.
     unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(15, 4))     # gravado ao concluir
+
+class Farm(Base):
+    """Propriedade rural (fazenda, sítio, chácara) do módulo Agricultura."""
+    __tablename__ = "farms"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    city: Mapped[str | None] = mapped_column(String(80))
+    notes: Mapped[str | None] = mapped_column(String(300))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class FarmArea(Base):
+    """Área da propriedade: talhão, pomar, pasto/piquete, apiário… com cultura e tamanho (hectares)."""
+    __tablename__ = "farm_areas"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    kind: Mapped[str] = mapped_column(String(12), default="field")       # field|orchard|pasture|apiary|other
+    crop: Mapped[str | None] = mapped_column(String(80))                 # cultura: "Oliveira arbequina", "Tifton"
+    hectares: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    units: Mapped[int | None]                                            # nº de plantas, colmeias…
+    notes: Mapped[str | None] = mapped_column(String(300))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class FarmActivity(Base):
+    """Atividade numa área (plantio, adubação, poda, colheita…) ou ocorrência (geada, praga). Os insumos usados
+    saem do estoque (StockMove com activity_id); na colheita, o produto entra."""
+    __tablename__ = "farm_activities"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    area_id: Mapped[int] = mapped_column(ForeignKey("farm_areas.id"), index=True)
+    day: Mapped[date]
+    kind: Mapped[str] = mapped_column(String(12))
+    description: Mapped[str | None] = mapped_column(String(200))
+    other_cost: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0"))   # mão de obra, máquina…
+    inputs_cost: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0"))  # gravado: insumos usados
+    harvest_cost: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0")) # custo que foi p/ colheita
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("stock_locations.id"))
+    notes: Mapped[str | None] = mapped_column(String(300))
 
 class Currency(Base):
     """Moeda que não está na lista do Finora, cadastrada pela pessoa (vale para todas as entidades)."""

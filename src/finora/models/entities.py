@@ -173,6 +173,7 @@ class StockMove(Base):
     entry_id: Mapped[int | None] = mapped_column(ForeignKey("entries.id", ondelete="SET NULL"))   # compra/venda
     transfer_id: Mapped[str | None] = mapped_column(String(32), index=True)   # liga a saída e a entrada
     sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales.id", ondelete="CASCADE"), index=True)
+    production_id: Mapped[int | None] = mapped_column(ForeignKey("productions.id", ondelete="CASCADE"), index=True)
     document_no: Mapped[str | None] = mapped_column(String(40))
     notes: Mapped[str | None] = mapped_column(String(300))
 
@@ -206,6 +207,31 @@ class SaleItem(Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(15, 3))
     unit_price: Mapped[Decimal] = mapped_column(Numeric(15, 2))
     unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(15, 4))     # custo médio na confirmação (margem)
+
+class Production(Base):
+    """Lote de produção (módulo Produção): insumos que saem do estoque viram produtos que entram, com custo.
+    Em andamento não mexe no estoque; concluído grava os movimentos prod_out/prod_in."""
+    __tablename__ = "productions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    number: Mapped[int]                                                    # nº do lote na entidade
+    name: Mapped[str] = mapped_column(String(80))                          # "Azeite safra 2026 – lote 3"
+    day: Mapped[date]                                                      # data da produção (dos movimentos)
+    status: Mapped[str] = mapped_column(String(10), default="open")       # open|done
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("stock_locations.id"))
+    extra_cost: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0"))   # mão de obra, energia…
+    notes: Mapped[str | None] = mapped_column(String(300))
+
+class ProductionLine(Base):
+    """Insumo usado (role="in") ou produto obtido (role="out"). share = % do custo do lote para esse produto."""
+    __tablename__ = "production_lines"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    production_id: Mapped[int] = mapped_column(ForeignKey("productions.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(3))                           # in|out
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id"))
+    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 3))
+    share: Mapped[Decimal | None] = mapped_column(Numeric(7, 3))           # só nos produtos; vazio = rateio pela qtd.
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(15, 4))     # gravado ao concluir
 
 class Currency(Base):
     """Moeda que não está na lista do Finora, cadastrada pela pessoa (vale para todas as entidades)."""

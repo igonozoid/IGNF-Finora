@@ -374,6 +374,10 @@ def delete_move(s: Session, move_id: int) -> int | None:
     m = s.get(StockMove, move_id)
     if m is None:
         return None
+    if m.sale_id is not None:
+        raise ValueError("Esse movimento é de um pedido de venda: cancele o pedido em Vendas.")
+    if m.production_id is not None:
+        raise ValueError("Esse movimento é de um lote de produção: reabra o lote em Produção.")
     _check_day(s, m.entity_id, m.day)
     entry_id = m.entry_id
     pair = list(s.scalars(select(StockMove).where(StockMove.transfer_id == m.transfer_id))) if m.transfer_id else [m]

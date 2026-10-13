@@ -71,6 +71,12 @@ def main():
         log.info("Preferências trazidas do Registro do Windows: %d", moved)
 
     app = QApplication(sys.argv)
+    from finora.core import single_instance
+    instance = single_instance.name_for(paths.DATA_DIR)
+    if single_instance.already_running(instance):
+        log.info("O Finora já estava aberto; só trouxe a janela para a frente")
+        return 0
+    single_instance.listen(instance)
     qInstallMessageHandler(logs.qt_message_handler)
     if not locale_br.install(app):
         log.warning("Tradução pt-BR do Qt não encontrada; botões padrão ficarão em inglês")
@@ -156,6 +162,8 @@ def run_session(app, t: dict, first_profile=None) -> int:
         profile = chosen or profile               # cancelou a troca de entidade: continua na mesma
         log.info("Abrindo %s como %s", profile.name, user.name if user else "-")
         w = MainWindow(profile, user)
+        from finora.core import single_instance
+        single_instance.window = w
         w.show()
         from finora.ui.update_check import check_in_background
         check_in_background(w)

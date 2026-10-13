@@ -72,6 +72,9 @@ $app = {_ps(app_dir)}; $new = {_ps(new_dir)}; $old = {_ps(old)}; $log = {_ps(log
 function Log($m) {{ Add-Content -Path $log -Value ("$(Get-Date -Format s) " + $m) }}
 Log 'Esperando o Finora fechar'
 try {{ Wait-Process -Id {pid} -Timeout 120 -ErrorAction SilentlyContinue }} catch {{}}
+if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{
+  Log 'O Finora não fechou em 2 minutos; encerrando'
+  Stop-Process -Id {pid} -Force -ErrorAction SilentlyContinue }}
 Start-Sleep -Milliseconds 800
 if (Test-Path $old) {{ Remove-Item $old -Recurse -Force }}
 New-Item -ItemType Directory -Path $old | Out-Null

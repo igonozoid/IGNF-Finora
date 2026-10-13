@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from finora.core.current import current
 from finora.models import (
-    Account, Attachment, BankLine, Budget, Category, Contact, CostCenter, Entity, Entry, ExchangeRate, Permission,
-    User, UserEntity,
+    Account, Attachment, BankLine, Budget, Category, CategoryRule, Contact, CostCenter, Currency, Entity,
+    EntityModule, Entry, ExchangeRate, Goal, Item, Permission, StockLocation, StockMove, User, UserEntity,
 )
 
 # módulo -> (rótulo, ícone, explicação)
@@ -16,18 +16,21 @@ MODULES = {
     "financial": ("Financeiro", "fa6s.right-left",
                   "Lançamentos, contas, categorias, centros de custo, conciliação e Dashboard."),
     "contacts": ("Contatos", "fa6s.address-book", "Cadastro de pessoas e empresas."),
+    "stock": ("Estoque", "fa6s.boxes-stacked", "Produtos, insumos, materiais e movimentos de estoque."),
     "reports": ("Relatórios", "fa6s.file-lines", "DRE, fluxo de caixa, extratos, orçamento e os demais."),
     "audit": ("Auditoria", "fa6s.clock-rotate-left", "Ver o histórico de alterações."),
     "admin": ("Administração", "fa6s.shield-halved",
               "Usuários, entidades, permissões, backup, moedas, fechamento de período e licença."),
 }
 LEVELS = {"none": "Nenhum", "read": "Leitura", "full": "Total"}
-DEFAULTS = {"financial": "full", "contacts": "full", "reports": "read", "audit": "none", "admin": "none"}
+DEFAULTS = {"financial": "full", "contacts": "full", "stock": "full", "reports": "read", "audit": "none",
+            "admin": "none"}
 _ORDER = ["none", "read", "full"]
 
 # telas do menu -> módulo que elas exigem
 PAGE_MODULE = {"dashboard": "financial", "entries": "financial", "accounts": "financial", "categories": "financial",
-               "cost_centers": "financial", "reconcile": "financial", "contacts": "contacts", "reports": "reports",
+               "cost_centers": "financial", "reconcile": "financial", "contacts": "contacts", "stock": "stock",
+               "reports": "reports",
                "admin": "admin", "settings": None}
 
 
@@ -82,6 +85,8 @@ def entities_for(s: Session, user_id: int | None) -> list[int]:
 # ---------- trava: só grava onde o usuário tem acesso Total ----------
 TABLE_MODULE = {Entry: "financial", Account: "financial", Category: "financial", CostCenter: "financial",
                 BankLine: "financial", Budget: "financial", Attachment: "financial", ExchangeRate: "admin",
+                CategoryRule: "financial", Goal: "financial", Currency: "admin", EntityModule: "admin",
+                Item: "stock", StockLocation: "stock", StockMove: "stock",
                 Contact: "contacts", Entity: "admin", User: "admin", Permission: "admin", UserEntity: "admin"}
 
 

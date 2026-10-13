@@ -135,6 +135,46 @@ class CategoryRule(Base):
     description: Mapped[str | None] = mapped_column(String(200))  # descrição para o lançamento (vazio = mantém)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+class Item(Base):
+    """Produto, insumo ou material (módulo Estoque). Saldo e custo médio saem dos movimentos (StockMove)."""
+    __tablename__ = "items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    code: Mapped[str | None] = mapped_column(String(30))                  # código interno ou de barras
+    name: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(10), default="product")      # product|input|material|produced
+    unit: Mapped[str] = mapped_column(String(10), default="un")
+    sale_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    min_stock: Mapped[Decimal | None] = mapped_column(Numeric(15, 3))     # aviso de estoque baixo
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    notes: Mapped[str | None] = mapped_column(String(300))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class StockLocation(Base):
+    """Onde o item fica: depósito, galpão, almoxarifado, apiário…"""
+    __tablename__ = "stock_locations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class StockMove(Base):
+    """Movimento de estoque. Quantidade com sinal (+ entrou, − saiu). Na entrada, unit_cost é o custo pago."""
+    __tablename__ = "stock_moves"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id"), index=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("stock_locations.id"))
+    day: Mapped[date]
+    kind: Mapped[str] = mapped_column(String(12))        # in|out|loss|adjust|transfer|sale|prod_in|prod_out
+    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 3))
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(15, 4))
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"))
+    entry_id: Mapped[int | None] = mapped_column(ForeignKey("entries.id", ondelete="SET NULL"))   # compra/venda
+    transfer_id: Mapped[str | None] = mapped_column(String(32), index=True)   # liga a saída e a entrada
+    document_no: Mapped[str | None] = mapped_column(String(40))
+    notes: Mapped[str | None] = mapped_column(String(300))
+
 class Currency(Base):
     """Moeda que não está na lista do Finora, cadastrada pela pessoa (vale para todas as entidades)."""
     __tablename__ = "currencies"

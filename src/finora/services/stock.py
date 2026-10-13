@@ -53,14 +53,20 @@ def default_location(s: Session, entity_id: int) -> int:
     return loc.id
 
 
-def locations(s: Session, entity_id: int, include_inactive: bool = False) -> list[StockLocation]:
+@dataclass(frozen=True)
+class LocationView:
+    id: int
+    name: str
+    is_active: bool
+
+
+def locations(s: Session, entity_id: int, include_inactive: bool = False) -> list[LocationView]:
     default_location(s, entity_id)
+    s.commit()                                 # o "Principal" criado agora fica gravado
     q = select(StockLocation).where(StockLocation.entity_id == entity_id)
     if not include_inactive:
         q = q.where(StockLocation.is_active)
-    out = list(s.scalars(q.order_by(StockLocation.id)))
-    s.commit()
-    return out
+    return [LocationView(loc.id, loc.name, loc.is_active) for loc in s.scalars(q.order_by(StockLocation.id))]
 
 
 def save_location(s: Session, entity_id: int, name: str, location_id: int | None = None,

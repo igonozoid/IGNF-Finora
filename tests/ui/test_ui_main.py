@@ -9,6 +9,13 @@ from finora.ui.main_window import KEYS, NAV, SHOW_NEW_ENTRY
 
 
 def test_todas_as_telas_abrem(window, qtbot):
+    from finora.core import db
+    from finora.services import modules
+    with db.Session() as s:                      # telas de módulo só aparecem com o módulo ligado
+        for m in modules.CATALOG.values():
+            if m.ready:
+                modules.set_enabled(s, window.profile.id, m.key, True)
+    window._apply_access()
     for i, (key, _icon, label, *_r) in enumerate(NAV):
         window.go_to(i)
         qtbot.wait(10)

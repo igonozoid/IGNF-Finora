@@ -66,6 +66,20 @@ Quem você paga e quem te paga, com CPF/CNPJ. Os contatos digitados num lançame
 O CPF/CNPJ é usado no **recibo** e no relatório de **Imposto de Renda**. Nas edições pagas, o CNPJ preenche
 nome e endereço sozinho.
 
+## Estoque {#stock}
+
+Módulo opcional: ligue em **Configurações › Módulos desta entidade** (cada entidade liga o que usa).
+
+- **Itens**: produto para venda, insumo/matéria-prima, material de uso interno (ex.: do escritório) ou produzido
+  aqui. Cada um com unidade (un, kg, L…), estoque mínimo e, se vende, preço.
+- **Entrada**: compra ou doação recebida, com o custo unitário. Marque **Lançar a compra em Contas a pagar** para
+  a conta já aparecer em Lançamentos.
+- **Saída / consumo** e **Perda**: saem pelo custo médio.
+- **Inventário**: conte o que tem de verdade e informe; o Finora lança a diferença.
+- **Locais** (Mais › Locais de estoque): depósito, galpão, almoxarifado… e **Transferir** entre eles.
+- O saldo e o **custo médio** saem dos movimentos: excluir ou corrigir um movimento antigo acerta tudo.
+- Itens abaixo do mínimo ficam em vermelho; use o filtro **Abaixo do mínimo**.
+
 ## Conciliação {#reconcile}
 
 Confere o extrato do banco com o que você lançou (edições pagas).

@@ -31,6 +31,7 @@ from finora.ui.pages import PlaceholderPage
 from finora.ui.reconcile_page import ReconcilePage
 from finora.ui.reports_page import ReportsPage
 from finora.ui.settings_page import SettingsPage
+from finora.ui.stock_page import StockPage
 from finora.ui.widgets import retheme
 
 # (chave, ícone, rótulo, subtítulo do cabeçalho, texto da tela vazia). Use as chaves, não a posição.
@@ -47,6 +48,8 @@ NAV = [
      "Aqui você separa os gastos por Casa, Carro, Viagem… e acompanha o orçamento de cada um."),
     ("contacts", "fa6s.address-book", "Contatos", "Pessoas e empresas com quem você troca dinheiro",
      "Aqui você vai cadastrar quem te paga e quem você paga, para encontrar tudo mais rápido."),
+    ("stock", "fa6s.boxes-stacked", "Estoque", "Produtos, insumos e materiais",
+     "Aqui você controla o que entra e sai: produtos para venda, insumos e material de uso interno."),
     ("reconcile", "fa6s.scale-balanced", "Conciliação", "Extrato do banco x seus lançamentos",
      "Aqui você importa o extrato do banco e confere se tudo foi lançado."),
     ("reports", "fa6s.file-lines", "Relatórios", "DRE, fluxo de caixa, extratos, orçamento e atrasados",
@@ -387,7 +390,8 @@ class MainWindow(QMainWindow):
         """Monta as telas da entidade aberta (de novo ao trocar de entidade ou de usuário)."""
         built = {"dashboard": DashboardPage, "entries": EntriesPage, "accounts": AccountsPage,
                  "categories": CategoriesPage, "cost_centers": CostCentersPage, "contacts": ContactsPage,
-                 "reconcile": ReconcilePage, "reports": ReportsPage, "admin": AdminPage, "settings": SettingsPage}
+                 "reconcile": ReconcilePage, "reports": ReportsPage, "admin": AdminPage, "settings": SettingsPage,
+                 "stock": StockPage}
         for old in self.pages:
             self.stack.removeWidget(old)
             old.deleteLater()
@@ -398,6 +402,7 @@ class MainWindow(QMainWindow):
         cfg.restart_requested.connect(self.restart)
         cfg.nav_requested.connect(self.set_nav)
         cfg.profile_changed.connect(self.set_profile)
+        cfg.modules_changed.connect(self._apply_access)          # ligou/desligou módulo: o menu muda
         self.page("admin").entities_changed.connect(self._apply_access)     # "Trocar entidade" passa a valer
         for p in self.pages:
             self.stack.addWidget(p)
@@ -407,6 +412,7 @@ class MainWindow(QMainWindow):
         self.page("dashboard").open_statement.connect(self.open_statement)
         self.page("reports").open_entry.connect(self.open_entry)
         self.page("reconcile").open_entry.connect(self.open_entry)
+        self.page("stock").open_entry.connect(self.open_entry)
         self.page("entries").import_requested.connect(self.import_ofx)
         self.page("entries").period_changed.connect(self.set_period)
         self.page("entries").period_locked.connect(self.header.period.set_locked)
@@ -435,6 +441,9 @@ class MainWindow(QMainWindow):
             self._entity_count = len(permissions.entities_for(s, None if not uid or self.user.is_admin else uid))
         self.levels = lv
         cur_user.set_entity(self.profile.id, {m for m, level in lv.items() if level != "full"})
+        from finora.services import modules
+        with Session() as s:
+            on = modules.enabled(s, self.profile.id)
         self.visible_keys = []
         for i, (key, *_r) in enumerate(NAV):
             module = permissions.PAGE_MODULE.get(key)
@@ -442,6 +451,8 @@ class MainWindow(QMainWindow):
                 visible = lv["admin"] != "none" or lv["audit"] != "none"
             else:
                 visible = module is None or lv[module] != "none"
+            if key in modules.CATALOG and key not in on:      # tela de módulo: só com o módulo ligado
+                visible = False
             self.sidebar.buttons[i][0].setVisible(visible)
             self.tabs.buttons[i][0].setVisible(visible)
             if visible:

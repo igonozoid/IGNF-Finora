@@ -33,7 +33,7 @@ CATALOG = {m.key: m for m in (
            "rendimento e custo por unidade.", ("stock",), ready=True),
     Module("rural", "Rural: agricultura", "fa6s.seedling",
            "Propriedades e áreas (talhões, piquetes, apiários), atividades como poda, adubação e colheita, consumo "
-           "de insumos e custo por área.", ("stock",)),
+           "de insumos e custo por área.", ("stock",), ready=True),
     Module("livestock", "Rural: pecuária", "fa6s.cow",
            "Rebanho por lote: nascimentos, compras, vendas, mortes, troca de piquete, vacinas e pesagens.",
            ("rural",)),

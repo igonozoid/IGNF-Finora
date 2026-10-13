@@ -97,6 +97,23 @@ transformar insumos em produtos: azeitona em azeite, mel a granel em potes, raç
 - Errou? **Reabrir lote** devolve os insumos e tira os produtos (se eles ainda estiverem no estoque).
 - **Por produto**: quanto foi produzido no período e o custo médio por unidade.
 
+## Agricultura {#rural}
+
+Módulo opcional (precisa do Estoque): ligue em **Configurações › Módulos desta entidade**.
+
+- Comece em **Mais › Nova propriedade** (fazenda, sítio) e **Mais › Nova área**: talhão, pomar, pasto/piquete ou
+  apiário, com a cultura (ex.: Oliveira arbequina), os hectares e, se quiser, o nº de plantas ou colmeias.
+- **Nova atividade**: escolha a área, a data e o tipo (plantio, adubação, pulverização, poda, irrigação, colheita…).
+  Os **insumos usados** saem do estoque na hora, pelo custo médio. **Outros custos** (mão de obra, hora-máquina,
+  combustível) entram só no custo da área — os pagamentos continuam em Lançamentos.
+- **Ocorrência** (geada, praga, granizo): registre para o histórico, mesmo sem custo.
+- **Colheita**: informe o que foi colhido (ex.: Azeitona, em kg). O produto entra no estoque levando o custo que a
+  área acumulou desde a última colheita. Se ainda vem outra colheita da mesma safra, informe só uma parte do custo.
+  Depois a azeitona pode virar azeite em **Produção**.
+- Para corrigir, abra a atividade (dois cliques), altere ou exclua: o estoque acompanha.
+- **Áreas** mostra o **custo a apropriar** de cada uma (gasto que ainda não foi para uma colheita).
+- **Custo por área**: insumos, outros custos, total, **custo por hectare** e o que foi colhido no período.
+
 ## Vendas {#sales}
 
 Módulo opcional (precisa do Estoque): ligue em **Configurações › Módulos desta entidade**.

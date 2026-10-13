@@ -27,8 +27,9 @@ def _qdate(d: date) -> QDate:
 class LinesBox(QFrame):
     """Um bloco de itens (insumos ou produtos): escolher o item, quantidade (e % do custo nos produtos)."""
 
-    def __init__(self, title: str, items: list, t: dict, with_share: bool, on_change):
+    def __init__(self, title: str, items: list, t: dict, with_share: bool, on_change, check_stock: bool = True):
         super().__init__()
+        self.check_stock = check_stock and not with_share      # insumos: mostra o saldo e avisa se falta
         self.items = {i.id: i for i in items}
         self.with_share, self.on_change, self.t = with_share, on_change, t
         self.lines: list[Line] = []
@@ -67,8 +68,8 @@ class LinesBox(QFrame):
         self.hint = QLabel()
         self.hint.setProperty("role", "field")
         lay.addWidget(self.hint)
-        cols = ["ITEM", "QTD.", "% CUSTO", "CUSTO/UN.", "TOTAL"] if with_share else \
-            ["ITEM", "QTD.", "EM ESTOQUE", "CUSTO/UN.", "TOTAL"]
+        cols = ["ITEM", "QTD.", "% CUSTO" if with_share else "EM ESTOQUE" if self.check_stock else "",
+                "CUSTO/UN.", "TOTAL"]
         self.table = QTableWidget(0, len(cols))
         self.table.setHorizontalHeaderLabels(cols)
         self.table.verticalHeader().hide()
@@ -140,11 +141,11 @@ class LinesBox(QFrame):
             unit = it.unit if it else ""
             cost = costs[r] if r < len(costs) else None
             third = (f"{ln.share}%".replace(".", ",") if ln.share is not None else "pela qtd.") if self.with_share \
-                else stock.fmt_qty(it.balance, unit) if it else ""
+                else stock.fmt_qty(it.balance, unit) if it and self.check_stock else ""
             cells = [it.name if it else "?", stock.fmt_qty(ln.quantity, unit), third,
                      money.fmt(cost, currency) if cost is not None else "",
                      money.fmt((Decimal(ln.quantity) * cost).quantize(CENT), currency) if cost is not None else ""]
-            short = not self.with_share and it is not None and Decimal(ln.quantity) > it.balance
+            short = self.check_stock and it is not None and Decimal(ln.quantity) > it.balance
             for c, text in enumerate(cells):
                 item = QTableWidgetItem(text)
                 if c:

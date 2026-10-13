@@ -116,11 +116,28 @@ cd "$APP" && nohup "./{exe_name}" >/dev/null 2>&1 &
     return path
 
 
-def launch(script: Path) -> None:
+def launch_flags() -> int:
+    """Janela oculta, em grupo próprio. Nada de DETACHED_PROCESS: sem console o PowerShell fecha na hora,
+    sem rodar o script (era o defeito da 0.2.0 e da 0.3.0)."""
     import subprocess
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+
+def launch(script: Path, wait: float = 15.0) -> bool:
+    """Dispara o script e espera ele dar sinal de vida (a 1ª linha do log). False se não começou."""
+    import subprocess
+    import time
+    log = script.parent / "atualizacao.log"
+    log.unlink(missing_ok=True)
     if sys.platform == "win32":
-        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
         subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
-                         creationflags=flags, close_fds=True)
+                         creationflags=launch_flags(), close_fds=True, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         subprocess.Popen(["/bin/sh", str(script)], start_new_session=True, close_fds=True)
+    end = time.monotonic() + wait
+    while time.monotonic() < end:
+        if log.exists():
+            return True
+        time.sleep(0.2)
+    return False

@@ -143,7 +143,11 @@ class UpdateDialog(QDialog):
         QMessageBox.information(self, "Atualizar", "Tudo pronto. O Finora vai fechar e abrir de novo já na versão "
                                                    f"{self.release.version} (leva alguns segundos).")
         log.info("Atualizando para %s", self.release.version)
-        updater.launch(script)
+        if not updater.launch(script):
+            log.error("O script de atualização não começou: %s", script)
+            self._fail("Não consegui iniciar a troca do programa. Feche o Finora e rode o arquivo "
+                       f"{script} (botão direito › Executar com o PowerShell).")
+            return
         self.accept()
         if self.window_ is not None:
             self.window_.quitting = True

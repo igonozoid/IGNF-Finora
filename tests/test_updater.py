@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import time
 import zipfile
 
 import pytest
@@ -55,3 +56,24 @@ def test_pacote_sem_programa_ou_malicioso(tmp_path):
         z.writestr("IGNF-Finora/LEIA-ME.txt", "x")
     with pytest.raises(ValueError, match="não tem o programa"):
         updater.extract(empty, tmp_path / "out2", EXE)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="script PowerShell")
+def test_script_de_atualizacao_roda_de_verdade_e_troca_o_programa(tmp_path):
+    assert not updater.launch_flags() & getattr(subprocess, "DETACHED_PROCESS", 8)   # o defeito da 0.2.0/0.3.0
+    app = tmp_path / "app"
+    (app / "data").mkdir(parents=True)
+    (app / "data" / "finora.ini").write_text("dado")
+    (app / "x.exe").write_text("velho")
+    new = app / updater.UPDATE_DIR / "novo"
+    new.mkdir(parents=True)
+    (new / "x.exe").write_text("novo")
+    script = updater.write_script(app, new, 999999, "x.exe")
+    assert updater.launch(script)
+    log = app / updater.UPDATE_DIR / "atualizacao.log"
+    for _ in range(100):
+        if "copiado" in log.read_text(encoding="utf-8", errors="ignore"):
+            break
+        time.sleep(0.1)
+    assert (app / "x.exe").read_text() == "novo"
+    assert (app / "data" / "finora.ini").read_text() == "dado"

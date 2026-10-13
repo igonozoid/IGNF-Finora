@@ -80,6 +80,23 @@ Módulo opcional: ligue em **Configurações › Módulos desta entidade** (cada
 - O saldo e o **custo médio** saem dos movimentos: excluir ou corrigir um movimento antigo acerta tudo.
 - Itens abaixo do mínimo ficam em vermelho; use o filtro **Abaixo do mínimo**.
 
+## Produção {#production}
+
+Módulo opcional (precisa do Estoque): ligue em **Configurações › Módulos desta entidade**. Serve para
+transformar insumos em produtos: azeitona em azeite, mel a granel em potes, ração misturada etc.
+
+- Cadastre antes, em **Estoque**, os insumos (ex.: Azeitona, em kg; Garrafa, em un) e os produtos (ex.: Azeite
+  500 mL, tipo **Produzido aqui**). Os insumos precisam ter saldo: lance as entradas com o custo.
+- **Novo lote**: dê um nome, a data, os **insumos usados** e os **produtos obtidos**. Em **Outros custos** entra o
+  que não está no estoque (mão de obra, energia, frete). A prévia mostra o custo do lote e o custo por unidade.
+- **Salvar (em andamento)** não mexe no estoque. **Concluir lote** tira os insumos (pelo custo médio do dia) e põe
+  os produtos no estoque com o custo calculado. Esse custo é o que aparece na margem das **Vendas**.
+- Mais de um produto no mesmo lote (ex.: azeite e bagaço): informe o **% do custo** de cada um (somando 100%), ou
+  deixe em branco para dividir pela quantidade.
+- **Rendimento**: quanto do produto principal saiu do insumo principal (ex.: 15 L por 100 kg).
+- Errou? **Reabrir lote** devolve os insumos e tira os produtos (se eles ainda estiverem no estoque).
+- **Por produto**: quanto foi produzido no período e o custo médio por unidade.
+
 ## Vendas {#sales}
 
 Módulo opcional (precisa do Estoque): ligue em **Configurações › Módulos desta entidade**.

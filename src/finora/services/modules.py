@@ -30,7 +30,7 @@ CATALOG = {m.key: m for m in (
            ("stock",), ready=True),
     Module("production", "Produção", "fa6s.industry",
            "Lotes de produção que transformam insumos em produtos (ex.: azeitona em azeite, mel em potes), com "
-           "rendimento e custo por unidade.", ("stock",)),
+           "rendimento e custo por unidade.", ("stock",), ready=True),
     Module("rural", "Rural: agricultura", "fa6s.seedling",
            "Propriedades e áreas (talhões, piquetes, apiários), atividades como poda, adubação e colheita, consumo "
            "de insumos e custo por área.", ("stock",)),

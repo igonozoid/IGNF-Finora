@@ -172,8 +172,40 @@ class StockMove(Base):
     contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"))
     entry_id: Mapped[int | None] = mapped_column(ForeignKey("entries.id", ondelete="SET NULL"))   # compra/venda
     transfer_id: Mapped[str | None] = mapped_column(String(32), index=True)   # liga a saída e a entrada
+    sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales.id", ondelete="CASCADE"), index=True)
     document_no: Mapped[str | None] = mapped_column(String(40))
     notes: Mapped[str | None] = mapped_column(String(300))
+
+class Sale(Base):
+    """Pedido de venda (módulo Vendas). Confirmado: baixa o estoque e gera as contas a receber (parcelas)."""
+    __tablename__ = "sales"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    number: Mapped[int]                                                    # nº do pedido na entidade
+    day: Mapped[date]
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(10), default="sale")         # sale|donation|bonus
+    status: Mapped[str] = mapped_column(String(10), default="quote")      # quote|confirmed|canceled
+    discount: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0"))
+    freight: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0"))   # frete cobrado do cliente
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"))
+    payment: Mapped[str | None] = mapped_column(String(20))               # Pix, boleto, cartão, dinheiro…
+    installments: Mapped[int] = mapped_column(default=1)
+    first_due: Mapped[date | None]
+    paid_now: Mapped[bool] = mapped_column(Boolean, default=False)        # à vista, já recebido
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("stock_locations.id"))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    series_id: Mapped[str | None] = mapped_column(String(32))             # parcelas a receber geradas
+    notes: Mapped[str | None] = mapped_column(String(300))
+
+class SaleItem(Base):
+    __tablename__ = "sale_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sale_id: Mapped[int] = mapped_column(ForeignKey("sales.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id"))
+    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 3))
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(15, 4))     # custo médio na confirmação (margem)
 
 class Currency(Base):
     """Moeda que não está na lista do Finora, cadastrada pela pessoa (vale para todas as entidades)."""

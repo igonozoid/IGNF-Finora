@@ -80,6 +80,19 @@ Módulo opcional: ligue em **Configurações › Módulos desta entidade** (cada
 - O saldo e o **custo médio** saem dos movimentos: excluir ou corrigir um movimento antigo acerta tudo.
 - Itens abaixo do mínimo ficam em vermelho; use o filtro **Abaixo do mínimo**.
 
+## Vendas {#sales}
+
+Módulo opcional (precisa do Estoque): ligue em **Configurações › Módulos desta entidade**.
+
+- **Novo pedido**: cliente, itens (o preço vem do cadastro do item), desconto e frete.
+- **Salvar orçamento** não mexe em nada. **Confirmar** baixa o estoque e, na venda, cria as **contas a receber**:
+  à vista (marque **Já recebido**) ou em parcelas, a partir do 1º vencimento.
+- **Doação** e **Bonificação**: só baixam o estoque (sem receita).
+- **Cancelar** um pedido confirmado devolve os itens ao estoque e manda as parcelas para a lixeira (se nenhuma
+  foi recebida).
+- **Por produto** e **Por cliente**: quanto vendeu, o custo (custo médio do dia da venda) e a **margem**.
+- **Imprimir pedido**: com o cabeçalho da entidade.
+
 ## Conciliação {#reconcile}
 
 Confere o extrato do banco com o que você lançou (edições pagas).

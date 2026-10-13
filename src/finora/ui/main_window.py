@@ -31,6 +31,7 @@ from finora.ui.pages import PlaceholderPage
 from finora.ui.reconcile_page import ReconcilePage
 from finora.ui.reports_page import ReportsPage
 from finora.ui.settings_page import SettingsPage
+from finora.ui.sales_page import SalesPage
 from finora.ui.stock_page import StockPage
 from finora.ui.widgets import retheme
 
@@ -50,6 +51,8 @@ NAV = [
      "Aqui você vai cadastrar quem te paga e quem você paga, para encontrar tudo mais rápido."),
     ("stock", "fa6s.boxes-stacked", "Estoque", "Produtos, insumos e materiais",
      "Aqui você controla o que entra e sai: produtos para venda, insumos e material de uso interno."),
+    ("sales", "fa6s.cart-shopping", "Vendas", "Pedidos, orçamentos e margem",
+     "Aqui você faz os pedidos de venda: baixam o estoque e viram contas a receber."),
     ("reconcile", "fa6s.scale-balanced", "Conciliação", "Extrato do banco x seus lançamentos",
      "Aqui você importa o extrato do banco e confere se tudo foi lançado."),
     ("reports", "fa6s.file-lines", "Relatórios", "DRE, fluxo de caixa, extratos, orçamento e atrasados",
@@ -391,7 +394,7 @@ class MainWindow(QMainWindow):
         built = {"dashboard": DashboardPage, "entries": EntriesPage, "accounts": AccountsPage,
                  "categories": CategoriesPage, "cost_centers": CostCentersPage, "contacts": ContactsPage,
                  "reconcile": ReconcilePage, "reports": ReportsPage, "admin": AdminPage, "settings": SettingsPage,
-                 "stock": StockPage}
+                 "stock": StockPage, "sales": SalesPage}
         for old in self.pages:
             self.stack.removeWidget(old)
             old.deleteLater()

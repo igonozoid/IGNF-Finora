@@ -27,7 +27,7 @@ CATALOG = {m.key: m for m in (
            "custo médio. Serve também só para o material do escritório.", ready=True),
     Module("sales", "Vendas", "fa6s.cart-shopping",
            "Pedidos de venda: cliente, itens, desconto e parcelas. Geram as contas a receber e baixam o estoque.",
-           ("stock",)),
+           ("stock",), ready=True),
     Module("production", "Produção", "fa6s.industry",
            "Lotes de produção que transformam insumos em produtos (ex.: azeitona em azeite, mel em potes), com "
            "rendimento e custo por unidade.", ("stock",)),

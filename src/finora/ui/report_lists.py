@@ -448,7 +448,8 @@ class BudgetView(TableReport):
 class AnalyticalView(TableReport):
     TITLE = "Analítico"
     COLUMNS = [("DATA", 70, False), ("DESCRIÇÃO", None, False), ("CATEGORIA", 150, False),
-               ("CENTRO DE CUSTO", 120, False), ("CONTATO", 130, False), ("CONTA", 110, False), ("VALOR", 120, True)]
+               ("CENTRO DE CUSTO", 120, False), ("CONTATO", 130, False), ("CONTA", 110, False),
+               ("OBSERVAÇÕES", 160, False), ("VALOR", 120, True)]
     KINDS = {"all": "Receitas e despesas", "income": "Só receitas", "expense": "Só despesas"}
 
     def __init__(self, profile: Profile, t: dict):
@@ -461,7 +462,7 @@ class AnalyticalView(TableReport):
         self.kind.currentIndexChanged.connect(self.refresh)
         self.bar.addWidget(self.kind)
         self.finish_bar("Cada receita e despesa do período (pela data da compra/vencimento), pagas ou não,\n"
-                        "com categoria, centro de custo, contato e conta. Valores na moeda principal.\n"
+                        "com categoria, centro de custo, contato, conta e observações. Valores na moeda principal.\n"
                         "Dois cliques abrem o lançamento.")
 
     def subtitle(self) -> str:
@@ -475,8 +476,9 @@ class AnalyticalView(TableReport):
         rows = [{"cells": [e.competence_date.strftime("%d/%m/%y" if many_years else "%d/%m"),
                            e.description + (f" ({e.installment})" if e.installment else ""),
                            e.category or "Sem categoria", e.cost_center or "", e.contact or "", e.account,
+                           " ".join((e.notes or "").split()),
                            e.base_amount if e.kind == "income" else -e.base_amount],
-                 "tones": {6: "pos" if e.kind == "income" else None, 2: None if e.category else "mut"},
+                 "tones": {7: "pos" if e.kind == "income" else None, 2: None if e.category else "mut", 6: "mut"},
                  "target": ("entry", e.id)} for e in data]
         self.fill(rows, "Nenhuma receita ou despesa neste período.")
         inc = sum((e.base_amount for e in data if e.kind == "income"), Decimal(0))

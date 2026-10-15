@@ -225,3 +225,34 @@ def test_mais_filtros_ano_todo_e_limpar(window, qtbot):
     assert {e.kind for e in page.model.rows} == {"income"} and "•" in page.more_btn.text()
     page.clear_filters.click()
     assert page.period_box.currentData() == "month" and page.kind_box.currentData() == ""
+
+
+def test_observacoes_no_formulario_lista_copia_e_exportacao(window):
+    from PySide6.QtCore import Qt
+    from finora.ui.entries_page import C_DESC
+    page = _page(window)
+    window.new_entry()
+    form = page.form
+    assert form.notes.toPlainText() == ""
+    _fill(form, desc="Conserto do portão", amount="350,00")
+    form.notes.setPlainText("Serralheria do Zé\nGarantia de 90 dias")
+    form.save_btn.click()
+    e = next(e for e in page.model.rows if e.description == "Conserto do portão")
+    assert e.notes == "Serralheria do Zé\nGarantia de 90 dias"
+    row = page.model.rows.index(e)
+    assert "Observações: Serralheria do Zé" in page.model.data(page.model.index(row, C_DESC), Qt.ToolTipRole)
+    page.edit_entry(e)                                                   # editar mostra e salva a observação
+    assert form.notes.toPlainText() == e.notes
+    form.notes.setPlainText("Garantia até janeiro")
+    form.save_btn.click()
+    e = next(e for e in page.model.rows if e.description == "Conserto do portão")
+    assert e.notes == "Garantia até janeiro"
+    page.duplicate_entry(e)                                              # a cópia leva a observação
+    assert form.notes.toPlainText() == "Garantia até janeiro"
+    form.cancel_btn.click()
+    window.new_entry()                                                   # lançamento novo começa sem
+    assert form.notes.toPlainText() == ""
+    form.cancel_btn.click()
+    sheet = page.export_sheet()
+    assert sheet.headers[-1] == "Observações"
+    assert any(r[-1] == "Garantia até janeiro" for r in sheet.rows)

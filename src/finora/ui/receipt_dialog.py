@@ -90,7 +90,7 @@ class ReceiptDialog(QDialog):
         self.other_name = QLineEdit(info.contact, placeholderText="Nome completo")
         self.other_doc = QLineEdit(info.contact_doc, placeholderText="Opcional")
         self.reference = QLineEdit(info.reference, placeholderText="Ex.: Faxina de outubro")
-        self.notes = QLineEdit(placeholderText="Opcional")
+        self.notes = QLineEdit(info.notes, placeholderText="Opcional")
         self.my_doc = QLineEdit(my_doc, placeholderText="Opcional")
         self.two = QCheckBox("2 vias na mesma folha", checked=True)
         for w in (self.my_doc, self.other_doc, self.document):

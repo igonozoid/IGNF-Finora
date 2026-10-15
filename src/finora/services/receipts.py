@@ -100,6 +100,7 @@ class Parties:
     when: date
     document: str
     reference: str
+    notes: str = ""
 
 
 def parties(s: Session, entry_id: int) -> Parties:
@@ -110,4 +111,5 @@ def parties(s: Session, entry_id: int) -> Parties:
         raise ValueError(reason)
     c = s.get(Contact, e.contact_id) if e.contact_id else None
     return Parties(e.kind == "expense", c.name if c else "", documents.fmt(c.document) if c and c.document else "",
-                   e.paid_date or e.due_date, e.document_no or "", e.description or "")
+                   e.paid_date or e.due_date, e.document_no or "", e.description or "",
+                   " ".join((e.notes or "").split()))    # o recibo tem uma linha só

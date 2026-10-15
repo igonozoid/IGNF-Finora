@@ -111,6 +111,7 @@ class Entry(Base):
     dest_amount: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     description: Mapped[str | None] = mapped_column(String(200))
     document_no: Mapped[str | None] = mapped_column(String(40))
+    notes: Mapped[str | None] = mapped_column(Text)                         # observações (como no MCC)
     competence_date: Mapped[date]
     due_date: Mapped[date]
     paid_date: Mapped[date | None]

@@ -234,3 +234,45 @@ def test_filtros_de_periodo_data_tipo_contato_e_centro(session, profile):
     assert names(period="all", cost_center_id=cc) == ["Jan"]
     assert names(period="year", date_field="paid") == ["Out"]          # pela data do pagamento
     assert entries.period_range(2026, 10, "q4") == (date(2026, 10, 1), date(2026, 12, 31))
+
+
+# ---------- observações (MCC) ----------
+def test_observacoes_gravam_editam_e_limpam(ctx):
+    s = ctx["s"]
+    (i,) = entries.create(s, ctx["eid"], _data(ctx, notes="  Pago com 5 dias de atraso:\nR$ 50,00 de juros  "))
+    assert entries.get(s, i).notes == "Pago com 5 dias de atraso:\nR$ 50,00 de juros"   # mantém a quebra de linha
+    entries.update(s, i, _data(ctx, notes="   "))
+    assert entries.get(s, i).notes is None                                             # em branco vira vazio
+    with pytest.raises(ValueError, match="até 1000 caracteres"):
+        entries.update(s, i, _data(ctx, notes="x" * (entries.MAX_NOTES + 1)))
+
+
+def test_observacoes_na_transferencia_e_na_serie(ctx):
+    s = ctx["s"]
+    (t,) = entries.create(s, ctx["eid"], _data(ctx, kind="transfer", description="Reforço do caixa",
+                                               category_id=None, dest_account_id=ctx["cash"], notes="Pedido do João"))
+    assert entries.get(s, t).notes == "Pedido do João"
+    ids = entries.create(s, ctx["eid"], _data(ctx, repeat="monthly", times=3, notes="Contrato 123"))
+    assert all(entries.get(s, i).notes == "Contrato 123" for i in ids)                 # a série toda nasce com ela
+    entries.update(s, ids[1], _data(ctx, notes="Reajuste 2027", due_date=date(2026, 11, 10)), scope="following")
+    assert [entries.get(s, i).notes for i in ids] == ["Contrato 123", "Reajuste 2027", "Reajuste 2027"]
+
+
+def test_busca_encontra_pelas_observacoes(ctx):
+    from finora.services import search
+    s, eid = ctx["s"], ctx["eid"]
+    entries.create(s, eid, _data(ctx, notes="Comprovante na pasta azul"))
+    entries.create(s, eid, _data(ctx, description="Água"))
+    assert [e.description for e in _list(ctx, search="pasta azul")] == ["Conta de luz"]   # busca da lista
+    hits = [h.title for h in search.search(s, eid, "PASTA AZUL") if h.kind == "entry"]   # busca global (Ctrl K)
+    assert hits == ["Conta de luz"]
+
+
+def test_observacoes_vao_para_o_recibo_e_a_auditoria(ctx):
+    from finora.services import audit, receipts
+    s, eid = ctx["s"], ctx["eid"]
+    (i,) = entries.create(s, eid, _data(ctx, contact="Enel", notes="Juros de\n  R$ 5,00"))
+    assert receipts.parties(s, i).notes == "Juros de R$ 5,00"                          # recibo: uma linha só
+    entries.update(s, i, _data(ctx, contact="Enel", notes="Sem juros"))
+    change = next(a for a in audit.list_log(s, eid) if "notes" in a.changes)
+    assert "observações" in change.summary and change.changes["notes"] == ["Juros de\n  R$ 5,00", "Sem juros"]

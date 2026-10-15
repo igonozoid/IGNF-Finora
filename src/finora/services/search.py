@@ -51,7 +51,7 @@ def search(s: Session, entity_id: int, text: str, per_kind: int = 6) -> list[Hit
 
     q = (entries.query(entity_id)
          .where(or_(func.lower(Entry.description).like(like), func.lower(Contact.name).like(like),
-                    func.lower(Entry.document_no).like(like)))
+                    func.lower(Entry.document_no).like(like), func.lower(Entry.notes).like(like)))
          .order_by(Entry.due_date.desc(), Entry.id.desc()).limit(per_kind * 2))
     for row in s.execute(q):
         e = entries.to_view(row)

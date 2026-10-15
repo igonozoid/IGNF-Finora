@@ -7,7 +7,8 @@ from PySide6.QtCore import QAbstractTableModel, QDate, QModelIndex, QRectF, QSiz
 from PySide6.QtGui import QColor, QKeySequence, QPen, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QDateEdit, QFrame, QHBoxLayout, QHeaderView,
-    QLabel, QLineEdit, QMenu, QMessageBox, QPushButton, QScrollArea, QSpinBox, QStyle, QStyledItemDelegate,
+    QLabel, QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox, QStyle,
+    QStyledItemDelegate,
     QTableView, QVBoxLayout, QWidget,
 )
 import qtawesome as qta
@@ -173,6 +174,8 @@ class EntriesModel(QAbstractTableModel):
                     tip += f"\nParcela {e.installment}"
                 if e.document_no:
                     tip += f"\nDocumento: {e.document_no}"
+                if e.notes:
+                    tip += f"\nObservações: {e.notes}"
                 if n := self.attached.get(e.id):
                     tip += f"\n{n} comprovante{'s' if n > 1 else ''} anexado{'s' if n > 1 else ''}"
                 return tip
@@ -351,6 +354,12 @@ class EntryForm(QFrame):
         self.doc_box = self._field("Nº do documento", self.doc,
                                    help_text="Número do boleto, da nota fiscal ou do recibo, se tiver.")
         lay.addLayout(self.doc_box)
+        self.notes = QPlainTextEdit(placeholderText="Opcional")
+        self.notes.setTabChangesFocus(True)
+        self.notes.setFixedHeight(3 * self.notes.fontMetrics().lineSpacing() + 12)
+        lay.addLayout(self._field("Observações", self.notes,
+                                  help_text="Anotações sobre este lançamento: juros pagos, combinado com o\n"
+                                            "fornecedor, onde está o comprovante… Aparecem na busca e no recibo."))
 
         prow = QHBoxLayout()
         prow.setSpacing(theme.SP_M)
@@ -606,6 +615,7 @@ class EntryForm(QFrame):
         self.due.setDate(_qdate(default_due))
         self.contact.setCurrentText("")
         self.doc.clear()
+        self.notes.clear()
         self.dest_amount.clear()
         self.paid.setChecked(False)
         self.paid_date.setDate(_qdate(date.today()))
@@ -636,6 +646,7 @@ class EntryForm(QFrame):
         self.desc.setText(e.description)
         self.amount.setText(money.fmt(e.amount, self.profile.currency).split(" ", 1)[1])
         self.contact.setCurrentText(e.contact or "")
+        self.notes.setPlainText(e.notes or "")
         self.desc.setFocus()
         self.desc.selectAll()
 
@@ -658,6 +669,7 @@ class EntryForm(QFrame):
         self._load_cost_centers(e.cost_center_id)
         self.contact.setCurrentText(e.contact or "")
         self.doc.setText(e.document_no or "")
+        self.notes.setPlainText(e.notes or "")
         self.dest_amount.setText(money.fmt(e.dest_amount, self.profile.currency).split(" ", 1)[1]
                                  if e.dest_amount is not None else "")
         self._currency_mode()
@@ -715,7 +727,7 @@ class EntryForm(QFrame):
             paid=self.paid.isChecked() and self._card() is None,
             paid_date=self.paid_date.date().toPython() if self.paid.isChecked() else None,
             repeat=self.repeat.currentData() if self.editing is None else "none", times=self.times.value(),
-            dest_amount=dest_value,
+            dest_amount=dest_value, notes=self.notes.toPlainText(),
         )
 
     def _save(self):
@@ -1186,14 +1198,15 @@ class EntriesPage(QWidget):
             parts.append(f'busca "{self.search.text().strip()}"')
         sheet = export.Sheet("Lançamentos", " · ".join(parts),
                              ["Vencimento", "Pago em", "Descrição", "Contato", "Categoria", "Conta", "Valor",
-                              "Situação", "Documento"], currency=self.profile.currency)
+                              "Situação", "Documento", "Observações"], currency=self.profile.currency)
         today = date.today()
         for e in self.model.rows:
             sheet.add([e.due_date, e.paid_date,
                        e.description + (f" ({e.installment})" if e.installment else ""), e.contact or "",
                        "Transferência" if e.kind == "transfer" else (e.category or "Sem categoria"),
                        f"{e.account} → {e.dest_account}" if e.kind == "transfer" else e.account,
-                       -e.amount if e.kind == "expense" else e.amount, e.status_label(today), e.document_no or ""])
+                       -e.amount if e.kind == "expense" else e.amount, e.status_label(today), e.document_no or "",
+                       e.notes or ""])
         total = {k: sum((e.amount for e in self.model.rows if e.kind == k), Decimal(0)) for k in ("income", "expense")}
         cur = self.profile.currency
         sheet.footer = (f"{len(self.model.rows)} lançamentos · Receitas {money.fmt(total['income'], cur)} · "

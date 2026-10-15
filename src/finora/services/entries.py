@@ -90,6 +90,7 @@ class EntryView:
     base_amount: Decimal | None = None    # valor na moeda principal
     dest_amount: Decimal | None = None    # transferência entre moedas: quanto chega no destino
     dest_currency: str | None = None
+    notes: str | None = None              # observações
 
     @property
     def is_paid(self) -> bool:
@@ -146,7 +147,7 @@ def to_view(row) -> EntryView:
                      e.account_id, acc, e.dest_account_id, dest, e.category_id, cat, ct, e.document_no,
                      e.installment, e.series_id, e.competence_date, e.cost_center_id, cc, cur,
                      Decimal(e.base_amount) if e.base_amount is not None else Decimal(e.amount),
-                     Decimal(e.dest_amount) if e.dest_amount is not None else None, dest_cur)
+                     Decimal(e.dest_amount) if e.dest_amount is not None else None, dest_cur, e.notes)
 
 
 # Período da lista (como no IgnControl): o mês do cabeçalho, trimestres, semestres, o ano ou tudo
@@ -213,7 +214,8 @@ def list_entries(s: Session, entity_id: int, *, year: int, month: int, filter: s
     if search.strip():
         like = f"%{search.strip().lower()}%"
         q = q.where(or_(func.lower(Entry.description).like(like), func.lower(Contact.name).like(like),
-                        func.lower(Category.name).like(like), func.lower(Entry.document_no).like(like)))
+                        func.lower(Category.name).like(like), func.lower(Entry.document_no).like(like),
+                        func.lower(Entry.notes).like(like)))
     q = q.order_by(Entry.due_date, Entry.id)
     return [to_view(r) for r in s.execute(q)]
 
@@ -252,6 +254,10 @@ class EntryData:
     times: int = 1
     cost_center_id: int | None = None
     dest_amount: Decimal | None = None     # transferência entre contas de moedas diferentes
+    notes: str | None = None               # observações (também na transferência)
+
+
+MAX_NOTES = 1000
 
 
 def _validate(s: Session, entity_id: int, d: EntryData) -> None:
@@ -283,6 +289,8 @@ def _validate(s: Session, entity_id: int, d: EntryData) -> None:
             raise ValueError("Centro de custo inválido.")
     if not d.description.strip():
         raise ValueError("Escreva uma descrição (ex.: Conta de luz).")
+    if len((d.notes or "").strip()) > MAX_NOTES:
+        raise ValueError(f"As observações podem ter até {MAX_NOTES} caracteres.")
     if d.repeat not in REPEATS:
         raise ValueError("Repetição inválida.")
     if d.repeat != "none" and not 2 <= d.times <= MAX_REPEAT:
@@ -316,6 +324,7 @@ def _apply(e: Entry, d: EntryData, entity_id: int, contact_id: int | None) -> No
     e.cost_center_id = None if transfer else d.cost_center_id
     e.contact_id = None if transfer else contact_id
     e.document_no = (d.document_no or "").strip() or None
+    e.notes = (d.notes or "").strip() or None
 
 
 def create(s: Session, entity_id: int, d: EntryData) -> list[int]:

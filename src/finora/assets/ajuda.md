@@ -32,6 +32,9 @@ Receitas, despesas e transferências entre suas contas.
   período, por vencimento, competência ou pagamento, tipo, contato e centro de custo.
 - **Repetir**: todo mês, semana, ano… ou **parcelar** (o valor é dividido nas parcelas).
 - **Cartão de crédito**: compras no cartão entram na fatura do mês certo, conforme o dia de fechamento.
+- **Observações**: anote o que quiser no lançamento (juros pagos, o combinado com o fornecedor, onde está o
+  comprovante). Aparecem ao parar o mouse sobre a descrição, entram na busca, no recibo, no relatório
+  **Analítico** e na exportação.
 - **Recibo**: abra um lançamento e clique em **Recibo** para imprimir ou salvar em PDF (2 vias).
 - **Comprovantes** (edições pagas): anexe a foto ou o PDF do boleto ou da nota.
 - **Regras automáticas**: ao digitar a descrição de um lançamento novo, a categoria e o contato podem vir

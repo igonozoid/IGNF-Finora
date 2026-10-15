@@ -139,6 +139,13 @@ Ligados em Configurações › Módulos desta entidade; desligar esconde, não a
 - [ ] NF-e (quando for preciso)
 - [ ] Pecuária por animal (brinco), se algum cliente pedir
 
+## Fase H — Substituir o MCC (out/2026 em diante)
+
+Paridade com o MCC (sistema usado hoje), importação dos dados dele e os recursos do IgnControl que faltam.
+Análise em [`ANALISE-MCC.md`](ANALISE-MCC.md), plano em fases em [`PLANO-MCC.md`](PLANO-MCC.md); acompanhamento
+pelos milestones "Fase 0" a "Fase 6" das issues do GitHub. Trabalho na branch `mcc-paridade`; o estado anterior
+está na tag `v0.4.0-antes-mcc`.
+
 ## Futuro (a estudar)
 
 - [ ] Modo nuvem: o mesmo app desktop com o banco remoto (HostGator, PHP + MySQL), por mensalidade

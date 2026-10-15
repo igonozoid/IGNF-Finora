@@ -1,0 +1,122 @@
+{
+  "senha_dos_usuarios": "exemplo123",
+  "linhas_por_tabela": {
+    "centros": 4,
+    "contas": 5,
+    "empresa_config": 4,
+    "empresa_logos": 1,
+    "empresas": 2,
+    "itens": 12,
+    "lancamentos": 28,
+    "movbancarias": 6,
+    "ofx_importados": 2,
+    "pessoas": 5,
+    "pessoas_extra": 1,
+    "sessoes": 0,
+    "usuario_empresas": 1,
+    "usuarios": 3
+  },
+  "por_empresa": {
+    "1": {
+      "lancamentos_ativos": 21,
+      "lancamentos_excluidos": 2,
+      "a_pagar": 5111.82,
+      "a_receber": 12900.0,
+      "pago": 6954.5,
+      "recebido": 9990.5,
+      "pessoas_distintas_nos_lancamentos": 8
+    },
+    "2": {
+      "lancamentos_ativos": 5,
+      "lancamentos_excluidos": 0,
+      "a_pagar": 2100.0,
+      "a_receber": 0,
+      "pago": 3156.02,
+      "recebido": 7500.0,
+      "pessoas_distintas_nos_lancamentos": 3
+    }
+  },
+  "saldos": {
+    "2026-06-30": {
+      "1": {
+        "descricao": "BANCO DO BRASIL CC 12345-6",
+        "realizado": 8098.83,
+        "previsto": 8098.83
+      },
+      "2": {
+        "descricao": "CAIXA INTERNO",
+        "realizado": 2350.0,
+        "previsto": 2350.0
+      },
+      "3": {
+        "descricao": "ITAÚ COMPARTILHADA 9876-5",
+        "realizado": 2500.5,
+        "previsto": 2500.5
+      },
+      "4": {
+        "descricao": "NUBANK PF",
+        "realizado": 1200.0,
+        "previsto": 1200.0
+      },
+      "5": {
+        "descricao": "CONTA ANTIGA (ENCERRADA)",
+        "realizado": 0.0,
+        "previsto": 0.0
+      }
+    },
+    "2026-09-30": {
+      "1": {
+        "descricao": "BANCO DO BRASIL CC 12345-6",
+        "realizado": 14465.5,
+        "previsto": 12727.02
+      },
+      "2": {
+        "descricao": "CAIXA INTERNO",
+        "realizado": 3590.5,
+        "previsto": 4190.5
+      },
+      "3": {
+        "descricao": "ITAÚ COMPARTILHADA 9876-5",
+        "realizado": 90.1,
+        "previsto": 90.1
+      },
+      "4": {
+        "descricao": "NUBANK PF",
+        "realizado": 4754.38,
+        "previsto": 4754.38
+      },
+      "5": {
+        "descricao": "CONTA ANTIGA (ENCERRADA)",
+        "realizado": 0.0,
+        "previsto": 0.0
+      }
+    },
+    "2026-12-31": {
+      "1": {
+        "descricao": "BANCO DO BRASIL CC 12345-6",
+        "realizado": 14465.5,
+        "previsto": 19913.68
+      },
+      "2": {
+        "descricao": "CAIXA INTERNO",
+        "realizado": 3590.5,
+        "previsto": 4190.5
+      },
+      "3": {
+        "descricao": "ITAÚ COMPARTILHADA 9876-5",
+        "realizado": 90.1,
+        "previsto": 2090.1
+      },
+      "4": {
+        "descricao": "NUBANK PF",
+        "realizado": 4754.38,
+        "previsto": 2654.38
+      },
+      "5": {
+        "descricao": "CONTA ANTIGA (ENCERRADA)",
+        "realizado": 0.0,
+        "previsto": 0.0
+      }
+    }
+  }
+}

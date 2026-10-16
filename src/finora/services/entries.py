@@ -100,10 +100,16 @@ class EntryView:
     dest_amount: Decimal | None = None    # transferência entre moedas: quanto chega no destino
     dest_currency: str | None = None
     notes: str | None = None              # observações
+    original_amount: Decimal | None = None  # valor previsto, quando o pago saiu diferente
 
     @property
     def is_paid(self) -> bool:
         return self.status == "paid"
+
+    @property
+    def paid_difference(self) -> Decimal:
+        """Pago - previsto: positivo = juros/multa, negativo = desconto (0 se pagou o previsto)."""
+        return self.amount - self.original_amount if self.original_amount is not None else Decimal(0)
 
     @property
     def on_card(self) -> bool:
@@ -156,7 +162,8 @@ def to_view(row) -> EntryView:
                      e.account_id, acc, e.dest_account_id, dest, e.category_id, cat, ct, e.document_no,
                      e.installment, e.series_id, e.competence_date, e.cost_center_id, cc, cur,
                      Decimal(e.base_amount) if e.base_amount is not None else Decimal(e.amount),
-                     Decimal(e.dest_amount) if e.dest_amount is not None else None, dest_cur, e.notes)
+                     Decimal(e.dest_amount) if e.dest_amount is not None else None, dest_cur, e.notes,
+                     Decimal(e.original_amount) if e.original_amount is not None else None)
 
 
 # Período da lista (como no IgnControl): o mês do cabeçalho, trimestres, semestres, o ano ou tudo
@@ -463,11 +470,56 @@ def set_paid_many(s: Session, entry_ids: list[int], when: date | None = None) ->
 
 
 def set_paid(s: Session, entry_id: int, paid: bool, when: date | None = None) -> None:
+    """Marca como pago (só a data) ou volta para em aberto. Voltar não desfaz um valor pago diferente: o
+    lançamento fica com o valor pago e o previsto guardado, como o estorno do MCC."""
     e = s.get(Entry, entry_id)
     if e.status == "card":
         raise ValueError("Compras no cartão são pagas pela fatura (em Contas › Faturas).")
     e.status, e.paid_date = ("paid", when or date.today()) if paid else ("pending", None)
     s.commit()
+
+
+def pay(s: Session, entry_id: int, when: date | None = None, *, amount: Decimal | None = None,
+        account_id: int | None = None, note: str | None = None) -> None:
+    """Baixa completa (FBaixa do MCC): pago/recebido na data `when`, com o valor que de fato saiu ou entrou
+    (juros, multa ou desconto), a conta usada e uma observação, que vai para o fim das observações.
+    O valor previsto fica em `original_amount` (relatório de juros e descontos).
+    Na transferência só a data muda; no cartão, o pagamento é pela fatura."""
+    from finora.services import cards
+    e = s.get(Entry, entry_id)
+    if e.status == "card":
+        raise ValueError("Compras no cartão são pagas pela fatura (em Contas › Faturas).")
+    if e.status == "paid":
+        raise ValueError("Esse lançamento já está pago.")
+    if amount is not None and amount <= 0:
+        raise ValueError("O valor pago precisa ser maior que zero.")
+    new_amount = amount is not None and amount != Decimal(e.amount)
+    new_account = account_id is not None and account_id != e.account_id
+    if e.kind == "transfer" and (new_amount or new_account):
+        raise ValueError("Na transferência só a data muda na baixa. Para mudar valor ou conta, edite o lançamento.")
+    if new_account:
+        acc = s.get(Account, account_id)
+        if acc is None or acc.entity_id != e.entity_id or not acc.is_active:
+            raise ValueError("Escolha uma conta ativa.")
+        if cards.is_configured(acc):
+            raise ValueError("Para pagar com o cartão, lance a compra no cartão de crédito.")
+    note = (note or "").strip()
+    notes = f"{e.notes}\n{note}" if e.notes and note else (note or e.notes)
+    if notes and len(notes) > MAX_NOTES:
+        raise ValueError(f"As observações podem ter até {MAX_NOTES} caracteres.")
+    try:
+        if new_account:
+            e.account_id = account_id
+        if new_amount:
+            previsto = e.original_amount if e.original_amount is not None else e.amount
+            e.amount = amount
+            e.original_amount = None if Decimal(previsto) == amount else previsto
+        e.notes = notes
+        e.status, e.paid_date = "paid", when or date.today()
+        s.commit()
+    except Exception:
+        s.rollback()
+        raise
 
 
 def in_series(s: Session, entry_id: int) -> int:

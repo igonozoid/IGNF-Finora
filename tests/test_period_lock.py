@@ -52,6 +52,19 @@ def test_pagar_depois_conta_antiga_pode(session, profile):
         entries.set_paid(s, ago, True, date(2026, 8, 31))
 
 
+def test_baixa_de_conta_antiga_com_observacao_pode_com_juros_nao(session, profile):
+    s, eid = session, profile.id
+    ago = _e(s, eid, date(2026, 8, 10))
+    juros = _e(s, eid, date(2026, 8, 12), "Água")
+    period_lock.set_lock(s, eid, date(2026, 8, 31))
+    entries.pay(s, ago, date(2026, 9, 3), note="Paguei no banco")            # data + observação: ok
+    assert entries.get(s, ago).is_paid and entries.get(s, ago).notes == "Paguei no banco"
+    with pytest.raises(PeriodLockedError):                                   # valor muda o mês fechado: não
+        entries.pay(s, juros, date(2026, 9, 3), amount=D("110"))
+    s.rollback()
+    assert not entries.get(s, juros).is_paid and entries.get(s, juros).amount == D("100")
+
+
 def test_reabrir_e_validacoes(session, profile, plus):
     s, eid = session, profile.id
     ago = _e(s, eid, date(2026, 8, 10))

@@ -108,6 +108,33 @@ def test_parcelado_com_documento_e_competencia_da_compra(window):
     form.cancel_btn.click()
 
 
+def test_baixa_com_juros_pela_janela(window, monkeypatch):
+    from finora.ui.payment_dialog import PaymentDialog
+    page = _page(window)
+    mercado = next(e for e in page.model.rows if e.description == "Mercado")
+    seen = {}
+
+    def fake_exec(dlg):
+        assert dlg.windowTitle() == "Pagar" and dlg.amount.text() == "640,10"
+        assert dlg.difference.isHidden()
+        dlg.amount.setText("700,00")
+        seen["diff"] = dlg.difference.text()
+        dlg.note.setText("Juros e multa")
+        dlg.confirm()
+
+    monkeypatch.setattr(PaymentDialog, "exec", fake_exec)
+    page._toggle_paid(mercado)
+    assert seen["diff"] == "A mais que o previsto (juros/multa): R$ 59,90"
+    e = next(e for e in page.model.rows if e.description == "Mercado")
+    assert e.is_paid and e.amount == D("700.00") and e.original_amount == D("640.10")
+    assert e.notes.endswith("Juros e multa")
+    # cancelar a janela não marca nada
+    luz = next(e for e in page.model.rows if e.description == "Conta de luz")
+    monkeypatch.setattr(PaymentDialog, "exec", lambda dlg: dlg.reject())
+    page._toggle_paid(luz)
+    assert not next(e for e in page.model.rows if e.description == "Conta de luz").is_paid
+
+
 def test_transferencia_entre_contas(window):
     with db.Session() as s:
         accounts.create(s, window.profile.id, name="Carteira", kind="cash", opening_balance=D(0))
@@ -152,7 +179,9 @@ def test_filtros_e_busca(window, qtbot):
     page.search.clear()
 
 
-def test_marcar_como_pago_e_excluir(window, dialogs):
+def test_marcar_como_pago_e_excluir(window, dialogs, monkeypatch):
+    from finora.ui.payment_dialog import PaymentDialog
+    monkeypatch.setattr(PaymentDialog, "exec", lambda dlg: dlg.confirm())   # confirma a baixa como veio
     page = _page(window)
     mercado = next(e for e in page.model.rows if e.description == "Mercado")
     page._toggle_paid(mercado)

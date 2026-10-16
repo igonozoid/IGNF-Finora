@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 
 from finora.models import Entity, Entry
 
-# mudar só isso não mexe na competência; vale se o pagamento (antes e depois) estiver em data aberta
-_PAYMENT_ATTRS = {"status", "paid_date", "base_amount"}
+# mudar só isso não mexe na competência nem nos valores; vale se o pagamento (antes e depois) estiver em data
+# aberta. Observação entra porque a baixa pode acrescentar uma (não muda nenhum relatório).
+_PAYMENT_ATTRS = {"status", "paid_date", "base_amount", "notes"}
 
 
 class PeriodLockedError(ValueError):

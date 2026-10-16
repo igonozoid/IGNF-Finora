@@ -38,7 +38,7 @@ FIELDS = {"description": "descrição", "amount": "valor", "due_date": "vencimen
           "document_no": "documento", "name": "nome", "kind": "tipo", "opening_balance": "saldo inicial",
           "is_active": "ativo", "budget": "orçamento", "rate": "cotação", "currency": "moeda", "level": "nível",
           "email": "e-mail", "is_admin": "administrador", "password_hash": "senha", "locked_through": "fechamento",
-          "dest_amount": "valor que chega", "notes": "observações"}
+          "dest_amount": "valor que chega", "notes": "observações", "original_amount": "valor previsto"}
 SKIP = {"base_amount", "data", "id", "last_login", "series_id", "installment", "created"}
 SECRET = {"password_hash"}
 ACTIONS = {"create": "Criou", "update": "Alterou", "delete": "Excluiu"}

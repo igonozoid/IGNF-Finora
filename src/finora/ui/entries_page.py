@@ -1386,8 +1386,16 @@ class EntriesPage(QWidget):
         self.refresh()
 
     def _toggle_paid(self, e: EntryView):
-        with Session() as s:
-            entries.set_paid(s, e.id, not e.is_paid, date.today())
+        """Em aberto: abre a baixa (data, valor pago, conta, observação). Pago: volta para em aberto."""
+        from finora.ui.payment_dialog import PaymentDialog
+        if not e.is_paid:
+            dlg = PaymentDialog(self, e, self.t)
+            dlg.exec()
+            if not dlg.paid:
+                return
+        else:
+            with Session() as s:
+                entries.set_paid(s, e.id, False)
         verb = {"income": "recebido", "expense": "pago", "transfer": "feita"}[e.kind]
         self.message.emit(f"\"{e.description}\" marcado como {verb}." if not e.is_paid
                           else f"\"{e.description}\" voltou a ficar em aberto.")
@@ -1428,14 +1436,13 @@ class EntriesPage(QWidget):
             act.setEnabled(n > 0)
             menu.exec(self.table.viewport().mapToGlobal(pos))
             return
-        verb = {"income": "recebido", "expense": "pago", "transfer": "feita"}[e.kind]
         if e.on_card:
             menu.addAction(qta.icon("fa6s.file-invoice-dollar", color=self.t["acc"]), "Ver fatura",
                            lambda: self.open_statement(e.account_id, e.due_date))
         else:
+            pay_label = {"income": "Receber…", "expense": "Pagar…", "transfer": "Marcar como feita…"}[e.kind]
             menu.addAction(qta.icon("fa6s.circle-check", color=self.t["pos"]),
-                           "Marcar como em aberto" if e.is_paid else f"Marcar como {verb} hoje",
-                           lambda: self._toggle_paid(e))
+                           "Marcar como em aberto" if e.is_paid else pay_label, lambda: self._toggle_paid(e))
         menu.addAction(qta.icon("fa6s.pen", color=self.t["mut"]), "Editar", lambda: self.edit_entry(e))
         menu.addAction(qta.icon("fa6s.clone", color=self.t["mut"]), "Duplicar", lambda: self.duplicate_entry(e))
         if e.kind != "transfer" and not e.on_card:

@@ -105,6 +105,8 @@ class Entry(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
     cost_center_id: Mapped[int | None] = mapped_column(ForeignKey("cost_centers.id"))
     amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))                  # na moeda da conta
+    # Pago com valor diferente do previsto (juros, multa, desconto): o previsto fica aqui; `amount` é o pago.
+    original_amount: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     # Valor na moeda principal, pela cotação da data (é o que os relatórios somam). Calculado sozinho ao gravar.
     base_amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))
     # Transferência entre contas de moedas diferentes: quanto chega no destino (na moeda dele).

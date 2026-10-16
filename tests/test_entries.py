@@ -274,6 +274,59 @@ def test_marcar_pago(ctx):
     assert not entries.get(s, i).is_paid
 
 
+def test_baixa_com_juros_outra_conta_e_observacao(ctx):
+    s, eid = ctx["s"], ctx["eid"]
+    (i,) = entries.create(s, eid, _data(ctx, amount=D("1000.00"), notes="Manutenção do trator"))
+    entries.pay(s, i, date(2026, 10, 15), amount=D("1050.00"), account_id=ctx["cash"],
+                note="Pago com 5 dias de atraso")
+    e = entries.get(s, i)
+    assert e.is_paid and e.paid_date == date(2026, 10, 15) and e.account_id == ctx["cash"]
+    assert e.amount == D("1050.00") and e.original_amount == D("1000.00") and e.paid_difference == D("50.00")
+    assert e.notes == "Manutenção do trator\nPago com 5 dias de atraso"           # vai para o fim
+    saldos = {a.id: a.balance for a in accounts.list_accounts(s, eid)}
+    assert saldos[ctx["cash"]] == D("-1050.00") and saldos[ctx["bank"]] == D("100.00")   # saiu do caixa
+    with pytest.raises(ValueError, match="já está pago"):
+        entries.pay(s, i)
+    # voltar para em aberto mantém o valor pago (como o estorno do MCC); pagar de novo mantém o previsto
+    entries.set_paid(s, i, False)
+    assert entries.get(s, i).amount == D("1050.00") and entries.get(s, i).original_amount == D("1000.00")
+    entries.pay(s, i, date(2026, 10, 16), amount=D("1000.00"))
+    e = entries.get(s, i)
+    assert e.amount == D("1000.00") and e.original_amount is None and e.paid_difference == 0
+
+
+def test_baixa_com_desconto_e_so_data(ctx):
+    s, eid = ctx["s"], ctx["eid"]
+    (r,) = entries.create(s, eid, _data(ctx, kind="income", description="Venda", amount=D("500.00"),
+                                        category_id=ctx["salario"]))
+    entries.pay(s, r, date(2026, 10, 12), amount=D("480.00"))
+    assert entries.get(s, r).paid_difference == D("-20.00")                         # desconto concedido
+    (x,) = entries.create(s, eid, _data(ctx))
+    entries.pay(s, x)                                                               # só a data (hoje)
+    e = entries.get(s, x)
+    assert e.is_paid and e.paid_date == date.today() and e.original_amount is None and e.notes is None
+
+
+def test_baixa_regras(ctx):
+    s, eid = ctx["s"], ctx["eid"]
+    (t,) = entries.create(s, eid, _data(ctx, kind="transfer", description="Saque", category_id=None,
+                                        dest_account_id=ctx["cash"]))
+    with pytest.raises(ValueError, match="só a data"):
+        entries.pay(s, t, amount=D("1"))
+    entries.pay(s, t, date(2026, 10, 11), note="feita no caixa eletrônico")
+    assert entries.get(s, t).is_paid and entries.get(s, t).notes == "feita no caixa eletrônico"
+    (i,) = entries.create(s, eid, _data(ctx))
+    with pytest.raises(ValueError, match="maior que zero"):
+        entries.pay(s, i, amount=D("0"))
+    accounts.set_active(s, ctx["cash"], False)
+    with pytest.raises(ValueError, match="conta ativa"):
+        entries.pay(s, i, account_id=ctx["cash"])
+    card = accounts.create(s, eid, name="Visa", kind="card", opening_balance=D(0), closing_day=25, due_day=5)
+    with pytest.raises(ValueError, match="cartão"):
+        entries.pay(s, i, account_id=card)
+    assert not entries.get(s, i).is_paid                                           # nada mudou
+
+
 def test_filtro_por_conta_e_categoria(ctx):
     s, eid = ctx["s"], ctx["eid"]
     entries.create(s, eid, _data(ctx))                                                        # luz, banco

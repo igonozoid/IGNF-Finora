@@ -236,6 +236,38 @@ def test_levar_para_outra_entidade(plus, window, monkeypatch):
         assert s.query(Entry).filter_by(description="Mercado").one().entity_id == other
 
 
+def test_coluna_observacoes_opcional(window, qtbot):
+    from PySide6.QtCore import Qt
+    from finora.core import settings
+    from finora.services import entries as svc
+    from finora.ui.entries_page import C_NOTES
+    page = _page(window)
+    window.resize(1400, 800)
+    qtbot.wait(20)
+    assert page.table.isColumnHidden(C_NOTES)                            # desligada por padrão
+    mercado = next(e for e in page.model.rows if e.description == "Mercado")
+    with db.Session() as s:
+        d = svc.EntryData(kind=mercado.kind, description="Mercado", amount=mercado.amount,
+                          due_date=mercado.due_date, account_id=mercado.account_id,
+                          category_id=mercado.category_id, contact=mercado.contact, notes="Compra do mês\nCartão")
+        svc.update(s, mercado.id, d)
+    page.refresh()
+    page.set_notes_column(True)
+    assert not page.table.isColumnHidden(C_NOTES) and settings.get_entries_notes_column()
+    row = next(i for i, e in enumerate(page.model.rows) if e.description == "Mercado")
+    assert page.model.data(page.model.index(row, C_NOTES)) == "Compra do mês Cartão"          # uma linha só
+    assert page.model.data(page.model.index(row, C_NOTES), Qt.ToolTipRole) == "Compra do mês\nCartão"
+    page.table.sortByColumn(C_NOTES, Qt.DescendingOrder)
+    assert page.model.rows[0].description == "Mercado"                   # o único com observação vem antes
+    window.resize(800, 600)                                              # tela estreita: some primeiro
+    qtbot.wait(20)
+    assert page.table.isColumnHidden(C_NOTES)
+    window.resize(1400, 800)
+    qtbot.wait(20)
+    page.set_notes_column(False)
+    assert page.table.isColumnHidden(C_NOTES) and not settings.get_entries_notes_column()
+
+
 def test_repetir_no_mes_seguinte_pelo_menu(window, dialogs):
     from finora.models import Entry
     page = _page(window)

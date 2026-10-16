@@ -37,7 +37,8 @@ Receitas, despesas e transferências entre suas contas.
 - **Cartão de crédito**: compras no cartão entram na fatura do mês certo, conforme o dia de fechamento.
 - **Observações**: anote o que quiser no lançamento (juros pagos, o combinado com o fornecedor, onde está o
   comprovante). Aparecem ao parar o mouse sobre a descrição, entram na busca, no recibo, no relatório
-  **Analítico** e na exportação.
+  **Analítico** e na exportação. Para ver numa coluna da lista, clique com o botão direito nos títulos das
+  colunas › **Mostrar a coluna Observações**.
 - **Pagar/Receber** (botão direito no lançamento): informe a data e, se for o caso, o **valor que de fato
   saiu ou entrou** (com juros, multa ou desconto), a conta usada e uma observação. O valor previsto fica
   guardado. Para vários de uma vez, selecione e use **Marcar como pagos** (só a data, hoje).

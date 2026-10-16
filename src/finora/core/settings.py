@@ -162,6 +162,15 @@ def set_tray(on: bool) -> None:
     _s().setValue("ui/tray", on)
 
 
+def get_entries_notes_column() -> bool:
+    """Lista de lançamentos: mostrar a coluna Observações (ligada pelo menu do cabeçalho)."""
+    return _s().value("entries/notes_column", False, type=bool)
+
+
+def set_entries_notes_column(on: bool) -> None:
+    _s().setValue("entries/notes_column", on)
+
+
 def get_report_charts() -> bool:
     """Mostrar o gráfico nos relatórios que têm (e levá-lo para a impressão/PDF)."""
     return _s().value("reports/charts", True, type=bool)

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 import qtawesome as qta
 
-from finora.core import money
+from finora.core import money, settings
 from finora.core.db import Session
 from finora.core.licensing import allowed, current_edition
 from finora.services import (
@@ -29,10 +29,11 @@ from finora.ui.widgets import button, field_label, help_icon, icon_label, lock_i
 
 MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro",
           "outubro", "novembro", "dezembro"]
-COLS = ["", "VENC.", "DESCRIÇÃO", "CONTATO", "CATEGORIA", "CONTA", "VALOR", "SITUAÇÃO"]
-C_KIND, C_DUE, C_DESC, C_CONTACT, C_CAT, C_ACC, C_VALUE, C_STATUS = range(len(COLS))
-# Colunas que somem, nesta ordem, quando a tabela fica estreita: (coluna, largura mínima da tabela)
-HIDE_WHEN_NARROW = [(C_CONTACT, 860), (C_ACC, 700), (C_CAT, 560)]
+COLS = ["", "VENC.", "DESCRIÇÃO", "CONTATO", "CATEGORIA", "CONTA", "OBSERVAÇÕES", "VALOR", "SITUAÇÃO"]
+C_KIND, C_DUE, C_DESC, C_CONTACT, C_CAT, C_ACC, C_NOTES, C_VALUE, C_STATUS = range(len(COLS))
+# Colunas que somem, nesta ordem, quando a tabela fica estreita: (coluna, largura mínima da tabela).
+# Observações é opcional (menu do cabeçalho) e é a primeira a sumir.
+HIDE_WHEN_NARROW = [(C_NOTES, 1000), (C_CONTACT, 860), (C_ACC, 700), (C_CAT, 560)]
 FORM_W = 320
 STACK_BELOW = 760  # abaixo dessa largura da tela, o formulário ocupa o lugar da tabela
 
@@ -88,6 +89,8 @@ class EntriesModel(QAbstractTableModel):
             return ((e.category or "").lower(), e.due_date)
         if col == C_ACC:
             return (e.account.lower(), e.due_date)
+        if col == C_NOTES:
+            return ((e.notes or "").lower(), e.due_date)
         if col == C_VALUE:
             return (-e.amount if e.kind == "expense" else e.amount, e.due_date)
         if col == C_STATUS:
@@ -136,6 +139,8 @@ class EntriesModel(QAbstractTableModel):
                 return "Transferência" if e.kind == "transfer" else (e.category or "Sem categoria")
             if col == C_ACC:
                 return f"{e.account} → {e.dest_account}" if e.kind == "transfer" else e.account
+            if col == C_NOTES:
+                return " ".join((e.notes or "").split())
             if col == C_VALUE:
                 return money.fmt(-e.amount if e.kind == "expense" else e.amount, e.currency or self.currency)
             if col == C_STATUS:
@@ -150,7 +155,7 @@ class EntriesModel(QAbstractTableModel):
         if role == Qt.ForegroundRole:
             if col == C_VALUE and e.kind == "income":
                 return QColor(self.t["pos"])
-            if col in (C_CONTACT, C_ACC) or (col == C_VALUE and e.kind == "transfer") \
+            if col in (C_CONTACT, C_ACC, C_NOTES) or (col == C_VALUE and e.kind == "transfer") \
                     or (col == C_CAT and not e.category):
                 return QColor(self.t["mut"])
             if col == C_DUE and e.is_late(self.today):
@@ -179,6 +184,8 @@ class EntriesModel(QAbstractTableModel):
                 if n := self.attached.get(e.id):
                     tip += f"\n{n} comprovante{'s' if n > 1 else ''} anexado{'s' if n > 1 else ''}"
                 return tip
+            if col == C_NOTES and e.notes:
+                return e.notes
             if col == C_STATUS and e.is_paid and e.paid_date:
                 return f"{e.status_label(self.today)} em {e.paid_date.strftime('%d/%m/%Y')}"
         return None
@@ -948,12 +955,17 @@ class EntriesPage(QWidget):
         hdr.setHighlightSections(False)
         hdr.setSectionResizeMode(QHeaderView.Fixed)
         hdr.setSectionResizeMode(C_DESC, QHeaderView.Stretch)
-        for col, w in ((C_KIND, 28), (C_DUE, 70), (C_CONTACT, 140), (C_CAT, 150), (C_ACC, 120),
+        for col, w in ((C_KIND, 28), (C_DUE, 70), (C_CONTACT, 140), (C_CAT, 150), (C_ACC, 120), (C_NOTES, 180),
                        (C_VALUE, 120), (C_STATUS, 96)):
             hdr.resizeSection(col, w)
         hdr.setSortIndicator(C_DUE, Qt.AscendingOrder)
         self.table.setSortingEnabled(True)
-        hdr.setToolTip("Clique no título de uma coluna para ordenar")
+        hdr.setToolTip("Clique no título de uma coluna para ordenar.\n"
+                       "Botão direito: mostrar ou esconder a coluna Observações.")
+        hdr.setContextMenuPolicy(Qt.CustomContextMenu)
+        hdr.customContextMenuRequested.connect(self._header_menu)
+        self.show_notes = settings.get_entries_notes_column()
+        self.table.setColumnHidden(C_NOTES, not self.show_notes)
 
         self.empty = QLabel(alignment=Qt.AlignCenter, wordWrap=True)
         self.empty.setProperty("role", "muted")
@@ -1340,7 +1352,21 @@ class EntriesPage(QWidget):
                     self.filters_row.takeAt(0)
         w = self.table.viewport().width() if self.left.isVisible() else self.width() - 28
         for col, min_w in HIDE_WHEN_NARROW:
-            self.table.setColumnHidden(col, w < min_w)
+            self.table.setColumnHidden(col, w < min_w or (col == C_NOTES and not self.show_notes))
+
+    def _header_menu(self, pos):
+        menu = QMenu(self)
+        act = menu.addAction("Mostrar a coluna Observações")
+        act.setCheckable(True)
+        act.setChecked(self.show_notes)
+        act.toggled.connect(self.set_notes_column)
+        menu.exec(self.table.horizontalHeader().mapToGlobal(pos))
+
+    def set_notes_column(self, on: bool):
+        """Liga/desliga a coluna Observações e lembra a escolha."""
+        self.show_notes = on
+        settings.set_entries_notes_column(on)
+        self._arrange()
 
     def resizeEvent(self, e):
         super().resizeEvent(e)

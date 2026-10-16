@@ -388,12 +388,20 @@ class EntryForm(QFrame):
         self.repeat = QComboBox()
         for k, (label, *_r) in entries.REPEATS.items():
             self.repeat.addItem(label, k)
+        self.every = QComboBox()                       # parcelado: intervalo entre as parcelas
+        for k, (label, *_r) in entries.INTERVALS.items():
+            self.every.addItem(label, k)
+        self.every.setCurrentIndex(self.every.findData("monthly"))
+        self.every.setToolTip("De quanto em quanto tempo vence cada parcela")
         self.times = QSpinBox(minimum=2, maximum=entries.MAX_REPEAT, value=12, suffix=" vezes")
         self.times.setFont(theme.mono_font())
         rrow.addWidget(self.repeat, 1)
+        rrow.addWidget(self.every, 1)
         rrow.addWidget(self.times)
-        rl.addWidget(field_label("Repetição", t, "Parcelado: divide o valor total em parcelas mensais.\n"
-                                                 "Todo mês/semana/ano: repete o mesmo valor várias vezes."))
+        rl.addWidget(field_label("Repetição", t, "Parcelado: divide o valor total em parcelas (todo mês, a cada\n"
+                                                 "15 dias, a cada 2 meses…).\n"
+                                                 "Todo dia/semana/mês/ano, a cada 15 dias ou a cada 2, 3 ou 6 meses:\n"
+                                                 "repete o mesmo valor várias vezes."))
         rl.addLayout(rrow)
         self.repeat_preview = QLabel(wordWrap=True)
         self.repeat_preview.setProperty("role", "field")
@@ -424,6 +432,7 @@ class EntryForm(QFrame):
 
         self.kind_group.idToggled.connect(lambda _i, on: on and self._kind_changed())
         self.repeat.currentIndexChanged.connect(self._update_repeat)
+        self.every.currentIndexChanged.connect(self._update_repeat)
         self.times.valueChanged.connect(self._update_repeat)
         self.amount.textChanged.connect(self._update_repeat)
         self.due.dateChanged.connect(self._update_repeat)
@@ -572,7 +581,9 @@ class EntryForm(QFrame):
 
     def _update_repeat(self):
         rep = self.repeat.currentData()
+        every = self.every.currentData()
         self.times.setVisible(rep != "none")
+        self.every.setVisible(rep == "installments")
         self.amount_lbl.label.setText("Valor total" if rep == "installments" else "Valor")
         try:
             value = money.parse(self.amount.text())
@@ -586,7 +597,8 @@ class EntryForm(QFrame):
         elif rep == "installments":
             parts = entries.split(value, n) if value and value > 0 else None
             text = (f"{n} parcelas de {money.fmt(parts[-1], cur)}" if parts else f"{n} parcelas") + \
-                   f", até {entries.occurrence(start, rep, n - 1).strftime('%d/%m/%Y')}"
+                   ("" if every == "monthly" else f", {entries.INTERVALS[every][0].lower()}") + \
+                   f", até {entries.occurrence(start, rep, n - 1, every).strftime('%d/%m/%Y')}"
             if parts and parts[0] != parts[-1]:
                 text += f" (a 1ª com {money.fmt(parts[0], cur)})"
         else:
@@ -621,6 +633,7 @@ class EntryForm(QFrame):
         self.paid_date.setDate(_qdate(date.today()))
         self.paid_date.setEnabled(False)
         self.repeat.setCurrentIndex(0)
+        self.every.setCurrentIndex(self.every.findData("monthly"))
         self.times.setValue(12)
         self.repeat_frame.show()
         self.attach.set_entry(None)
@@ -727,7 +740,7 @@ class EntryForm(QFrame):
             paid=self.paid.isChecked() and self._card() is None,
             paid_date=self.paid_date.date().toPython() if self.paid.isChecked() else None,
             repeat=self.repeat.currentData() if self.editing is None else "none", times=self.times.value(),
-            dest_amount=dest_value, notes=self.notes.toPlainText(),
+            dest_amount=dest_value, notes=self.notes.toPlainText(), every=self.every.currentData(),
         )
 
     def _save(self):

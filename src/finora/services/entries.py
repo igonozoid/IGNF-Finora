@@ -20,14 +20,21 @@ from finora.services import contacts, scope
 
 KINDS = {"expense": "Despesa", "income": "Receita", "transfer": "Transferência"}
 
-# Repetição: chave -> (rótulo, meses entre ocorrências, dias entre ocorrências)
-REPEATS = {
-    "none": ("Não repete", 0, 0),
-    "installments": ("Parcelado", 1, 0),
-    "monthly": ("Todo mês", 1, 0),
+# Intervalo entre ocorrências: chave -> (rótulo, meses, dias). Os mesmos do parcelamento do MCC
+# (diária, semanal, quinzenal = 15 dias, mensal, bimestral, trimestral, semestral, anual).
+INTERVALS = {
+    "daily": ("Todo dia", 0, 1),
     "weekly": ("Toda semana", 0, 7),
+    "biweekly": ("A cada 15 dias", 0, 15),
+    "monthly": ("Todo mês", 1, 0),
+    "bimonthly": ("A cada 2 meses", 2, 0),
+    "quarterly": ("A cada 3 meses", 3, 0),
+    "semiannual": ("A cada 6 meses", 6, 0),
     "yearly": ("Todo ano", 12, 0),
 }
+# Repetição: "none", "installments" (divide o valor; o intervalo vem de EntryData.every) ou um intervalo acima
+# (repete o mesmo valor). chave -> (rótulo, meses, dias)
+REPEATS = {"none": ("Não repete", 0, 0), "installments": ("Parcelado", 1, 0), **INTERVALS}
 MAX_REPEAT = 360
 
 FILTERS = {
@@ -50,8 +57,9 @@ def month_range(year: int, month: int) -> tuple[date, date]:
     return date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1])
 
 
-def occurrence(start: date, repeat: str, i: int) -> date:
-    _label, months, days = REPEATS[repeat]
+def occurrence(start: date, repeat: str, i: int, every: str = "monthly") -> date:
+    """Data da i-ésima ocorrência (0 = a primeira). No parcelado, o intervalo é `every`."""
+    _label, months, days = INTERVALS[every] if repeat == "installments" else REPEATS[repeat]
     if days:
         return date.fromordinal(start.toordinal() + days * i)
     return add_months(start, months * i)  # sempre a partir da 1ª data: 31/01 -> 28/02 -> 31/03
@@ -255,6 +263,7 @@ class EntryData:
     cost_center_id: int | None = None
     dest_amount: Decimal | None = None     # transferência entre contas de moedas diferentes
     notes: str | None = None               # observações (também na transferência)
+    every: str = "monthly"                 # parcelado: intervalo entre as parcelas (INTERVALS)
 
 
 MAX_NOTES = 1000
@@ -293,6 +302,8 @@ def _validate(s: Session, entity_id: int, d: EntryData) -> None:
         raise ValueError(f"As observações podem ter até {MAX_NOTES} caracteres.")
     if d.repeat not in REPEATS:
         raise ValueError("Repetição inválida.")
+    if d.repeat == "installments" and d.every not in INTERVALS:
+        raise ValueError("Intervalo das parcelas inválido.")
     if d.repeat != "none" and not 2 <= d.times <= MAX_REPEAT:
         raise ValueError(f"Escolha de 2 a {MAX_REPEAT} vezes.")
 
@@ -343,7 +354,7 @@ def create(s: Session, entity_id: int, d: EntryData) -> list[int]:
             e = Entry(entity_id=entity_id)
             _apply(e, d, entity_id, contact_id)
             e.amount = amounts[i]
-            _set_dates(s, e, d, occurrence(d.due_date, d.repeat, i) if n > 1 else d.due_date, i == 0)
+            _set_dates(s, e, d, occurrence(d.due_date, d.repeat, i, d.every) if n > 1 else d.due_date, i == 0)
             e.series_id = series
             e.installment = f"{i + 1}/{n}" if d.repeat == "installments" else None
             s.add(e)

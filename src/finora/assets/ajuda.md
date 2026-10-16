@@ -30,7 +30,8 @@ Receitas, despesas e transferências entre suas contas.
 
 - **Filtros**: Todos, A receber, A pagar, Atrasados, Pagos. Em **Mais filtros**: trimestre, semestre, ano, todo o
   período, por vencimento, competência ou pagamento, tipo, contato e centro de custo.
-- **Repetir**: todo mês, semana, ano… ou **parcelar** (o valor é dividido nas parcelas).
+- **Repetir**: todo dia, toda semana, a cada 15 dias, todo mês, a cada 2, 3 ou 6 meses, todo ano… ou
+  **parcelar** (o valor é dividido nas parcelas, que vencem todo mês ou no intervalo que você escolher).
 - **Cartão de crédito**: compras no cartão entram na fatura do mês certo, conforme o dia de fechamento.
 - **Observações**: anote o que quiser no lançamento (juros pagos, o combinado com o fornecedor, onde está o
   comprovante). Aparecem ao parar o mouse sobre a descrição, entram na busca, no recibo, no relatório

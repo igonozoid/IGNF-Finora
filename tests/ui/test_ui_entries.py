@@ -66,6 +66,28 @@ def test_parcelado_mostra_previa_e_cria_parcelas(window):
     assert any(e.description == "Geladeira" and e.installment == "3/3" for e in page.model.rows)
 
 
+def test_parcelado_a_cada_15_dias(window):
+    page = _page(window)
+    window.new_entry()
+    form = page.form
+    assert form.every.isHidden()                                     # só aparece no parcelado
+    _fill(form, desc="Trator", amount="1.000,00", day=1, repeat="installments", times=4)
+    assert not form.every.isHidden() and form.every.currentData() == "monthly"
+    form.every.setCurrentIndex(form.every.findData("biweekly"))
+    assert "4 parcelas de R$ 250,00, a cada 15 dias, até" in form.repeat_preview.text()
+    form.save_btn.click()
+    from finora.models import Entry
+    with db.Session() as s:
+        dues = [e.due_date for e in s.query(Entry).filter_by(description="Trator").order_by(Entry.due_date)]
+    first = dues[0]
+    assert [(d - first).days for d in dues] == [0, 15, 30, 45]
+    window.new_entry()
+    assert form.every.currentData() == "monthly" and form.every.isHidden()   # formulário novo volta ao padrão
+    form.repeat.setCurrentIndex(form.repeat.findData("quarterly"))
+    assert form.every.isHidden() and form.repeat_preview.text().startswith("12 lançamentos, o último em")
+    form.cancel_btn.click()
+
+
 def test_transferencia_entre_contas(window):
     with db.Session() as s:
         accounts.create(s, window.profile.id, name="Carteira", kind="cash", opening_balance=D(0))

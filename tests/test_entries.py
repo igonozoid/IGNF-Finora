@@ -39,6 +39,20 @@ def test_add_months_respeita_fim_do_mes():
     assert entries.occurrence(date(2024, 2, 29), "yearly", 1) == date(2025, 2, 28)
 
 
+def test_intervalos_do_mcc():
+    d = date(2026, 1, 31)
+    assert entries.occurrence(d, "daily", 3) == date(2026, 2, 3)
+    assert entries.occurrence(date(2026, 10, 1), "biweekly", 3) == date(2026, 11, 15)   # quinzenal = 15 dias
+    assert entries.occurrence(d, "bimonthly", 1) == date(2026, 3, 31)
+    assert entries.occurrence(d, "bimonthly", 2) == date(2026, 5, 31)
+    assert entries.occurrence(d, "quarterly", 1) == date(2026, 4, 30)                # 31/04 não existe
+    assert entries.occurrence(d, "semiannual", 1) == date(2026, 7, 31)
+    # parcelado usa o intervalo de `every` (padrão: mensal)
+    assert entries.occurrence(d, "installments", 1) == date(2026, 2, 28)
+    assert entries.occurrence(d, "installments", 2, "biweekly") == date(2026, 3, 2)
+    assert set(entries.INTERVALS) <= set(entries.REPEATS)
+
+
 def test_split_parcelas():
     assert entries.split(D("100.00"), 3) == [D("33.34"), D("33.33"), D("33.33")]
     assert sum(entries.split(D("1000.01"), 7)) == D("1000.01")
@@ -78,6 +92,28 @@ def test_parcelado(ctx):
     assert [e.due_date for e in out] == [date(2026, 10, 10), date(2026, 11, 10), date(2026, 12, 10)]
     assert [e.is_paid for e in out] == [True, False, False]  # só a 1ª nasce paga
     assert len({e.series_id for e in out}) == 1 and not out[0].is_recurring
+
+
+def test_parcelado_quinzenal_como_no_mcc(ctx):
+    ids = entries.create(ctx["s"], ctx["eid"], _data(ctx, description="Conserto do trator", amount=D("1000.00"),
+                                                     due_date=date(2026, 10, 1), repeat="installments",
+                                                     every="biweekly", times=4))
+    out = [entries.get(ctx["s"], i) for i in ids]
+    assert [e.due_date for e in out] == [date(2026, 10, 1), date(2026, 10, 16), date(2026, 10, 31),
+                                         date(2026, 11, 15)]            # mesmas datas do lançamento do MCC
+    assert [e.installment for e in out] == ["1/4", "2/4", "3/4", "4/4"]
+    assert sum(e.amount for e in out) == D("1000.00")
+    with pytest.raises(ValueError, match="Intervalo das parcelas"):
+        entries.create(ctx["s"], ctx["eid"], _data(ctx, repeat="installments", every="hourly", times=2))
+
+
+def test_repete_a_cada_2_3_e_6_meses(ctx):
+    s = ctx["s"]
+    for rep, last in (("bimonthly", date(2027, 4, 10)), ("quarterly", date(2027, 7, 10)),
+                      ("semiannual", date(2028, 4, 10))):
+        ids = entries.create(s, ctx["eid"], _data(ctx, description=rep, repeat=rep, times=4))
+        out = [entries.get(s, i) for i in ids]
+        assert out[-1].due_date == last and all(e.amount == D("120.50") and e.is_recurring for e in out)
 
 
 def test_recorrente(ctx):

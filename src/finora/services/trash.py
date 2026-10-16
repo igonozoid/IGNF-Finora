@@ -82,7 +82,8 @@ def list_trash(s: Session, entity_id: int, search: str = "") -> list[TrashView]:
     out = []
     for e, acc, cur, dest_name in s.execute(q):
         account = f"{acc} → {dest_name}" if e.kind == "transfer" and dest_name else acc
-        out.append(TrashView(e.id, e.kind, e.description or "", -e.amount if e.kind == "expense" else e.amount,
+        out.append(TrashView(e.id, e.kind, e.description or "",
+                             -e.amount if e.kind in ("expense", "withdrawal") else e.amount,
                              cur, e.due_date, account, e.deleted_at, e.deleted_by or "—"))
     return out
 

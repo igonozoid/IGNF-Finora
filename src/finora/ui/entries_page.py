@@ -35,6 +35,8 @@ C_KIND, C_DUE, C_DESC, C_CONTACT, C_CAT, C_ACC, C_NOTES, C_VALUE, C_STATUS = ran
 # Observações é opcional (menu do cabeçalho) e é a primeira a sumir.
 HIDE_WHEN_NARROW = [(C_NOTES, 1000), (C_CONTACT, 860), (C_ACC, 700), (C_CAT, 560)]
 FORM_W = 320
+# Botões de tipo do formulário. "Ajuste" vira depósito ou retirada pelo seletor logo abaixo.
+FORM_KINDS = [("expense", "Despesa"), ("income", "Receita"), ("transfer", "Transferência"), ("adjust", "Ajuste")]
 STACK_BELOW = 760  # abaixo dessa largura da tela, o formulário ocupa o lugar da tabela
 
 
@@ -68,6 +70,8 @@ class EntriesModel(QAbstractTableModel):
             "income": qta.icon("fa6s.arrow-down", color=t["pos"]),
             "expense": qta.icon("fa6s.arrow-up", color=t["neg"]),
             "transfer": qta.icon("fa6s.right-left", color=t["mut"]),
+            "deposit": qta.icon("fa6s.circle-plus", color=t["pos"]),
+            "withdrawal": qta.icon("fa6s.circle-minus", color=t["neg"]),
             "repeat": qta.icon("fa6s.repeat", color=t["mut"]),
             "attach": qta.icon("fa6s.paperclip", color=t["mut"]),
         }
@@ -92,7 +96,7 @@ class EntriesModel(QAbstractTableModel):
         if col == C_NOTES:
             return ((e.notes or "").lower(), e.due_date)
         if col == C_VALUE:
-            return (-e.amount if e.kind == "expense" else e.amount, e.due_date)
+            return (e.signed_amount, e.due_date)
         if col == C_STATUS:
             return (e.status_label(self.today), e.due_date)
         if col == C_KIND:
@@ -136,13 +140,13 @@ class EntriesModel(QAbstractTableModel):
             if col == C_CONTACT:
                 return e.contact or ""
             if col == C_CAT:
-                return "Transferência" if e.kind == "transfer" else (e.category or "Sem categoria")
+                return entries.KINDS[e.kind] if e.kind in entries.NO_CATEGORY else (e.category or "Sem categoria")
             if col == C_ACC:
                 return f"{e.account} → {e.dest_account}" if e.kind == "transfer" else e.account
             if col == C_NOTES:
                 return " ".join((e.notes or "").split())
             if col == C_VALUE:
-                return money.fmt(-e.amount if e.kind == "expense" else e.amount, e.currency or self.currency)
+                return money.fmt(e.signed_amount, e.currency or self.currency)
             if col == C_STATUS:
                 return e.status_label(self.today)
         if role == Qt.DecorationRole:
@@ -153,10 +157,10 @@ class EntriesModel(QAbstractTableModel):
             if col == C_DESC and e.is_recurring:
                 return self.icons["repeat"]
         if role == Qt.ForegroundRole:
-            if col == C_VALUE and e.kind == "income":
+            if col == C_VALUE and e.kind in entries.INFLOW:
                 return QColor(self.t["pos"])
             if col in (C_CONTACT, C_ACC, C_NOTES) or (col == C_VALUE and e.kind == "transfer") \
-                    or (col == C_CAT and not e.category):
+                    or (col == C_CAT and (not e.category or e.kind in entries.ADJUST_KINDS)):
                 return QColor(self.t["mut"])
             if col == C_DUE and e.is_late(self.today):
                 return QColor(self.t["neg"])
@@ -313,15 +317,23 @@ class EntryForm(QFrame):
         seg = QHBoxLayout()
         seg.setSpacing(0)
         self.kind_group = QButtonGroup(self, exclusive=True)
-        for i, (k, label) in enumerate(entries.KINDS.items()):
+        for i, (k, label) in enumerate(FORM_KINDS):
             b = QPushButton(label, checkable=True)
             b.setProperty("variant", "seg")
-            b.setProperty("pos", "first" if i == 0 else "last" if i == len(entries.KINDS) - 1 else "mid")
+            b.setProperty("pos", "first" if i == 0 else "last" if i == len(FORM_KINDS) - 1 else "mid")
             b.setProperty("kind", k)
             b.setCursor(Qt.PointingHandCursor)
             self.kind_group.addButton(b, i)
             seg.addWidget(b, 1)
         lay.addLayout(seg)
+        self.adjust_dir = QComboBox()        # ajuste de saldo: entra (depósito) ou sai (retirada)
+        self.adjust_dir.addItem("Entrada na conta (depósito)", "deposit")
+        self.adjust_dir.addItem("Saída da conta (retirada)", "withdrawal")
+        self.adjust_box = self._field("Ajuste de saldo", self.adjust_dir,
+                                      help_text="Dinheiro que entra ou sai da conta sem ser receita nem despesa:\n"
+                                                "aporte dos sócios, saque para despesas miúdas, acerto de saldo…\n"
+                                                "Mexe no saldo e no extrato, mas não entra na DRE.")
+        lay.addLayout(self.adjust_box)
 
         self.desc = QLineEdit(maxLength=200, placeholderText="Ex.: Conta de luz")
         lay.addLayout(self._field("Descrição", self.desc))
@@ -468,6 +480,7 @@ class EntryForm(QFrame):
         lay.addStretch(1)
 
         self.kind_group.idToggled.connect(lambda _i, on: on and self._kind_changed())
+        self.adjust_dir.currentIndexChanged.connect(self._kind_changed)
         self.repeat.currentIndexChanged.connect(self._update_repeat)
         self.every.currentIndexChanged.connect(self._update_repeat)
         self.times.valueChanged.connect(self._update_repeat)
@@ -528,7 +541,15 @@ class EntryForm(QFrame):
 
     def _kind(self) -> str:
         b = self.kind_group.checkedButton()
-        return b.property("kind") if b else "expense"   # antes de abrir o formulário pela 1ª vez
+        k = b.property("kind") if b else "expense"     # antes de abrir o formulário pela 1ª vez
+        return self.adjust_dir.currentData() if k == "adjust" else k
+
+    def _select_kind(self, kind: str):
+        """Marca o botão do tipo (depósito/retirada: o botão Ajuste, com a direção)."""
+        if kind in entries.ADJUST_KINDS:
+            self.adjust_dir.setCurrentIndex(self.adjust_dir.findData(kind))
+            kind = "adjust"
+        self.kind_group.button([k for k, _l in FORM_KINDS].index(kind)).setChecked(True)
 
     def _load_lists(self, keep_account: int | None = None, keep_dest: int | None = None):
         with Session() as s:
@@ -558,11 +579,11 @@ class EntryForm(QFrame):
             self.cost_center.addItem(name, cid)
         self.cost_center.setCurrentIndex(max(0, self.cost_center.findData(keep)) if keep else 0)
         self._has_cc = bool(items)
-        self._set_visible(self.cc_box, self._has_cc and self._kind() != "transfer")
+        self._set_visible(self.cc_box, self._has_cc and self._kind() not in entries.NO_CATEGORY)
 
     def _load_categories(self, keep: int | None = None):
         from finora.ui import category_pick
-        if self._kind() == "transfer":            # transferência não tem categoria (o campo fica escondido)
+        if self._kind() in entries.NO_CATEGORY:   # transferência e ajuste não têm categoria (campo escondido)
             self.category.clear()
             self.category.addItem("Sem categoria", None)
             return
@@ -571,25 +592,29 @@ class EntryForm(QFrame):
     def _kind_changed(self):
         k = self._kind()
         transfer = k == "transfer"
+        bare = k in entries.NO_CATEGORY
+        self._set_visible(self.adjust_box, k in entries.ADJUST_KINDS)
         self._set_visible(self.dest_box, transfer)
-        self._set_visible(self.category_box, not transfer)
-        self._set_visible(self.cc_box, not transfer and self._has_cc)
+        self._set_visible(self.category_box, not bare)
+        self._set_visible(self.cc_box, not bare and self._has_cc)
         self._currency_mode()
-        self._set_visible(self.contact_box, not transfer)
+        self._set_visible(self.contact_box, not bare)
         self.account_lbl.label.setText("Da conta" if transfer else "Conta")
-        self.paid.setText({"income": "Já foi recebido", "expense": "Já foi pago", "transfer": "Já foi feita"}[k])
+        self.paid.setText({"income": "Já foi recebido", "expense": "Já foi pago", "transfer": "Já foi feita",
+                           "deposit": "Já foi depositado", "withdrawal": "Já foi retirado"}[k])
         keep = self.category.currentData()
         self._load_categories(keep)
         if transfer and self.dest.currentData() == self.account.currentData() and self.dest.count() > 1:
             self.dest.setCurrentIndex(1 if self.account.currentIndex() == 0 else 0)
         self.desc.setPlaceholderText({"income": "Ex.: Salário", "expense": "Ex.: Conta de luz",
-                                      "transfer": "Ex.: Saque para a carteira"}[k])
+                                      "transfer": "Ex.: Saque para a carteira",
+                                      "deposit": "Ex.: Aporte dos sócios", "withdrawal": "Ex.: Retirada para o caixa"}[k])
         self._card_mode()
 
     def _card(self):
         """A conta escolhida é um cartão com fechamento/vencimento (e não é transferência)?"""
         a = getattr(self, "_accounts", {}).get(self.account.currentData())
-        return a if a and a.kind == "card" and a.closing_day and a.due_day and self._kind() != "transfer" else None
+        return a if a and a.kind == "card" and a.closing_day and a.due_day and self._kind() in entries.RESULT_KINDS             else None
 
     def _currency_mode(self):
         """Mostra a moeda da conta no rótulo do valor e, em transferência entre moedas, o valor que chega."""
@@ -651,6 +676,7 @@ class EntryForm(QFrame):
         self.title.setText("Novo lançamento")
         self.series_info.hide()
         self._load_lists()
+        self.adjust_dir.setCurrentIndex(0)
         self.kind_group.button(0).setChecked(True)
         # Conta padrão: a última usada; senão a mais antiga (a criada no primeiro uso).
         ids = [self.account.itemData(i) for i in range(self.account.count())]
@@ -689,7 +715,7 @@ class EntryForm(QFrame):
         """Novo lançamento com os dados de `e` (tipo, descrição, valor, conta, categoria, contato, data)."""
         self.open_new(e.competence_date if e.on_card and e.competence_date else e.due_date)
         self.title.setText("Novo lançamento (cópia)")
-        self.kind_group.button(list(entries.KINDS).index(e.kind)).setChecked(True)
+        self._select_kind(e.kind)
         self.account.setCurrentIndex(max(0, self.account.findData(e.account_id)))
         self._kind_changed()
         if e.dest_account_id:
@@ -708,7 +734,7 @@ class EntryForm(QFrame):
         self.rule_note.hide()
         self.title.setText("Editar lançamento")
         self._load_lists(keep_account=e.account_id, keep_dest=e.dest_account_id)
-        self.kind_group.button(list(entries.KINDS).index(e.kind)).setChecked(True)
+        self._select_kind(e.kind)
         self._kind_changed()
         self.desc.setText(e.description)
         self.amount.setText(money.fmt(e.amount, self.profile.currency).split(" ", 1)[1])
@@ -745,7 +771,7 @@ class EntryForm(QFrame):
             self.series_info.show()
         self.delete_btn.setEnabled(not (lock and when <= lock))
         self.attach.set_entry(e.id)
-        self.receipt_btn.setVisible(e.kind != "transfer" and not e.on_card)
+        self.receipt_btn.setVisible(e.kind in entries.RESULT_KINDS and not e.on_card)
         self.delete_btn.show()
         self._error(None)
         self.desc.setFocus()
@@ -1219,7 +1245,7 @@ class EntriesPage(QWidget):
         sel = self._selected()
         many = len(sel) > 1
         if many:
-            total = sum((e.amount if e.kind == "income" else -e.amount for e in sel if e.kind != "transfer"),
+            total = sum((e.signed_amount for e in sel if e.kind != "transfer"),
                         Decimal(0))
             self.sel_lbl.setText(f"{len(sel)} selecionados · {money.fmt(total, self.profile.currency)}")
         payable = [e for e in sel if e.status == "pending"]
@@ -1262,9 +1288,9 @@ class EntriesPage(QWidget):
         for e in self.model.rows:
             sheet.add([e.due_date, e.paid_date,
                        e.description + (f" ({e.installment})" if e.installment else ""), e.contact or "",
-                       "Transferência" if e.kind == "transfer" else (e.category or "Sem categoria"),
+                       entries.KINDS[e.kind] if e.kind in entries.NO_CATEGORY else (e.category or "Sem categoria"),
                        f"{e.account} → {e.dest_account}" if e.kind == "transfer" else e.account,
-                       -e.amount if e.kind == "expense" else e.amount, e.status_label(today), e.document_no or "",
+                       e.signed_amount, e.status_label(today), e.document_no or "",
                        e.notes or ""])
         total = {k: sum((e.amount for e in self.model.rows if e.kind == k), Decimal(0)) for k in ("income", "expense")}
         cur = self.profile.currency
@@ -1440,7 +1466,8 @@ class EntriesPage(QWidget):
         else:
             with Session() as s:
                 entries.set_paid(s, e.id, False)
-        verb = {"income": "recebido", "expense": "pago", "transfer": "feita"}[e.kind]
+        verb = {"income": "recebido", "expense": "pago", "transfer": "feita", "deposit": "depositado",
+                "withdrawal": "retirado"}[e.kind]
         self.message.emit(f"\"{e.description}\" marcado como {verb}." if not e.is_paid
                           else f"\"{e.description}\" voltou a ficar em aberto.")
         self.refresh(select_id=e.id)
@@ -1530,7 +1557,8 @@ class EntriesPage(QWidget):
             menu.addAction(qta.icon("fa6s.file-invoice-dollar", color=self.t["acc"]), "Ver fatura",
                            lambda: self.open_statement(e.account_id, e.due_date))
         else:
-            pay_label = {"income": "Receber…", "expense": "Pagar…", "transfer": "Marcar como feita…"}[e.kind]
+            pay_label = {"income": "Receber…", "expense": "Pagar…", "transfer": "Marcar como feita…",
+                         "deposit": "Marcar como depositado…", "withdrawal": "Marcar como retirado…"}[e.kind]
             menu.addAction(qta.icon("fa6s.circle-check", color=self.t["pos"]),
                            "Marcar como em aberto" if e.is_paid else pay_label, lambda: self._toggle_paid(e))
         menu.addAction(qta.icon("fa6s.pen", color=self.t["mut"]), "Editar", lambda: self.edit_entry(e))
@@ -1540,7 +1568,7 @@ class EntriesPage(QWidget):
         if multi and e.kind != "transfer" and not e.on_card:
             menu.addAction(qta.icon("fa6s.building", color=self.t["mut"]), "Levar para outra entidade…",
                            lambda: self.move_to_entity([e]))
-        if e.kind != "transfer" and not e.on_card:
+        if e.kind in entries.RESULT_KINDS and not e.on_card:
             menu.addAction(qta.icon("fa6s.receipt", color=self.t["mut"]), "Emitir recibo…",
                            lambda: self.issue_receipt(e))
         menu.addSeparator()

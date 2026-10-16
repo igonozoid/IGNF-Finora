@@ -135,6 +135,34 @@ def test_baixa_com_juros_pela_janela(window, monkeypatch):
     assert not next(e for e in page.model.rows if e.description == "Conta de luz").is_paid
 
 
+def test_ajuste_de_saldo_pelo_formulario(window):
+    from finora.models import Entry
+    page = _page(window)
+    window.new_entry()
+    form = page.form
+    assert form.adjust_dir.isHidden()
+    form.kind_group.button(3).click()                                   # "Ajuste"
+    assert not form.adjust_dir.isHidden() and form.category.isHidden() and form.contact.isHidden()
+    assert form._kind() == "deposit" and form.paid.text() == "Já foi depositado"
+    form.adjust_dir.setCurrentIndex(form.adjust_dir.findData("withdrawal"))
+    assert form._kind() == "withdrawal" and form.paid.text() == "Já foi retirado"
+    form.desc.setText("Saque para o caixa")
+    form.amount.setText("200,00")
+    form.paid.setChecked(True)
+    form.save_btn.click()
+    e = next(e for e in page.model.rows if e.description == "Saque para o caixa")
+    assert e.kind == "withdrawal" and e.signed_amount == D("-200.00") and e.is_paid
+    row = page.model.rows.index(e)
+    from finora.ui.entries_page import C_CAT
+    assert page.model.data(page.model.index(row, C_CAT)) == "Retirada"
+    page.edit_entry(e)                                                  # abrir de novo mostra Ajuste/Retirada
+    assert form.kind_group.checkedButton().property("kind") == "adjust" and form._kind() == "withdrawal"
+    assert form.receipt_btn.isHidden()
+    form.cancel_btn.click()
+    with db.Session() as s:
+        assert s.query(Entry).filter_by(description="Saque para o caixa").one().category_id is None
+
+
 def test_transferencia_entre_contas(window):
     with db.Session() as s:
         accounts.create(s, window.profile.id, name="Carteira", kind="cash", opening_balance=D(0))

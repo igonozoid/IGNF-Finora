@@ -55,7 +55,7 @@ def search(s: Session, entity_id: int, text: str, per_kind: int = 6) -> list[Hit
          .order_by(Entry.due_date.desc(), Entry.id.desc()).limit(per_kind * 2))
     for row in s.execute(q):
         e = entries.to_view(row)
-        value = money.fmt(e.amount if e.kind == "income" else -e.amount, cur)
+        value = money.fmt(e.signed_amount, cur)
         bits = [e.due_date.strftime("%d/%m/%Y"), e.account, value]
         if e.contact:
             bits.insert(1, e.contact)

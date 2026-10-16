@@ -13,7 +13,8 @@ from finora.services.entries import EntryView
 from finora.ui import theme
 from finora.ui.widgets import button, field_label
 
-TITLES = {"expense": "Pagar", "income": "Receber", "transfer": "Marcar transferência como feita"}
+TITLES = {"expense": "Pagar", "income": "Receber", "transfer": "Marcar transferência como feita",
+          "deposit": "Marcar depósito como feito", "withdrawal": "Marcar retirada como feita"}
 
 
 class PaymentDialog(QDialog):
@@ -24,7 +25,7 @@ class PaymentDialog(QDialog):
         self.setObjectName("wizard")
         self.setWindowTitle(TITLES[e.kind])
         self.setMinimumWidth(380)
-        transfer = e.kind == "transfer"
+        transfer = e.kind in entries.NO_CATEGORY      # transferência e ajuste: só a data
         today = today or date.today()
 
         info = QLabel(f"<b>{e.description}</b>{f' ({e.installment})' if e.installment else ''}<br>"
@@ -47,7 +48,7 @@ class PaymentDialog(QDialog):
         self.difference = QLabel()
         self.difference.setProperty("role", "field")
 
-        verb = {"expense": "pago", "income": "recebido", "transfer": "da transferência"}[e.kind]
+        verb = {"expense": "pago", "income": "recebido"}.get(e.kind, "")
         form = QGridLayout()
         form.setHorizontalSpacing(theme.SP_M)
         form.setVerticalSpacing(3)
@@ -102,7 +103,7 @@ class PaymentDialog(QDialog):
     def _update(self):
         """Mostra quanto saiu a mais (juros/multa) ou a menos (desconto) que o previsto."""
         v = self._value()
-        diff = (v - self.entry.amount) if v is not None and self.entry.kind != "transfer" else Decimal(0)
+        diff = (v - self.entry.amount) if v is not None and self.entry.kind in entries.RESULT_KINDS else Decimal(0)
         cur = self.entry.currency
         if diff > 0:
             self.difference.setText(f"A mais que o previsto (juros/multa): {money.fmt(diff, cur)}")
@@ -111,7 +112,7 @@ class PaymentDialog(QDialog):
         self.difference.setVisible(diff != 0)
 
     def confirm(self):
-        transfer = self.entry.kind == "transfer"
+        transfer = self.entry.kind in entries.NO_CATEGORY
         v = None if transfer else self._value()
         if not transfer and v is None:
             self.error.setText("Valor inválido. Use o formato 1.234,56.")

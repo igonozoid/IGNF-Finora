@@ -80,7 +80,7 @@ def monthly_flow(s: Session, entity_id: int, months: int = 6, today: date | None
     start = entries.add_months(today.replace(day=1), -(months - 1))
     end = entries.month_range(today.year, today.month)[1]
     q = (select(Entry.competence_date, Entry.kind, Entry.base_amount)
-         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
+         .where(Entry.entity_id == entity_id, Entry.kind.in_(("income", "expense")), Entry.status != "canceled",
                 Entry.competence_date.between(start, end)))
     sums: dict[tuple, Decimal] = {}
     for due, kind, amount in s.execute(q):  # soma em Python: funciona em qualquer banco
@@ -98,7 +98,7 @@ def due_soon(s: Session, entity_id: int, days: int = 7, today: date | None = Non
     """A pagar/receber que vencem até daqui a `days` dias, com os atrasados primeiro."""
     today = today or date.today()
     q = (entries.query(entity_id)
-         .where(Entry.status == "pending", Entry.kind != "transfer", Entry.due_date <= today + timedelta(days=days))
+         .where(Entry.status == "pending", Entry.kind.in_(("income", "expense")), Entry.due_date <= today + timedelta(days=days))
          .order_by(Entry.due_date, Entry.id).limit(limit))
     return [entries.to_view(r) for r in s.execute(q)]
 

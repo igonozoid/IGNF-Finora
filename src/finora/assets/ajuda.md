@@ -26,7 +26,12 @@ gráfico de entradas e saídas dos últimos 6 meses, contas que vencem nos próx
 
 ## Lançamentos {#entries}
 
-Receitas, despesas e transferências entre suas contas.
+Receitas, despesas, transferências entre suas contas e ajustes de saldo.
+
+- **Ajuste** (depósito ou retirada): dinheiro que entra ou sai da conta sem ser receita nem despesa — aporte dos
+  sócios, saque para o caixa, acerto de saldo. Mexe no saldo, no extrato e na previsão de caixa, mas não entra na
+  DRE nem nos relatórios de receitas e despesas. Não tem categoria nem contato. Em **Mais filtros › Tipo**, escolha
+  "Só ajustes de saldo" para ver só eles.
 
 - **Filtros**: Todos, A receber, A pagar, Atrasados, Pagos. Em **Mais filtros**: trimestre, semestre, ano, todo o
   período, por vencimento, competência ou pagamento, tipo, contato e centro de custo.

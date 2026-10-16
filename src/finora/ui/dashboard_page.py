@@ -360,7 +360,7 @@ class DashboardPage(QWidget):
         _clear(self.due_rows)
         # lançamentos e faturas de cartão, na ordem do vencimento
         items = [(e.due_date, e.description + (f" — {e.contact}" if e.contact else ""),
-                  e.amount if e.kind == "income" else -e.amount, e.is_late(today),
+                  e.signed_amount, e.is_late(today),
                   "Clique para abrir o lançamento", lambda i=e.id: self.open_entry.emit(i)) for e in due]
         items += [(st.due, f"Fatura {st.account} {st.label}", -st.remaining, st.due < today,
                    "Clique para ver a fatura e pagar",

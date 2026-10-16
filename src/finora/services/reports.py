@@ -99,7 +99,7 @@ def _movements(s: Session, entity_id: int, first: date, last: date, regime: str)
     when = Entry.paid_date if regime == "cash" else Entry.competence_date
     q = (select(when, Entry.kind, Entry.base_amount, Category.dre_group, Category.name)
          .select_from(Entry).outerjoin(Category, Entry.category_id == Category.id)
-         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", when.between(first, last)))
+         .where(Entry.entity_id == entity_id, Entry.kind.in_(entries.RESULT_KINDS), when.between(first, last)))
     # Caixa: o que saiu do bolso. Compra no cartão sai no vencimento da fatura (paid_date = vencimento).
     q = q.where(Entry.status.in_(("paid", "card"))) if regime == "cash" else q.where(Entry.status != "canceled")
     return s.execute(q)
@@ -216,9 +216,10 @@ def cash_flow(s: Session, entity_id: int, days: int = 30, today: date | None = N
     today = today or date.today()
     end = today + timedelta(days=days - 1)
     start = accounts.total_balance(accounts.list_accounts(s, entity_id))
+    # Depósito/retirada previstos também mudam o saldo (contam como entrada/saída, sem ser receita/despesa)
     q = (select(Entry.due_date, Entry.kind, Entry.base_amount, Entry.description)
-         .where(Entry.entity_id == entity_id, Entry.status == "pending", Entry.kind != "transfer",
-                Entry.due_date <= end)
+         .where(Entry.entity_id == entity_id, Entry.status == "pending",
+                Entry.kind.in_(entries.RESULT_KINDS + entries.ADJUST_KINDS), Entry.due_date <= end)
          .order_by(Entry.due_date, Entry.id))
     by_day: dict[date, list] = {}
     overdue = 0
@@ -226,6 +227,7 @@ def cash_flow(s: Session, entity_id: int, days: int = 30, today: date | None = N
         if due < today:
             overdue += 1
             due = today
+        kind = "income" if kind in entries.INFLOW else "expense"
         by_day.setdefault(due, []).append((kind, Decimal(amount), desc or ""))
 
     from finora.services import cards
@@ -290,7 +292,7 @@ def _move(e: Entry, account_id: int) -> tuple[date, Decimal]:
         if e.dest_account_id == account_id:
             return when, Decimal(e.dest_amount if e.dest_amount is not None else e.amount)
         return when, -amount
-    return when, amount if e.kind == "income" else -amount
+    return when, amount if e.kind in entries.INFLOW else -amount
 
 
 def account_statement(s: Session, account_id: int, first: date, last: date) -> AccountStatement:
@@ -306,7 +308,7 @@ def account_statement(s: Session, account_id: int, first: date, last: date) -> A
         if when < first:
             opening += value
         elif when <= last:
-            label = "Transferência" if e.kind == "transfer" else (cat or "Sem categoria")
+            label = entries.KINDS[e.kind] if e.kind in entries.NO_CATEGORY else (cat or "Sem categoria")
             moves.append((when, e.id, e.description or "", label, value))
     moves.sort(key=lambda m: (m[0], m[1]))
     lines, bal = [], opening
@@ -333,7 +335,7 @@ def by_category(s: Session, entity_id: int, first: date, last: date) -> list[Cat
     q = (select(Entry.kind, Entry.base_amount, Category.name, parent.name)
          .select_from(Entry).outerjoin(Category, Entry.category_id == Category.id)
          .outerjoin(parent, Category.parent_id == parent.id)
-         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
+         .where(Entry.entity_id == entity_id, Entry.kind.in_(entries.RESULT_KINDS), Entry.status != "canceled",
                 Entry.competence_date.between(first, last)))
     acc: dict[tuple, list] = {}
     for kind, amount, cat, grp in s.execute(q):
@@ -359,7 +361,7 @@ def by_contact(s: Session, entity_id: int, first: date, last: date) -> list[Cont
     from finora.models import Contact
     q = (select(Contact.name, Entry.kind, Entry.base_amount)
          .select_from(Entry).join(Contact, Entry.contact_id == Contact.id)
-         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
+         .where(Entry.entity_id == entity_id, Entry.kind.in_(entries.RESULT_KINDS), Entry.status != "canceled",
                 Entry.competence_date.between(first, last)))
     acc: dict[str, list] = {}
     for name, kind, amount in s.execute(q):
@@ -385,7 +387,7 @@ def by_cost_center(s: Session, entity_id: int, first: date, last: date) -> list[
     numa linha "Sem centro de custo" no fim, para o total bater."""
     from finora.models import CostCenter
     q = (select(Entry.cost_center_id, Entry.kind, Entry.base_amount)
-         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
+         .where(Entry.entity_id == entity_id, Entry.kind.in_(entries.RESULT_KINDS), Entry.status != "canceled",
                 Entry.competence_date.between(first, last)))
     acc: dict[int | None, list] = {}
     for cc, kind, amount in s.execute(q):
@@ -409,7 +411,7 @@ def by_cost_center(s: Session, entity_id: int, first: date, last: date) -> list[
 # ---------- analítico ----------
 def analytical(s: Session, entity_id: int, first: date, last: date, kind: str = "all") -> list:
     """Todas as receitas e despesas do período (competência), na ordem das datas. kind: all | income | expense."""
-    q = entries.query(entity_id).where(Entry.kind != "transfer", Entry.competence_date.between(first, last))
+    q = entries.query(entity_id).where(Entry.kind.in_(entries.RESULT_KINDS), Entry.competence_date.between(first, last))
     if kind in ("income", "expense"):
         q = q.where(Entry.kind == kind)
     return [entries.to_view(r) for r in s.execute(q.order_by(Entry.competence_date, Entry.id))]
@@ -451,7 +453,7 @@ def overdue(s: Session, entity_id: int, today: date | None = None) -> OverdueRep
     """Tudo o que venceu e não foi pago/recebido, com os dias de atraso. Faturas de cartão atrasadas entram."""
     from finora.services import cards
     today = today or date.today()
-    q = entries.query(entity_id).where(Entry.status == "pending", Entry.kind != "transfer", Entry.due_date < today)
+    q = entries.query(entity_id).where(Entry.status == "pending", Entry.kind.in_(entries.RESULT_KINDS), Entry.due_date < today)
     pay, rec = [], []
     for row in s.execute(q.order_by(Entry.due_date)):
         e = entries.to_view(row)
@@ -490,7 +492,7 @@ def agenda(s: Session, entity_id: int, first: date, last: date, kind: str = "", 
         raise ValueError("A data inicial é depois da final.")
     due = Entry.due_date <= last if overdue else Entry.due_date.between(first, last)
     q = entries.query(entity_id).where(Entry.status == "pending", due,
-                                       Entry.kind == kind if kind else Entry.kind != "transfer")
+                                       Entry.kind == kind if kind else Entry.kind.in_(entries.RESULT_KINDS))
     return [entries.to_view(r) for r in s.execute(q.order_by(Entry.due_date, Entry.id))]
 
 
@@ -518,7 +520,7 @@ def category_by_month(s: Session, entity_id: int, months: list[tuple[int, int]])
     q = (select(Entry.competence_date, Entry.kind, Entry.base_amount, Category.name, parent.name)
          .select_from(Entry).outerjoin(Category, Entry.category_id == Category.id)
          .outerjoin(parent, Category.parent_id == parent.id)
-         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status != "canceled",
+         .where(Entry.entity_id == entity_id, Entry.kind.in_(entries.RESULT_KINDS), Entry.status != "canceled",
                 Entry.competence_date.between(first, last)))
     index = {ym: i for i, ym in enumerate(months)}
     acc: dict[tuple, list] = {}
@@ -575,7 +577,7 @@ def cash_history(s: Session, entity_id: int, months: list[tuple[int, int]]) -> l
     fatura). Mesma regra da DRE no regime de caixa."""
     first, last = entries.month_range(*months[0])[0], entries.month_range(*months[-1])[1]
     q = (select(Entry.paid_date, Entry.kind, Entry.base_amount)
-         .where(Entry.entity_id == entity_id, Entry.kind != "transfer", Entry.status.in_(("paid", "card")),
+         .where(Entry.entity_id == entity_id, Entry.kind.in_(entries.RESULT_KINDS), Entry.status.in_(("paid", "card")),
                 Entry.paid_date.between(first, last)))
     sums = {ym: [ZERO, ZERO] for ym in months}
     for when, kind, amount in s.execute(q):

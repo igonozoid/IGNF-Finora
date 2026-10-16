@@ -89,7 +89,7 @@ def _movements(s: Session, entity_id: int) -> dict[int, Decimal]:
     """
     paid = (Entry.entity_id == entity_id) & (Entry.status.in_(("paid", "card")))   # card: compra no cartão
     out: dict[int, Decimal] = {}
-    signed = case((Entry.kind == "income", Entry.amount), else_=-Entry.amount)
+    signed = case((Entry.kind.in_(("income", "deposit")), Entry.amount), else_=-Entry.amount)   # entries.INFLOW
     for acc_id, total in s.execute(select(Entry.account_id, func.sum(signed)).where(paid).group_by(Entry.account_id)):
         out[acc_id] = out.get(acc_id, Decimal(0)) + Decimal(total)
     dest = select(Entry.dest_account_id, func.sum(func.coalesce(Entry.dest_amount, Entry.amount))).where(

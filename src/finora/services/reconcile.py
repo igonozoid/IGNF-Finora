@@ -129,12 +129,14 @@ def _candidates(s: Session, line: BankLine, taken: set[int]) -> list[Entry]:
     """Lançamentos da conta com o mesmo valor e data perto da linha do extrato, mais perto primeiro."""
     amount = abs(line.amount)
     first, last = line.posted - timedelta(days=DAYS), line.posted + timedelta(days=DAYS)
-    if line.amount > 0:      # entrou: receita na conta ou transferência chegando nela
-        side = or_((Entry.kind == "income") & (Entry.account_id == line.account_id) & (Entry.amount == amount),
+    if line.amount > 0:      # entrou: receita/depósito na conta ou transferência chegando nela
+        side = or_((Entry.kind.in_(("income", "deposit"))) & (Entry.account_id == line.account_id)
+                   & (Entry.amount == amount),
                    (Entry.kind == "transfer") & (Entry.dest_account_id == line.account_id)
                    & (func.coalesce(Entry.dest_amount, Entry.amount) == amount))
-    else:                    # saiu: despesa ou transferência saindo dela
-        side = (Entry.kind.in_(("expense", "transfer"))) & (Entry.account_id == line.account_id)             & (Entry.amount == amount)
+    else:                    # saiu: despesa, retirada ou transferência saindo dela
+        side = (Entry.kind.in_(("expense", "withdrawal", "transfer"))) & (Entry.account_id == line.account_id) \
+            & (Entry.amount == amount)
     rows = s.scalars(select(Entry).where(
         Entry.entity_id == line.entity_id, side, Entry.status.in_(("pending", "paid")),
         or_((Entry.status == "pending") & Entry.due_date.between(first, last),

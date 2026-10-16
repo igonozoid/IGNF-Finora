@@ -58,6 +58,8 @@ def can_issue(e: Entry) -> str | None:
     """None se dá para emitir; senão, o motivo (texto para o usuário)."""
     if e.kind == "transfer":
         return "Transferências entre suas contas não têm recibo."
+    if e.kind in ("deposit", "withdrawal"):
+        return "Depósitos e retiradas (ajustes de saldo) não têm recibo."
     if e.status == "card":
         return "Compras no cartão não têm recibo: o comprovante é a fatura ou a nota da loja."
     return None

@@ -1,8 +1,10 @@
-"""Lançamentos: receitas, despesas e transferências, com recorrência e parcelamento.
+"""Lançamentos: receitas, despesas, transferências e ajustes de saldo, com recorrência e parcelamento.
 
 Convenções:
-- `amount` é sempre positivo; o tipo (income/expense/transfer) define o sinal.
+- `amount` é sempre positivo; o tipo define o sinal (INFLOW entra na conta, OUTFLOW sai).
 - Transferência sai de `account_id` e entra em `dest_account_id`; não tem categoria nem contato.
+- Ajuste de saldo (depósito/retirada, as "movimentações bancárias" D/R do MCC): mexe no saldo e no extrato da
+  conta, mas não é receita nem despesa — fica fora da DRE e dos relatórios de resultado. Sem categoria nem contato.
 - Lançamentos de uma recorrência/parcelamento compartilham `series_id`.
 """
 import calendar
@@ -19,7 +21,12 @@ from finora.core.money import CENT
 from finora.models import Account, Category, Contact, CostCenter, Entry
 from finora.services import contacts, scope
 
-KINDS = {"expense": "Despesa", "income": "Receita", "transfer": "Transferência"}
+KINDS = {"expense": "Despesa", "income": "Receita", "transfer": "Transferência", "deposit": "Depósito",
+         "withdrawal": "Retirada"}
+RESULT_KINDS = ("income", "expense")        # entram na DRE e nos relatórios de resultado
+ADJUST_KINDS = ("deposit", "withdrawal")    # ajuste de saldo: só saldo e extrato
+INFLOW = ("income", "deposit")              # somam no saldo da conta (transferência: só no destino)
+NO_CATEGORY = ("transfer",) + ADJUST_KINDS  # sem categoria, centro de custo nem contato
 
 # Intervalo entre ocorrências: chave -> (rótulo, meses, dias). Os mesmos do parcelamento do MCC
 # (diária, semanal, quinzenal = 15 dias, mensal, bimestral, trimestral, semestral, anual).
@@ -126,10 +133,17 @@ class EntryView:
         if self.on_card:
             return "Estorno" if self.kind == "income" else "No cartão"
         if self.is_paid:
-            return {"income": "Recebido", "expense": "Pago", "transfer": "Transferido"}[self.kind]
+            return {"income": "Recebido", "expense": "Pago", "transfer": "Transferido", "deposit": "Depositado",
+                    "withdrawal": "Retirado"}[self.kind]
         if self.is_late(today):
             return "Atrasado"
-        return {"income": "A receber", "expense": "A pagar", "transfer": "A transferir"}[self.kind]
+        return {"income": "A receber", "expense": "A pagar", "transfer": "A transferir", "deposit": "A depositar",
+                "withdrawal": "A retirar"}[self.kind]
+
+    @property
+    def signed_amount(self) -> Decimal:
+        """Valor com sinal para a lista: entrada positiva, saída negativa (transferência: positivo, neutro)."""
+        return -self.amount if self.kind in ("expense", "withdrawal") else self.amount
 
 
 @dataclass(frozen=True)
@@ -170,8 +184,8 @@ def to_view(row) -> EntryView:
 PERIODS = {"month": "Mês", "q1": "1º trimestre", "q2": "2º trimestre", "q3": "3º trimestre", "q4": "4º trimestre",
            "s1": "1º semestre", "s2": "2º semestre", "year": "Ano todo", "all": "Todo o período"}
 DATE_FIELDS = {"due": "Vencimento", "competence": "Competência (data da compra)", "paid": "Pagamento"}
-KIND_FILTERS = {"": "Receitas, despesas e transferências", "income": "Só receitas", "expense": "Só despesas",
-                "transfer": "Só transferências"}
+KIND_FILTERS = {"": "Todos os tipos", "income": "Só receitas", "expense": "Só despesas",
+                "transfer": "Só transferências", "adjust": "Só ajustes de saldo (depósitos e retiradas)"}
 
 
 def period_range(year: int, month: int, period: str) -> tuple[date, date] | None:
@@ -218,6 +232,8 @@ def list_entries(s: Session, entity_id: int, *, year: int, month: int, filter: s
             q = q.where(Entry.status == "pending", Entry.kind == "expense")
     if kind in ("income", "expense", "transfer"):
         q = q.where(Entry.kind == kind)
+    elif kind == "adjust":
+        q = q.where(Entry.kind.in_(ADJUST_KINDS))
     if contact_id:
         q = q.where(Entry.contact_id == contact_id)
     if cost_center_id:
@@ -297,13 +313,17 @@ def _validate(s: Session, entity_id: int, d: EntryData) -> None:
         if dest.currency != acc.currency and (d.dest_amount is None or d.dest_amount <= 0):
             raise ValueError(f"As contas têm moedas diferentes: informe quanto chega em {dest.name} "
                              f"({dest.currency}).")
+    elif d.kind in ADJUST_KINDS:
+        from finora.services import cards
+        if cards.is_configured(acc):
+            raise ValueError("Depósito e retirada não valem no cartão de crédito: use uma conta ou o caixa.")
     elif d.category_id is not None:
         cat = s.get(Category, d.category_id)
         if not scope.category_visible(s, cat, entity_id):
             raise ValueError("Categoria inválida.")
         if cat.kind != d.kind:
             raise ValueError("Essa categoria é de " + ("receita." if cat.kind == "income" else "despesa."))
-    if d.cost_center_id is not None and d.kind != "transfer":
+    if d.cost_center_id is not None and d.kind not in NO_CATEGORY:
         cc = s.get(CostCenter, d.cost_center_id)
         if not scope.visible(cc, entity_id):
             raise ValueError("Centro de custo inválido.")
@@ -321,7 +341,7 @@ def _validate(s: Session, entity_id: int, d: EntryData) -> None:
 
 def _on_card(s: Session, d: EntryData) -> bool:
     from finora.services import cards
-    return d.kind != "transfer" and cards.is_configured(s.get(Account, d.account_id))
+    return d.kind in RESULT_KINDS and cards.is_configured(s.get(Account, d.account_id))
 
 
 def _set_dates(s: Session, e: Entry, d: EntryData, when: date, paid_first: bool,
@@ -356,14 +376,15 @@ def installment_doc(doc: str | None, installment: str | None) -> str | None:
 
 def _apply(e: Entry, d: EntryData, entity_id: int, contact_id: int | None) -> None:
     transfer = d.kind == "transfer"
+    bare = d.kind in NO_CATEGORY
     e.kind = d.kind
     e.description = d.description.strip()
     e.account_id = d.account_id
     e.dest_account_id = d.dest_account_id if transfer else None
     e.dest_amount = d.dest_amount if transfer and d.dest_amount else None
-    e.category_id = None if transfer else d.category_id
-    e.cost_center_id = None if transfer else d.cost_center_id
-    e.contact_id = None if transfer else contact_id
+    e.category_id = None if bare else d.category_id
+    e.cost_center_id = None if bare else d.cost_center_id
+    e.contact_id = None if bare else contact_id
     e.document_no = (d.document_no or "").strip() or None
     e.notes = (d.notes or "").strip() or None
 
@@ -374,7 +395,7 @@ def create(s: Session, entity_id: int, d: EntryData) -> list[int]:
     inactive = [a for a in (d.account_id, d.dest_account_id) if a and not s.get(Account, a).is_active]
     if inactive:
         raise ValueError("Essa conta está inativa. Ative-a em Contas para usar em lançamentos novos.")
-    contact_id = None if d.kind == "transfer" else contacts.get_or_create(s, entity_id, d.contact, d.kind)
+    contact_id = None if d.kind in NO_CATEGORY else contacts.get_or_create(s, entity_id, d.contact, d.kind)
     n = 1 if d.repeat == "none" else d.times
     amounts = split(d.amount, n) if d.repeat == "installments" else [d.amount] * n
     series = uuid.uuid4().hex if n > 1 else None
@@ -442,7 +463,7 @@ def update(s: Session, entry_id: int, d: EntryData, scope: str = "one") -> int:
     e = s.get(Entry, entry_id)
     d = replace(d, repeat="none")
     _validate(s, e.entity_id, d)
-    contact_id = None if d.kind == "transfer" else contacts.get_or_create(s, e.entity_id, d.contact, d.kind)
+    contact_id = None if d.kind in NO_CATEGORY else contacts.get_or_create(s, e.entity_id, d.contact, d.kind)
     card = _on_card(s, d)
     try:
         targets = [e] + ([x for x in _following(s, e) if x.id != e.id and _open(x)]
@@ -540,7 +561,7 @@ def pay(s: Session, entry_id: int, when: date | None = None, *, amount: Decimal 
     """Baixa completa (FBaixa do MCC): pago/recebido na data `when`, com o valor que de fato saiu ou entrou
     (juros, multa ou desconto), a conta usada e uma observação, que vai para o fim das observações.
     O valor previsto fica em `original_amount` (relatório de juros e descontos).
-    Na transferência só a data muda; no cartão, o pagamento é pela fatura."""
+    Na transferência e no ajuste de saldo só a data muda; no cartão, o pagamento é pela fatura."""
     from finora.services import cards
     e = s.get(Entry, entry_id)
     if e.status == "card":
@@ -551,8 +572,9 @@ def pay(s: Session, entry_id: int, when: date | None = None, *, amount: Decimal 
         raise ValueError("O valor pago precisa ser maior que zero.")
     new_amount = amount is not None and amount != Decimal(e.amount)
     new_account = account_id is not None and account_id != e.account_id
-    if e.kind == "transfer" and (new_amount or new_account):
-        raise ValueError("Na transferência só a data muda na baixa. Para mudar valor ou conta, edite o lançamento.")
+    if e.kind in NO_CATEGORY and (new_amount or new_account):
+        raise ValueError("Na transferência e no ajuste de saldo só a data muda na baixa. Para mudar valor ou conta, "
+                         "edite o lançamento.")
     if new_account:
         acc = s.get(Account, account_id)
         if acc is None or acc.entity_id != e.entity_id or not acc.is_active:

@@ -683,10 +683,12 @@ class EntryForm(QFrame):
         self._load_lists()
         self.adjust_dir.setCurrentIndex(0)
         self.kind_group.button(0).setChecked(True)
-        # Conta padrão: a última usada; senão a mais antiga (a criada no primeiro uso).
+        # Conta padrão: a escolhida em Configurações; senão a última usada; senão a mais antiga.
+        from finora.core import settings
+        prefs = settings.get_entry_prefs(self.profile.id)
         ids = [self.account.itemData(i) for i in range(self.account.count())]
         if ids:
-            pick = self._last_account if self._last_account in ids else min(ids)
+            pick = next((a for a in (prefs.default_account, self._last_account) if a in ids), min(ids))
             self.account.setCurrentIndex(ids.index(pick))
         self.category.setCurrentIndex(0)  # não herdar a categoria do último lançamento editado
         self.cost_center.setCurrentIndex(0)
@@ -714,7 +716,8 @@ class EntryForm(QFrame):
         self._update_repeat()
         for b in self.kind_group.buttons():
             b.setEnabled(True)
-        self.desc.setFocus()
+        first = {"amount": self.amount, "date": self.due, "account": self.account, "document": self.doc}
+        first.get(prefs.first_field, self.desc).setFocus()      # campo inicial (Configurações)
 
     def open_copy(self, e: EntryView):
         """Novo lançamento com os dados de `e` (tipo, descrição, valor, conta, categoria, contato, data)."""

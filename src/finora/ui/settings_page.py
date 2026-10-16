@@ -99,6 +99,7 @@ class SettingsPage(QWidget):
         self.modules_box = self._modules_section()
         self.admin_sections.append(self.modules_box)
         bl.addWidget(self.modules_box)
+        bl.addWidget(self._entry_prefs_section())
         bl.addWidget(self._appearance_section())
         bl.addWidget(self._reminders_section())
         edition = self._edition_section()
@@ -664,6 +665,56 @@ class SettingsPage(QWidget):
         lay.addWidget(_muted("Dica: o botão « ao lado de \"Tema\" recolhe e expande o menu a qualquer momento."))
         return box
 
+    # ---------- preferências de lançamento desta entidade ----------
+    def _entry_prefs_section(self) -> QFrame:
+        box, lay = _section("Lançamentos desta entidade", "fa6s.sliders", self.t)
+        lay.addWidget(_muted("Como o lançamento novo começa e o que o Dashboard mostra, nesta entidade "
+                             "(ficam neste computador)."))
+        form = QGridLayout()
+        form.setHorizontalSpacing(theme.SP_M)
+        form.setVerticalSpacing(6)
+        self.pref_account = QComboBox()
+        self.pref_first = QComboBox()
+        for k, label in settings.FIRST_FIELDS.items():
+            self.pref_first.addItem(label, k)
+        form.addWidget(QLabel("Conta padrão"), 0, 0)
+        form.addWidget(self.pref_account, 0, 1)
+        form.addWidget(QLabel("Começar o lançamento novo em"), 1, 0)
+        form.addWidget(self.pref_first, 1, 1)
+        form.setColumnStretch(1, 1)
+        lay.addLayout(form)
+        self.pref_balances = QCheckBox("Mostrar os saldos das contas no Dashboard")
+        self.pref_balances.setToolTip("Desligado, o Dashboard esconde o saldo em contas e os saldos por conta\n"
+                                      "(útil num computador que outras pessoas veem).")
+        lay.addWidget(self.pref_balances)
+        self._fill_entry_prefs()
+        for w in (self.pref_account, self.pref_first):
+            w.currentIndexChanged.connect(self._save_entry_prefs)
+        self.pref_balances.toggled.connect(self._save_entry_prefs)
+        return box
+
+    def _fill_entry_prefs(self):
+        from finora.services import accounts
+        prefs = settings.get_entry_prefs(self.profile.id)
+        with Session() as s:
+            accs = [a for a in accounts.list_accounts(s, self.profile.id) if a.is_active]
+        for w in (self.pref_account, self.pref_first, self.pref_balances):
+            w.blockSignals(True)
+        self.pref_account.clear()
+        self.pref_account.addItem("A última usada", None)
+        for a in accs:
+            self.pref_account.addItem(a.name, a.id)
+        self.pref_account.setCurrentIndex(max(0, self.pref_account.findData(prefs.default_account)))
+        self.pref_first.setCurrentIndex(max(0, self.pref_first.findData(prefs.first_field)))
+        self.pref_balances.setChecked(prefs.show_balances)
+        for w in (self.pref_account, self.pref_first, self.pref_balances):
+            w.blockSignals(False)
+
+    def _save_entry_prefs(self):
+        settings.set_entry_prefs(self.profile.id, settings.EntryPrefs(
+            self.pref_account.currentData(), self.pref_first.currentData(), self.pref_balances.isChecked()))
+        self.message.emit("Preferência salva.")
+
     # ---------- módulos da entidade ----------
     def _modules_section(self) -> QFrame:
         from finora.services import modules
@@ -973,6 +1024,7 @@ class SettingsPage(QWidget):
         self._refresh_lock()
         self._refresh_security()
         self._refresh_modules()
+        self._fill_entry_prefs()       # contas criadas ou inativadas desde a última vez
 
     def apply_theme(self, t: dict):
         self.t = t

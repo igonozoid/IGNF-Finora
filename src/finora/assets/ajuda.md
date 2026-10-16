@@ -230,6 +230,10 @@ Marque **continuar ao lado do relógio** para ser avisado mesmo com a janela fec
 
 **Atalhos**: crie atalhos na Área de trabalho e no menu Iniciar e escolha abrir o Finora junto com o Windows.
 
+**Lançamentos desta entidade**: a **conta padrão** do lançamento novo (ou a última usada), o campo onde o cursor
+**começa** (descrição, valor, vencimento, conta ou documento) e se o Dashboard **mostra os saldos** das contas.
+Vale para a entidade aberta, neste computador.
+
 ## Backup {#backup}
 
 O Finora faz um backup automático por dia (guarda os últimos 7) em `data/backups`. Em **Configurações › Backup**

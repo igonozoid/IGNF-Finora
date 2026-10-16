@@ -162,6 +162,37 @@ def set_tray(on: bool) -> None:
     _s().setValue("ui/tray", on)
 
 
+# ---------- preferências de lançamento por entidade (como o FConfigConta do MCC) ----------
+FIRST_FIELDS = {"description": "Descrição", "amount": "Valor", "date": "Vencimento", "account": "Conta",
+                "document": "Nº do documento"}
+
+
+@dataclass(frozen=True)
+class EntryPrefs:
+    default_account: int | None = None    # conta do lançamento novo (None = a última usada)
+    first_field: str = "description"      # onde o cursor começa no lançamento novo
+    show_balances: bool = True            # saldos das contas no Dashboard
+
+
+def get_entry_prefs(entity_id: int) -> EntryPrefs:
+    s = _s()
+    key = f"entity{entity_id}"
+    acc = s.value(f"{key}/default_account", 0, type=int)
+    field_ = str(s.value(f"{key}/first_field", "description"))
+    return EntryPrefs(acc or None, field_ if field_ in FIRST_FIELDS else "description",
+                      s.value(f"{key}/show_balances", True, type=bool))
+
+
+def set_entry_prefs(entity_id: int, prefs: EntryPrefs) -> None:
+    if prefs.first_field not in FIRST_FIELDS:
+        raise ValueError("Campo inicial inválido.")
+    s = _s()
+    key = f"entity{entity_id}"
+    s.setValue(f"{key}/default_account", int(prefs.default_account or 0))
+    s.setValue(f"{key}/first_field", prefs.first_field)
+    s.setValue(f"{key}/show_balances", bool(prefs.show_balances))
+
+
 def get_entries_notes_column() -> bool:
     """Lista de lançamentos: mostrar a coluna Observações (ligada pelo menu do cabeçalho)."""
     return _s().value("entries/notes_column", False, type=bool)

@@ -216,6 +216,7 @@ class DashboardPage(QWidget):
 
         # Saldos por conta
         acc_box, self.acc_lay, _ = _panel("Saldos por conta", t)
+        self.acc_box = acc_box
         self.acc_rows = QVBoxLayout()
         self.acc_rows.setSpacing(0)
         self.acc_lay.addLayout(self.acc_rows)
@@ -319,9 +320,15 @@ class DashboardPage(QWidget):
             top = dashboard.top_expenses(s, self.profile.id, year, month)
         t = self.t
 
+        from finora.core import settings
+        show = settings.get_entry_prefs(self.profile.id).show_balances
         plural = lambda n, one, many: f"{n} {one if n == 1 else many}"
-        self.k_balance.set(money.fmt(k.balance, cur), plural(k.accounts, "conta", "contas"),
-                           "neg" if k.balance < 0 else None)
+        if show:
+            self.k_balance.set(money.fmt(k.balance, cur), plural(k.accounts, "conta", "contas"),
+                               "neg" if k.balance < 0 else None)
+        else:                                  # Configurações › Lançamentos desta entidade
+            self.k_balance.set("•••", "saldos escondidos nas Configurações")
+        self.acc_box.setVisible(show)
         self.k_rec.set(money.fmt(k.receivable, cur), plural(k.receivable_n, "lançamento", "lançamentos"))
         late = f" · {plural(k.late_n, 'atrasado', 'atrasados')}" if k.late_n else ""
         self.k_pay.set(money.fmt(k.payable, cur), plural(k.payable_n, "lançamento", "lançamentos") + late,

@@ -184,3 +184,38 @@ def test_arredondamento_registrado(session, plus, tmp_path):
 def test_exemplo_sem_arredondamento(imported):
     _s, r = imported
     assert r.rounding == []                                                     # 1333,33 + 1333,33 + 1333,34
+
+
+def test_usuarios_entram_com_a_mesma_senha_do_mcc(imported):
+    from finora.models import Permission, User, UserEntity
+    from finora.services import permissions, users
+    s, r = imported
+    admin = s.get(User, r.users[1])
+    oper = s.get(User, r.users[2])
+    antigo = s.get(User, r.users[3])
+    assert admin.is_admin and admin.email == "admin@exemplo.test" and not antigo.is_active
+    assert users.authenticate(s, "operador@exemplo.test", GABARITO["senha_dos_usuarios"]).id == oper.id
+    with pytest.raises(ValueError):
+        users.authenticate(s, "operador@exemplo.test", "errada")
+    ents = set(s.scalars(select(UserEntity.entity_id).where(UserEntity.user_id == oper.id)))
+    assert ents == {r.entities[1]}                                          # só a empresa 1, como no MCC
+    lv = lambda m: permissions.level(s, oper.id, r.entities[1], m)
+    assert (lv("financial"), lv("contacts"), lv("reports"), lv("admin"), lv("stock")) == \
+        ("full", "full", "read", "none", "none")                            # D1: o maior nível das áreas
+    assert permissions.level(s, oper.id, r.entities[2], "financial") == "none"
+    assert any("Operador Financeiro" in w and "acessos diferentes" in w for w in r.warnings)
+    assert permissions.level(s, admin.id, r.entities[2], "admin") == "full"
+
+
+def test_hash_do_mcc_e_usuario_que_ja_existe(session, plus, tmp_path):
+    from finora.models import User
+    from finora.services import users
+    assert mapper.finora_hash("bcrypt$x$y") is None and mapper.finora_hash("lixo") is None
+    users.create(session, name="Admin", email="admin@exemplo.test", password="outra-senha", is_admin=True)
+    p = tmp_path / "mcc.db"
+    shutil.copy2(DATA / "mcc_exemplo.db", p)
+    with reader.open_copy(p) as c:
+        r = mapper.import_companies(session, c)
+    assert session.scalar(select(func.count(User.id)).where(User.email == "admin@exemplo.test")) == 1
+    assert users.authenticate(session, "admin@exemplo.test", "outra-senha")   # continua com a senha do Finora
+    assert any("já existia" in w for w in r.warnings)

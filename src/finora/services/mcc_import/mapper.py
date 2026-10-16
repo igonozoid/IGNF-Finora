@@ -15,10 +15,16 @@ Cada empresa (conta controle) do MCC vira uma entidade nova no Finora:
 Decisão D6: lançamento pago sem data de pagamento entra pago com a data do vencimento; os ids vão em
 `ImportResult.paid_without_date` para o relatório de conferência apontar a diferença de saldo.
 
+Usuários (Fase 2.6): a senha do clone do MCC (scrypt, como no Finora) é convertida sem perda — cada um entra com a
+mesma senha. Decisão D1: um módulo Financeiro só; ele (e Contatos) recebe o maior nível que o usuário tinha nas
+áreas do MCC (despesas, receitas, centros, bancos); quando isso dá mais acesso do que ele tinha em alguma área, vira
+aviso. Acesso: "todas as empresas" ou administrador = todas as entidades importadas; senão, as dele no MCC.
+
 Valores que o Finora não aceita (CNPJ inválido, UF, CEP, e-mail) não param a importação: o campo fica vazio e
-vira um aviso em `ImportResult.warnings`. Ainda fora: usuários (2.6), reimportar sem duplicar (2.8) e as linhas de
-OFX (o MCC só guarda o identificador, não dá para remontar o extrato).
+vira um aviso em `ImportResult.warnings`. Ainda fora: reimportar sem duplicar (2.8) e as linhas de OFX (o MCC só
+guarda o identificador, não dá para remontar o extrato).
 """
+import base64
 import sqlite3
 import unicodedata
 import uuid
@@ -30,8 +36,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from finora.core import settings
-from finora.models import Account, Category, Contact, Entity, Entry
-from finora.services import accounts, contacts, cost_centers, entity_admin, period_lock, scope
+from finora.models import Account, Category, Contact, Entity, Entry, Permission, User, UserEntity
+from finora.services import accounts, contacts, cost_centers, entity_admin, period_lock, scope, users
 from finora.services.mcc_import import reader
 
 CENT = Decimal("0.01")
@@ -64,6 +70,7 @@ class ImportResult:
     contacts: dict[int, int] = field(default_factory=dict)       # pessoa do MCC -> contato
     categories: dict[tuple[int, str, str], int] = field(default_factory=dict)   # (empresa, D/R, item) -> categoria
     entries: dict[int, int] = field(default_factory=dict)        # lançamento do MCC -> lançamento
+    users: dict[int, int] = field(default_factory=dict)          # usuário do MCC -> usuário
     movements: dict[int, int] = field(default_factory=dict)      # movimentação bancária do MCC -> lançamento
     contacts_created_from_text: list[str] = field(default_factory=list)   # marcados "a revisar"
     paid_without_date: list[int] = field(default_factory=list)   # D6: lançamentos do MCC (ids)
@@ -87,6 +94,23 @@ def rounding_of(v) -> tuple[Decimal, str | None]:
     exact = Decimal(repr(float(v or 0)))
     value = exact.quantize(CENT, rounding=ROUND_HALF_UP)
     return value, (str(exact) if abs(exact - value) >= NOISE else None)
+
+
+LEVELS = {0: "none", 1: "read", 2: "full"}
+AREAS = ("perm_despesas", "perm_receitas", "perm_centros", "perm_bancos")
+
+
+def finora_hash(mcc_hash: str | None) -> str | None:
+    """Senha do clone do MCC ("scrypt$sal hex$hash hex", N=16384, r=8, p=1) no formato do Finora
+    ("scrypt$N$r$p$sal base64$hash base64"): mesma senha, sem precisar redefinir. Formato desconhecido: None."""
+    try:
+        algo, salt, digest = str(mcc_hash or "").split("$")
+        if algo != "scrypt":
+            return None
+        b64 = lambda h: base64.b64encode(bytes.fromhex(h)).decode()
+        return f"scrypt$16384$8$1${b64(salt)}${b64(digest)}"
+    except ValueError:
+        return None
 
 
 def _day(text: str | None) -> date | None:
@@ -362,6 +386,58 @@ class _Importer:
             self.r.movements[m["id"]] = e.id
         self.s.commit()
 
+    # ---------- usuários ----------
+    def user_rows(self):
+        imported = list(self.r.entities.values())
+        access = {}
+        for ue in reader.rows(self.con, "usuario_empresas"):
+            access.setdefault(ue["usuario_id"], []).append(ue["empresa_id"])
+        for u in reader.rows(self.con, "usuarios"):
+            email = (u["email"] or "").strip().lower()
+            existing = self.s.scalar(select(User).where(User.email.ilike(email))) if email else None
+            if existing is not None:                       # já existe no Finora: só ganha acesso às entidades novas
+                uid = existing.id
+                self.warn(f"Usuário {email} já existia no Finora: ganhou acesso às entidades importadas e "
+                          "continua com a senha de antes.")
+            else:
+                pw = finora_hash(u.get("senha_hash"))
+                if u.get("senha_hash") and pw is None:
+                    self.warn(f"{u['nome']}: senha num formato que o Finora não conhece; defina uma nova em "
+                              "Administração › Usuários.")
+                lim = users.limit()
+                active = bool(u["ativo"])
+                if active and lim is not None and users.active_count(self.s) >= lim:
+                    active = False
+                    self.warn(f"{u['nome']} entrou inativo: a sua edição permite até {lim} usuários ativos.")
+                user = User(name=u["nome"].strip(), email=email or None, password_hash=pw, is_admin=bool(u["admin"]),
+                            is_active=active, created=datetime.now())
+                self.s.add(user)
+                self.s.flush()
+                uid = user.id
+            self.r.users[u["id"]] = uid
+            mine = imported if u["admin"] or u.get("todas_empresas", 1) else \
+                [self.r.entities[e] for e in access.get(u["id"], []) if e in self.r.entities]
+            for eid in mine:
+                if self.s.get(UserEntity, (uid, eid)) is None:
+                    self.s.add(UserEntity(user_id=uid, entity_id=eid))
+            if not u["admin"] and existing is None:
+                self._permissions(u, uid, mine)
+        self.s.commit()
+
+    def _permissions(self, u: dict, uid: int, entity_ids: list[int]):
+        """D1: Financeiro e Contatos = o maior nível nas áreas do MCC; Relatórios = leitura se via alguma área."""
+        levels = [int(u.get(k) or 0) for k in AREAS]
+        top = max(levels)
+        if len(set(levels)) > 1:
+            self.warn(f"{u['nome']}: no MCC tinha acessos diferentes por área (despesas, receitas, centros, bancos); "
+                      f"no Finora ficou \"{users_level_label(top)}\" no Financeiro. Confira em Administração.")
+        from finora.services.permissions import MODULES
+        given = {"financial": LEVELS[top], "contacts": LEVELS[top],
+                 "reports": "read" if max(levels + [int(u.get("perm_fluxo") or 0)]) else "none"}
+        for eid in entity_ids:
+            for module in MODULES:                         # o que o MCC não tinha (estoque, admin…): nenhum
+                self.s.add(Permission(user_id=uid, entity_id=eid, module=module, level=given.get(module, "none")))
+
     def run(self) -> ImportResult:
         for e in self.companies:
             self.entity(e)
@@ -371,6 +447,7 @@ class _Importer:
         self.item_rows()
         self.entry_rows()
         self.movement_rows()
+        self.user_rows()
         for e in self.companies:
             eid = self.r.entities[e["id"]]
             self.preferences(e, eid)
@@ -381,6 +458,10 @@ class _Importer:
             self.warn(f"{n_ofx} marcas de extrato OFX já importado no MCC não vieram: na conciliação do Finora, "
                       "importe o extrato de novo (o que já tem lançamento é casado sozinho).")
         return self.r
+
+
+def users_level_label(level: int) -> str:
+    return {0: "Nenhum", 1: "Leitura", 2: "Total"}[level]
 
 
 def import_companies(s: Session, con: sqlite3.Connection, companies: list[int] | None = None) -> ImportResult:

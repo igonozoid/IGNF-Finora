@@ -55,6 +55,11 @@ class CategoriesPage(QWidget):
         self.rules_btn = button("Regras automáticas", "secondary", t, "fa6s.wand-magic-sparkles", "fg")
         self.rules_btn.setToolTip("Ex.: descrição contém “uber” → Transporte. Vale no lançamento novo e no extrato.")
         self.rules_btn.clicked.connect(self.open_rules)
+        self.reclass_btn = button("Reclassificar…", "secondary", t, "fa6s.right-left", "fg")
+        self.reclass_btn.setToolTip("Mudar várias subcategorias de grupo (e de linha da DRE) de uma vez, com "
+                                    "sugestões — útil depois de trazer os itens do MCC.")
+        self.reclass_btn.clicked.connect(self.open_reclassify)
+        bar.addWidget(self.reclass_btn)
         bar.addWidget(self.rules_btn)
 
         # Árvore
@@ -327,6 +332,17 @@ class CategoriesPage(QWidget):
         dlg.exec()
         if dlg.changed:
             self.message.emit("Regras automáticas salvas.")
+
+    def open_reclassify(self):
+        from finora.ui.reclassify_dialog import ReclassifyDialog
+        c = self.current
+        group = (c.parent_id or c.id) if c else None
+        dlg = ReclassifyDialog(self, self.profile.id, self.t, group)
+        self.reclass_dialog = dlg                # os testes de tela pegam o diálogo aberto
+        dlg.exec()
+        if dlg.outcome is not None:
+            self.refresh()
+            self.message.emit(dlg.message())
 
     def _fill_dre_box(self):
         with Session() as s:

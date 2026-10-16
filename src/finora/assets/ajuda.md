@@ -86,6 +86,14 @@ Alimentação, Transporte, Saúde, Educação, Lazer, Outras despesas, Investime
 importado e, com o botão **Aplicar aos lançamentos sem categoria**, para o que já foi lançado sem categoria.
 Não diferenciam acentos nem maiúsculas; se duas regras servirem, vale a de texto mais longo.
 
+**Reclassificar…**: muda várias subcategorias de grupo (e, com isso, de linha da DRE) de uma vez — útil depois
+de trazer os itens do MCC, que chegam em "Despesas do MCC" e "Receitas do MCC". Escolha o grupo e confira as
+sugestões: o Finora olha as **regras automáticas**, uma subcategoria de **mesmo nome** em outro grupo e
+**palavras** do nome ("adubo" → Custos, "tarifa" → Despesas financeiras). Uma linha da DRE sem grupo ainda
+aparece como **grupo novo** e é criada ao aplicar. Se o destino já tem uma subcategoria de mesmo nome, as duas
+viram uma só (lançamentos, regras e orçamento passam juntos). Com lançamentos num **período fechado**, reabra o
+período antes: a DRE do passado mudaria. Fica registrado no histórico de alterações.
+
 ## Centros de custo {#cost_centers}
 
 Um segundo jeito de agrupar, além da categoria: Casa, Carro, Viagem, Obra… Útil para saber quanto custou um

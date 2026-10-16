@@ -15,15 +15,16 @@ class CompanyData:
     name: str                          # razão social
     trade_name: str                    # nome fantasia
     status: str                        # situação cadastral (ATIVA, BAIXADA…)
-    details: dict = field(default_factory=dict)    # phone, email, zip_code, address, city, state
+    details: dict = field(default_factory=dict)    # phone, email, zip_code, address, city, state, district
 
 
 @dataclass(frozen=True)
 class AddressData:
     zip_code: str
-    address: str
+    address: str                       # rua e bairro juntos (para quem não tem o campo bairro)
     city: str
     state: str
+    district: str = ""                 # bairro, para quem tem o campo próprio
 
 
 def _get(url: str, not_found: str) -> dict:
@@ -78,6 +79,7 @@ def cnpj(number: str) -> CompanyData:
                          data.get("numero"), _title(data.get("complemento")), _title(data.get("bairro")))[:200],
         "city": _title(data.get("municipio"))[:80],
         "state": (data.get("uf") or "").strip().upper()[:2],
+        "district": _title(data.get("bairro"))[:80],
     }
     return CompanyData((data.get("razao_social") or "").strip(), (data.get("nome_fantasia") or "").strip(),
                        (data.get("descricao_situacao_cadastral") or "").strip(),
@@ -90,4 +92,5 @@ def cep(number: str) -> AddressData:
         raise ValueError("CEP inválido. Use 8 números, ex.: 13010-050.")
     data = _get(f"{API}/cep/v2/{d}", "CEP não encontrado.")
     return AddressData(f"{d[:5]}-{d[5:]}", _join(data.get("street"), data.get("neighborhood"))[:200],
-                       (data.get("city") or "").strip(), (data.get("state") or "").strip().upper())
+                       (data.get("city") or "").strip(), (data.get("state") or "").strip().upper(),
+                       (data.get("neighborhood") or "").strip()[:80])

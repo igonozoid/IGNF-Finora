@@ -19,13 +19,18 @@ class Entity(Base):
     # Dados que aparecem no cabeçalho do recibo e dos relatórios (todos opcionais)
     document2: Mapped[str | None] = mapped_column(String(30))               # inscrição estadual/municipal
     address: Mapped[str | None] = mapped_column(String(200))
+    address2: Mapped[str | None] = mapped_column(String(80))                # complemento
+    district: Mapped[str | None] = mapped_column(String(80))                # bairro
     city: Mapped[str | None] = mapped_column(String(80))
     state: Mapped[str | None] = mapped_column(String(2))
     zip_code: Mapped[str | None] = mapped_column(String(9))
+    country: Mapped[str | None] = mapped_column(String(60))                 # vazio = Brasil
     phone: Mapped[str | None] = mapped_column(String(30))
     email: Mapped[str | None] = mapped_column(String(120))
     website: Mapped[str | None] = mapped_column(String(120))
     logo: Mapped[bytes | None] = mapped_column(LargeBinary(length=2_000_000), deferred=True)   # PNG, até 512 px
+    # Usa centro de custo (como no MCC, por conta controle): desligado, o campo some do lançamento.
+    uses_cost_centers: Mapped[bool] = mapped_column(Boolean, default=True)
     # Modelo da DRE: personal (Moradia, Alimentação…) ou business (Receita bruta, Custos, Lucro…); ver services/dre
     dre_model: Mapped[str] = mapped_column(String(10), default="personal", server_default="personal")
 

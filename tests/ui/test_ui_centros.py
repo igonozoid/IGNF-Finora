@@ -74,3 +74,19 @@ def test_centro_de_lucro_so_aparece_na_receita(plus, window, qtbot):
     form.kind_group.button(1).click()                                              # receita
     assert form.cost_center.findText("Vendas") >= 0
     form.cancel_btn.click()
+
+
+def test_entidade_que_nao_usa_centro_de_custo_esconde_o_campo(plus, window, qtbot):
+    from finora.services import entity_admin
+    with db.Session() as s:
+        cost_centers.create(s, window.profile.id, "Casa")
+    window.go_to("entries")
+    page = window.page("entries")
+    window.new_entry()
+    assert not page.form.cc_box.itemAt(0).widget().isHidden()                    # usa (padrão)
+    page.form.cancel_btn.click()
+    with db.Session() as s:
+        entity_admin.set_uses_cost_centers(s, window.profile.id, False)
+    window.new_entry()
+    assert page.form.cc_box.itemAt(0).widget().isHidden()                        # desligado: some
+    page.form.cancel_btn.click()

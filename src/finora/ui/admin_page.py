@@ -335,8 +335,10 @@ class EntitiesTab(QWidget):
             fl.addLayout(w) if isinstance(w, QHBoxLayout) else fl.addWidget(w)
         self.det = {}
         for key, label, ph in (("document2", "Inscrição estadual/municipal", "Opcional"),
-                               ("address", "Endereço", "Rua, número, sala"), ("city", "Cidade", ""),
+                               ("address", "Endereço", "Rua, número"), ("address2", "Complemento", "Sala, bloco…"),
+                               ("district", "Bairro", ""), ("city", "Cidade", ""),
                                ("state", "UF", "RS"), ("zip_code", "CEP", "95890-000"),
+                               ("country", "País", "Brasil (deixe vazio)"),
                                ("phone", "Telefone / WhatsApp", ""), ("email", "E-mail", ""),
                                ("website", "Site", "www.exemplo.com.br")):
             w = QLineEdit(maxLength=entity_admin.DETAILS[key], placeholderText=ph)
@@ -353,6 +355,10 @@ class EntitiesTab(QWidget):
         fl.addWidget(self.lookup_note)
         self.lookup.clicked.connect(self._lookup)
         self.cep_btn.clicked.connect(self._lookup_cep)
+        self.uses_cc = QCheckBox("Usa centro de custo")
+        self.uses_cc.setToolTip("Desligado, o campo Centro de custo some do lançamento desta entidade\n"
+                                "(como a opção da conta controle no MCC).")
+        fl.addWidget(self.uses_cc)
         fl.addWidget(self.active)
         self.logo_pick.clicked.connect(self._pick_logo)
         self.logo_clear.clicked.connect(lambda: self._set_logo(None))
@@ -416,6 +422,7 @@ class EntitiesTab(QWidget):
         self.active.hide()
         for w in self.det.values():
             w.clear()
+        self.uses_cc.setChecked(True)
         self._set_logo(None, changed=False)
         self.lock_info.setText("Vem com uma conta e as categorias padrão. Os administradores já ganham acesso.")
         self._error(None)
@@ -439,6 +446,7 @@ class EntitiesTab(QWidget):
             lock = period_lock.locked_through(s, e.id)
             det = entity_admin.details(s, e.id)
             logo = entity_admin.get_logo(s, e.id)
+            self.uses_cc.setChecked(entity_admin.uses_cost_centers(s, e.id))
         for k, w in self.det.items():
             w.setText(det.get(k, ""))
         self._set_logo(logo, changed=False)
@@ -486,8 +494,9 @@ class EntitiesTab(QWidget):
         filled = [k for k, v in data.details.items() if v and k in self.det and not self.det[k].text().strip()]
         for k in filled:
             self.det[k].setText(data.details[k])
+        self._split_district()
         labels = {"phone": "telefone", "email": "e-mail", "zip_code": "CEP", "address": "endereço",
-                  "city": "cidade", "state": "UF"}
+                  "city": "cidade", "state": "UF", "district": "bairro"}
         note = f"Dados da Receita: {data.name}"
         if data.status and data.status.upper() != "ATIVA":
             note += f" — situação {data.status}"
@@ -509,10 +518,19 @@ class EntitiesTab(QWidget):
             self._lookup_msg(str(e), error=True)
             return
         self.det["zip_code"].setText(addr.zip_code)
-        for key, value in (("address", addr.address), ("city", addr.city), ("state", addr.state)):
+        for key, value in (("address", addr.address), ("district", addr.district), ("city", addr.city),
+                           ("state", addr.state)):
             if value:
                 self.det[key].setText(value)
+        self._split_district()
         self._lookup_msg("Endereço preenchido pelo CEP. Complete o número e clique em Salvar.")
+
+    def _split_district(self):
+        """A busca devolve "Rua X, Bairro": com o bairro no campo próprio, ele sai do fim do endereço."""
+        district = self.det["district"].text().strip()
+        address = self.det["address"].text().strip()
+        if district and address.lower().endswith(", " + district.lower()):
+            self.det["address"].setText(address[: -len(district) - 2])
 
     def _lookup_msg(self, text: str, error: bool = False):
         self.lookup_note.setProperty("role", "error" if error else "field")
@@ -553,6 +571,7 @@ class EntitiesTab(QWidget):
                                         dre_model=model)
                     msg = "Entidade atualizada."
                 entity_admin.update_details(s, eid, **{k: w.text() for k, w in self.det.items()})
+                entity_admin.set_uses_cost_centers(s, eid, self.uses_cc.isChecked())
                 if self._logo_changed:
                     entity_admin.set_logo(s, eid, self._logo)
         except (ValueError, LimitError) as e:

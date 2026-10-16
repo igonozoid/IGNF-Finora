@@ -150,6 +150,30 @@ def test_entidade_autopreenche_pelo_cnpj(plus, window, monkeypatch):
     assert tab.det["city"].text() == "Teutônia" and "Preenchi" in tab.lookup_note.text()
 
 
+def test_entidade_bairro_pelo_cep_complemento_pais_e_centro_de_custo(plus, window, monkeypatch):
+    from finora.core import db
+    from finora.services import doc_lookup, entity_admin
+    window.go_to("admin")
+    tab = window.page("admin").tabs["entities"]
+    tab.refresh()
+    tab._edit(tab.items[0])
+    assert tab.uses_cc.isChecked()
+    monkeypatch.setattr(doc_lookup, "cep", lambda n: doc_lookup.AddressData(
+        "37517-000", "Estrada Velha, Zona Rural", "Maria da Fé", "MG", "Zona Rural"))
+    tab.det["zip_code"].setText("37517000")
+    tab.cep_btn.click()
+    assert tab.det["address"].text() == "Estrada Velha" and tab.det["district"].text() == "Zona Rural"
+    tab.det["address2"].setText("Galpão 3")
+    tab.det["country"].setText("Brasil")
+    tab.uses_cc.setChecked(False)
+    tab.save_btn.click()
+    with db.Session() as s:
+        eid = tab.items[0].id
+        det = entity_admin.details(s, eid)
+        assert (det["district"], det["address2"], det["country"]) == ("Zona Rural", "Galpão 3", "Brasil")
+        assert not entity_admin.uses_cost_centers(s, eid)
+
+
 def test_entidade_pj_sugere_dre_de_empresa_e_troca_com_confirmacao(plus, window, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
     window.go_to("admin")

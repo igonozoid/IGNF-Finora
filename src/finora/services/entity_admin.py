@@ -128,15 +128,15 @@ def update(s: Session, entity_id: int, *, name: str, person_type: str, document:
 
 
 # ---------- dados para o cabeçalho (recibo e relatórios) e logotipo ----------
-DETAILS = {"document2": 30, "address": 200, "city": 80, "state": 2, "zip_code": 9, "phone": 30, "email": 120,
-           "website": 120}
+DETAILS = {"document2": 30, "address": 200, "address2": 80, "district": 80, "city": 80, "state": 2,
+           "zip_code": 9, "country": 60, "phone": 30, "email": 120, "website": 120}
 MAX_LOGO = 1_500_000
 
 
 @dataclass(frozen=True)
 class Letterhead:
     name: str
-    address_line: str            # "Rua X, 10 — Campinas/SP — CEP 13010-050"
+    address_line: str            # "Rua X, 10, sala 2 — Centro — Campinas/SP — CEP 13010-050"
     contacts_line: str           # "Tel: … · e-mail: … · site: …"
     docs_line: str               # "CNPJ 11.222.333/0001-81 · IE 123"
     logo: bytes | None
@@ -179,10 +179,24 @@ def get_logo(s: Session, entity_id: int) -> bytes | None:
     return s.get(Entity, entity_id).logo
 
 
+def uses_cost_centers(s: Session, entity_id: int) -> bool:
+    """A entidade usa centro de custo? Desligado, o campo some do lançamento (como no MCC, por conta controle)."""
+    e = s.get(Entity, entity_id)
+    return bool(e.uses_cost_centers) if e is not None and e.uses_cost_centers is not None else True
+
+
+def set_uses_cost_centers(s: Session, entity_id: int, on: bool) -> None:
+    s.get(Entity, entity_id).uses_cost_centers = bool(on)
+    s.commit()
+
+
 def letterhead(s: Session, entity_id: int) -> Letterhead:
     e = s.get(Entity, entity_id)
     place = "/".join(x for x in (e.city, e.state) if x)
-    address = " — ".join(x for x in (e.address, place, f"CEP {e.zip_code}" if e.zip_code else "") if x)
+    street = ", ".join(x for x in (e.address, e.address2) if x)
+    country = e.country if e.country and e.country.strip().lower() not in ("brasil", "brazil") else ""
+    address = " — ".join(x for x in (street, e.district, place, f"CEP {e.zip_code}" if e.zip_code else "", country)
+                         if x)
     contacts = "   ".join(x for x in (f"Tel: {e.phone}" if e.phone else "", f"e-mail: {e.email}" if e.email else "",
                                       f"site: {e.website}" if e.website else "") if x)
     doc = documents.fmt(e.document) if e.document else ""

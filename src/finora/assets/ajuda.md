@@ -211,6 +211,10 @@ Edições pagas: **entidades** (cada pessoa ou empresa com dados separados), **u
 **permissões** por módulo (sem acesso, só consulta, total) e **histórico de alterações** (quem mudou o quê e
 quando).
 
+Na entidade ficam os dados do cabeçalho do recibo e dos relatórios: endereço, complemento, bairro, cidade, CEP e
+país (vazio = Brasil), contatos e logotipo. **Buscar CEP** preenche rua, bairro, cidade e UF. Desmarque **Usa
+centro de custo** para o campo sumir dos lançamentos daquela entidade.
+
 ## Configurações {#settings}
 
 Seus dados, moeda, aparência (tema claro/escuro, menu lateral ou em abas), **segurança** (PIN para abrir o

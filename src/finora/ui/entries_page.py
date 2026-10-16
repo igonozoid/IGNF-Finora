@@ -568,11 +568,13 @@ class EntryForm(QFrame):
         self._load_cost_centers(self.cost_center.currentData())
 
     def _load_cost_centers(self, keep: int | None = None):
-        """Só aparece nas edições pagas e quando há centros de custo cadastrados."""
+        """Só aparece nas edições pagas, quando a entidade usa centro de custo e há algum que vale para o tipo."""
+        from finora.services import entity_admin
         items = []
         if allowed(current_edition(), "cost_centers"):
             with Session() as s:
-                items = cost_centers.choices(s, self.profile.id, keep, kind=self._kind())
+                if entity_admin.uses_cost_centers(s, self.profile.id) or keep:
+                    items = cost_centers.choices(s, self.profile.id, keep, kind=self._kind())
         self.cost_center.clear()
         self.cost_center.addItem("Nenhum", None)
         for cid, name in items:

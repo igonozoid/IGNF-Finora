@@ -26,7 +26,7 @@ def test_cnpj_preenche_dados_da_receita(monkeypatch):
     assert (d.name, d.trade_name, d.status) == ("ENERGIA PAULISTA S.A.", "ENEL", "ATIVA")
     assert d.details == {"phone": "(11) 3333-4444", "email": "contato@enel.com", "zip_code": "01310-100",
                          "address": "Avenida Paulista, 1000, Andar 5, Bela Vista", "city": "Sao Paulo",
-                         "state": "SP"}
+                         "state": "SP", "district": "Bela Vista"}
 
 
 def test_cep_preenche_endereco(monkeypatch):
@@ -34,6 +34,7 @@ def test_cep_preenche_endereco(monkeypatch):
         "street": "Rua Barão de Jaguara", "neighborhood": "Centro", "city": "Campinas", "state": "SP"}))
     a = doc_lookup.cep("13015-002")
     assert (a.zip_code, a.address, a.city, a.state) == ("13015-002", "Rua Barão de Jaguara, Centro", "Campinas", "SP")
+    assert a.district == "Centro"
 
 
 @pytest.mark.parametrize("status, msg", [(404, "não encontrado"), (429, "Espere"), (500, "fora do ar")])

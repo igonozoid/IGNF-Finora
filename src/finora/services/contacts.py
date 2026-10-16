@@ -196,3 +196,75 @@ def get_or_create(s: Session, entity_id: int, name: str | None, kind: str | None
         setattr(c, ROLES[role][0], True)
     s.flush()
     return c.id
+
+
+# ---------- mesclar duplicados (Fase 2.13) ----------
+_SUFFIXES = re.compile(r"\b(ltda|me|epp|eireli|s ?a|sa|cia)\b")
+
+
+def _key(name: str) -> str:
+    import unicodedata
+    plain = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode().lower()
+    plain = re.sub(r"[^a-z0-9 ]+", " ", plain)
+    return " ".join(_SUFFIXES.sub(" ", plain).split())
+
+
+def duplicates(s: Session, entity_id: int, contact_id: int) -> list[int]:
+    """Prováveis duplicados do contato: mesmo nome sem acento/pontuação/"Ltda", ou mesmo documento."""
+    me = s.get(Contact, contact_id)
+    key = _key(me.name)
+    out = []
+    for c in s.scalars(select(Contact).where(scope.contacts(entity_id), Contact.id != contact_id)):
+        if (key and _key(c.name) == key) or (me.document and c.document == me.document):
+            out.append(c.id)
+    return out
+
+
+@dataclass(frozen=True)
+class MergeResult:
+    entries: int
+    others: int              # regras, estoque, vendas, pecuária
+
+
+def merge(s: Session, keep_id: int, drop_id: int) -> MergeResult:
+    """Junta `drop` em `keep`: lançamentos (até os da lixeira), regras, estoque, vendas e pecuária passam para o
+    mantido, que ganha os papéis e os dados que estavam vazios; `drop` some. Fica registrado no histórico."""
+    from sqlalchemy import update as sql_update
+    from finora.models import CategoryRule, HerdEvent, ImportMap, Sale, StockMove
+    from finora.services import audit
+    if keep_id == drop_id:
+        raise ValueError("Escolha dois contatos diferentes.")
+    keep, drop = s.get(Contact, keep_id), s.get(Contact, drop_id)
+    if keep is None or drop is None:
+        raise ValueError("Contato não encontrado.")
+    if not keep.shared and (drop.shared or drop.entity_id != keep.entity_id):
+        raise ValueError(f"\"{drop.name}\" aparece em outras entidades: mantenha o contato compartilhado.")
+    if keep.document and drop.document and keep.document != drop.document:
+        raise ValueError("Os dois contatos têm CPF/CNPJ diferentes: não parecem a mesma pessoa.")
+    n_entries = s.execute(sql_update(Entry).where(Entry.contact_id == drop_id).values(contact_id=keep_id)
+                          .execution_options(synchronize_session=False)).rowcount
+    others = 0
+    for model in (CategoryRule, StockMove, Sale, HerdEvent):
+        others += s.execute(sql_update(model).where(model.contact_id == drop_id).values(contact_id=keep_id)
+                            .execution_options(synchronize_session=False)).rowcount
+    s.expire_all()                                         # nada carregado antes fica com o contato antigo
+    for m in s.scalars(select(ImportMap).where(ImportMap.kind == "pessoas", ImportMap.target == str(drop_id))):
+        m.target = str(keep_id)                            # reimportar o MCC continua achando o contato
+    for k, (col, *_r) in ROLES.items():
+        setattr(keep, col, getattr(keep, col) or getattr(drop, col))
+    fill = {k: getattr(drop, k) for k in DETAILS if not getattr(keep, k) and getattr(drop, k)}
+    if drop.notes and keep.notes and drop.notes not in keep.notes:
+        fill["notes"] = f"{keep.notes}\n{drop.notes}"[:DETAILS["notes"]]
+    document = keep.document or drop.document
+    person_type = keep.person_type if keep.document or not drop.document else drop.person_type
+    drop_name = drop.name
+    s.delete(drop)
+    s.flush()                                              # o documento só pode passar depois que o outro sumir
+    for k, v in fill.items():
+        setattr(keep, k, v)
+    keep.document, keep.person_type = document, person_type
+    keep.needs_review = False                              # mesclar = conferido
+    s.commit()
+    audit.note(s, keep.entity_id, f"Mesclou o contato \"{drop_name}\" em \"{keep.name}\": {n_entries} lançamento(s)"
+                                  + (f" e {others} outro(s) registro(s)" if others else "") + " passaram para ele.")
+    return MergeResult(n_entries, others)

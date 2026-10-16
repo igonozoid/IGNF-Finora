@@ -1,7 +1,7 @@
 """Tela de Contatos: lista com filtros por papel e busca + cadastro lateral (mockup "Contatos")."""
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
+    QApplication, QButtonGroup, QComboBox, QCompleter, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 import qtawesome as qta
@@ -239,9 +239,12 @@ class ContactForm(QFrame):
         self.save_btn = button("Salvar", "primary")
         self.cancel_btn = button("Cancelar", "secondary")
         self.delete_btn = button("Excluir", "danger")
+        self.merge_btn = button("Mesclar…", "secondary", t, "fa6s.code-merge", "fg")
+        self.merge_btn.setToolTip("Juntar a este um contato repetido (com outro nome ou escrito diferente)")
         btns.addWidget(self.save_btn)
         btns.addWidget(self.cancel_btn)
         btns.addStretch(1)
+        btns.addWidget(self.merge_btn)
         btns.addWidget(self.delete_btn)
         lay.addLayout(btns)
         lay.addStretch(1)
@@ -252,6 +255,7 @@ class ContactForm(QFrame):
         self.save_btn.clicked.connect(self._save)
         self.cancel_btn.clicked.connect(self.closed.emit)
         self.delete_btn.clicked.connect(self._delete)
+        self.merge_btn.clicked.connect(self._merge)
         for e in (self.name, self.doc):
             e.returnPressed.connect(self._save)
 
@@ -370,6 +374,7 @@ class ContactForm(QFrame):
             b.setChecked(False)
         self._fill_details(None)
         self.delete_btn.hide()
+        self.merge_btn.hide()
         self.cancel_btn.show()
         self._error(None)
         self.name.setFocus()
@@ -390,6 +395,7 @@ class ContactForm(QFrame):
             b.setChecked(k in c.roles)
         self._fill_details(c)
         self.delete_btn.show()
+        self.merge_btn.show()
         self._error(None)
 
     def _save(self):
@@ -424,6 +430,82 @@ class ContactForm(QFrame):
             self._error(str(e))
             return
         self.saved.emit(f"Contato \"{c.name}\" excluído.", 0)
+
+    def _merge(self):
+        c = self.current
+        if c is None:
+            return
+        dlg = MergeDialog(self, self.profile.id, c, self.t)
+        self.merge_dialog = dlg                  # os testes de tela pegam o diálogo aberto
+        if dlg.exec() == QDialog.Accepted and dlg.outcome:
+            self.saved.emit(dlg.outcome, c.id)
+
+
+class MergeDialog(QDialog):
+    """Escolher o contato repetido que será juntado ao contato aberto (o aberto fica)."""
+
+    def __init__(self, parent, entity_id: int, keep: ContactView, t: dict):
+        super().__init__(parent)
+        self.entity_id, self.keep, self.outcome = entity_id, keep, ""
+        self.setWindowTitle("Mesclar contatos")
+        self.setMinimumWidth(460)
+        with Session() as s:
+            others = [x for x in contacts.list_contacts(s, entity_id) if x.id != keep.id]
+            dup = set(contacts.duplicates(s, entity_id, keep.id))
+        self.others = {x.id: x for x in others}
+        others.sort(key=lambda x: (x.id not in dup, x.name.lower()))
+        lay = QVBoxLayout(self)
+        lay.setSpacing(theme.SP_M)
+        lay.addWidget(QLabel(f"Juntar a \"{keep.name}\" o contato:", objectName="sectionTitle", wordWrap=True))
+        self.pick = QComboBox(editable=True)
+        self.pick.setInsertPolicy(QComboBox.NoInsert)
+        for x in others:
+            self.pick.addItem(f"{x.name}  ·  provável repetido" if x.id in dup else x.name, x.id)
+        self.pick.completer().setFilterMode(Qt.MatchContains)
+        self.pick.completer().setCompletionMode(QCompleter.PopupCompletion)
+        lay.addWidget(self.pick)
+        self.info = QLabel(wordWrap=True)
+        self.info.setProperty("role", "muted")
+        lay.addWidget(self.info)
+        self.error = QLabel(wordWrap=True)
+        self.error.setProperty("tone", "neg")
+        lay.addWidget(self.error)
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        cancel = button("Cancelar", "secondary")
+        self.ok_btn = button("Mesclar", "primary")
+        btns.addWidget(cancel)
+        btns.addWidget(self.ok_btn)
+        lay.addLayout(btns)
+        cancel.clicked.connect(self.reject)
+        self.ok_btn.clicked.connect(self.merge)
+        self.pick.currentIndexChanged.connect(self._update)
+        self._update()
+
+    def chosen(self) -> ContactView | None:
+        return self.others.get(self.pick.currentData())
+
+    def _update(self):
+        x = self.chosen()
+        self.ok_btn.setEnabled(x is not None)
+        self.error.clear()
+        self.info.setText("" if x is None else
+                          f"Os {x.entries} lançamento(s) de \"{x.name}\" (e regras, estoque e vendas) passam para "
+                          f"\"{self.keep.name}\", que ganha os papéis e os dados que faltam. \"{x.name}\" deixa de "
+                          "existir. Fica registrado no histórico.")
+
+    def merge(self):
+        x = self.chosen()
+        if x is None:
+            return
+        try:
+            with Session() as s:
+                r = contacts.merge(s, self.keep.id, x.id)
+        except ValueError as e:
+            self.error.setText(str(e))
+            return
+        self.outcome = f"\"{x.name}\" foi juntado a \"{self.keep.name}\" ({r.entries} lançamento(s))."
+        self.accept()
 
 
 class ContactsPage(QWidget):

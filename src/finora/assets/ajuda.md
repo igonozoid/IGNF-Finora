@@ -108,6 +108,11 @@ e titular** em campos separados.
 **A revisar**: contatos criados sozinhos (por exemplo, pela importação do MCC a partir de um nome solto)
 ganham a marca e aparecem no filtro **A revisar**. Confira os dados e salve: a marca sai.
 
+**Mesclar**: o mesmo fornecedor cadastrado duas vezes ("Enel" e "ENEL S.A.")? Abra o que vai ficar e clique em
+**Mesclar…**. Os prováveis repetidos vêm primeiro na lista. Os lançamentos (até os da lixeira), regras, estoque e
+vendas do outro passam para este, que ganha os papéis e os dados que faltavam; o outro deixa de existir. Fica
+registrado no **histórico de alterações**. Contatos com CPF/CNPJ diferentes não são mesclados.
+
 ## Estoque {#stock}
 
 Módulo opcional: ligue em **Configurações › Módulos desta entidade** (cada entidade liga o que usa).

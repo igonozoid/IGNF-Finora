@@ -376,6 +376,27 @@ def test_baixa_regras(ctx):
     assert not entries.get(s, i).is_paid                                           # nada mudou
 
 
+def test_repetir_no_mes_seguinte(ctx):
+    s, eid = ctx["s"], ctx["eid"]
+    (i,) = entries.create(s, eid, _data(ctx, amount=D("1000.00"), due_date=date(2026, 1, 31), contact="Enel",
+                                        document_no="FAT-01", notes="Contrato 5"))
+    entries.pay(s, i, date(2026, 2, 3), amount=D("1050.00"))           # pago com juros
+    parcelas = entries.create(s, eid, _data(ctx, description="TV", amount=D("300"), document_no="NF-9",
+                                            repeat="installments", times=3))
+    new = entries.repeat_next_month(s, [i, parcelas[1]])
+    a, b = (entries.get(s, x) for x in new)
+    assert a.due_date == date(2026, 2, 28) and not a.is_paid                  # 31/01 + 1 mês, em aberto
+    assert a.amount == D("1000.00") and a.original_amount is None             # o previsto, sem os juros
+    assert (a.description, a.contact, a.category, a.document_no, a.notes) == \
+        ("Conta de luz", "Enel", "Luz", "FAT-01", "Contrato 5")
+    assert a.series_id is None and a.account_id == ctx["bank"]
+    assert b.due_date == date(2026, 12, 10) and b.document_no == "NF-9" and b.installment is None   # avulso
+    assert entries.get(s, i).amount == D("1050.00")                           # o original não muda
+    accounts.set_active(s, ctx["bank"], False)
+    with pytest.raises(ValueError, match="conta inativa"):
+        entries.repeat_next_month(s, [i])
+
+
 def test_filtro_por_conta_e_categoria(ctx):
     s, eid = ctx["s"], ctx["eid"]
     entries.create(s, eid, _data(ctx))                                                        # luz, banco

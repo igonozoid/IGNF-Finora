@@ -400,6 +400,29 @@ def create(s: Session, entity_id: int, d: EntryData) -> list[int]:
     return ids
 
 
+def repeat_next_month(s: Session, entry_ids: list[int]) -> list[int]:
+    """"Repetir no mês seguinte" do MCC: para cada lançamento, uma cópia avulsa e em aberto com a data 1 mês
+    depois (no cartão, a data da compra). Vai o valor previsto (sem juros/desconto da baixa); o "n/N" do documento
+    de uma parcela não é copiado. Retorna os ids novos, na ordem."""
+    rows = [s.get(Entry, i) for i in entry_ids]
+    for e in rows:
+        for a in (e.account_id, e.dest_account_id):
+            if a and not s.get(Account, a).is_active:
+                raise ValueError(f"\"{e.description}\" usa uma conta inativa. Ative-a em Contas para repetir.")
+    out = []
+    for e in rows:
+        start = e.competence_date if e.status == "card" and e.competence_date else e.due_date
+        contact = s.get(Contact, e.contact_id).name if e.contact_id else None
+        doc = _INSTALLMENT_SUFFIX.sub("", e.document_no or "") if e.installment else e.document_no
+        out += create(s, e.entity_id, EntryData(
+            kind=e.kind, description=e.description or "", due_date=add_months(start, 1), account_id=e.account_id,
+            amount=Decimal(e.original_amount if e.original_amount is not None else e.amount),
+            dest_account_id=e.dest_account_id, category_id=e.category_id, contact=contact, document_no=doc,
+            cost_center_id=e.cost_center_id, notes=e.notes,
+            dest_amount=Decimal(e.dest_amount) if e.dest_amount is not None else None))
+    return out
+
+
 def _following(s: Session, e: Entry) -> list[Entry]:
     """Este lançamento e os próximos da mesma série (pela data)."""
     if not e.series_id:

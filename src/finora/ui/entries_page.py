@@ -1419,6 +1419,25 @@ class EntriesPage(QWidget):
                           else f"\"{e.description}\" voltou a ficar em aberto.")
         self.refresh(select_id=e.id)
 
+    def repeat_next_month(self, rows: list[EntryView]):
+        """Cópia em aberto de cada um, 1 mês depois (como no MCC), sem abrir o formulário."""
+        n = len(rows)
+        what = f"\"{rows[0].description}\"" if n == 1 else f"{n} lançamentos"
+        ok = QMessageBox.question(self, "Repetir no mês seguinte",
+                                  f"Repetir {what} no mês seguinte, em aberto?",
+                                  QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if ok != QMessageBox.Yes:
+            return
+        try:
+            with Session() as s:
+                ids = entries.repeat_next_month(s, [e.id for e in rows])
+        except ValueError as err:
+            QMessageBox.warning(self, "Repetir no mês seguinte", str(err))
+            return
+        self.message.emit(f"{len(ids)} {'lançamento repetido' if len(ids) == 1 else 'lançamentos repetidos'} "
+                          "no mês seguinte.")
+        self.refresh()
+
     def _other_entities(self) -> bool:
         """Há outra entidade para onde levar lançamentos (edições com várias entidades)?"""
         from finora.services import entry_move
@@ -1474,6 +1493,8 @@ class EntriesPage(QWidget):
             act = menu.addAction(qta.icon("fa6s.circle-check", color=self.t["pos"]),
                                  f"Marcar {n} como pagos hoje", self._pay_selected)
             act.setEnabled(n > 0)
+            menu.addAction(qta.icon("fa6s.repeat", color=self.t["mut"]), f"Repetir {len(sel)} no mês seguinte",
+                           lambda: self.repeat_next_month(sel))
             if multi:
                 menu.addAction(qta.icon("fa6s.building", color=self.t["mut"]),
                                f"Levar {len(sel)} para outra entidade…", lambda: self.move_to_entity(sel))
@@ -1488,6 +1509,8 @@ class EntriesPage(QWidget):
                            "Marcar como em aberto" if e.is_paid else pay_label, lambda: self._toggle_paid(e))
         menu.addAction(qta.icon("fa6s.pen", color=self.t["mut"]), "Editar", lambda: self.edit_entry(e))
         menu.addAction(qta.icon("fa6s.clone", color=self.t["mut"]), "Duplicar", lambda: self.duplicate_entry(e))
+        menu.addAction(qta.icon("fa6s.repeat", color=self.t["mut"]), "Repetir no mês seguinte",
+                       lambda: self.repeat_next_month([e]))
         if multi and e.kind != "transfer" and not e.on_card:
             menu.addAction(qta.icon("fa6s.building", color=self.t["mut"]), "Levar para outra entidade…",
                            lambda: self.move_to_entity([e]))

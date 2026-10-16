@@ -236,6 +236,24 @@ def test_levar_para_outra_entidade(plus, window, monkeypatch):
         assert s.query(Entry).filter_by(description="Mercado").one().entity_id == other
 
 
+def test_repetir_no_mes_seguinte_pelo_menu(window, dialogs):
+    from finora.models import Entry
+    page = _page(window)
+    mercado = next(e for e in page.model.rows if e.description == "Mercado")
+    dialogs.answer_yes = False                                                # cancelou: nada muda
+    page.repeat_next_month([mercado])
+    with db.Session() as s:
+        assert s.query(Entry).filter_by(description="Mercado").count() == 1
+    dialogs.answer_yes = True
+    msgs = []
+    page.message.connect(msgs.append)
+    page.repeat_next_month([mercado])
+    with db.Session() as s:
+        dues = [e.due_date for e in s.query(Entry).filter_by(description="Mercado").order_by(Entry.due_date)]
+    assert len(dues) == 2 and (dues[1].month - dues[0].month) % 12 == 1
+    assert msgs[-1] == "1 lançamento repetido no mês seguinte."
+
+
 def test_lixeira_restaura(window, monkeypatch):
     from finora.ui.trash_dialog import TrashDialog
     page = _page(window)

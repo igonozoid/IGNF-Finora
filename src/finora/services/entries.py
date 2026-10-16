@@ -442,16 +442,49 @@ def update(s: Session, entry_id: int, d: EntryData, scope: str = "one") -> int:
     return len(targets)
 
 
-def delete(s: Session, entry_id: int, scope: str = "one") -> list[int]:
-    """Manda para a lixeira o lançamento (ou ele e os próximos ainda não pagos da série). Nada sai do banco:
-    dá para restaurar (services/trash). Retorna os ids, para o "Desfazer"."""
-    from finora.services import trash
+DELETE_SCOPES = ("one", "following", "open", "all")
+
+
+@dataclass(frozen=True)
+class SeriesInfo:
+    total: int                 # lançamentos da série (fora os da lixeira)
+    open: int                  # quantos ainda em aberto, em qualquer data
+    following_open: int        # em aberto depois deste
+
+
+def series_info(s: Session, entry_id: int) -> SeriesInfo:
     e = s.get(Entry, entry_id)
-    targets = [e] + ([x for x in _following(s, e) if x.id != e.id and _open(x)]
-                     if scope == "following" else [])
+    if not e.series_id:
+        return SeriesInfo(1, int(_open(e)), 0)
+    rows = list(s.scalars(select(Entry).where(Entry.series_id == e.series_id)))
+    return SeriesInfo(len(rows), sum(_open(x) for x in rows), in_series(s, entry_id))
+
+
+def delete(s: Session, entry_id: int, scope: str = "one") -> list[int]:
+    """Manda para a lixeira (como o FMultDelMov do MCC):
+    - one: só este;
+    - following: este e os próximos ainda não pagos da série;
+    - open: todos os ainda não pagos da série, antes e depois deste;
+    - all: a série inteira, pagos inclusive.
+    Nada sai do banco: dá para restaurar (services/trash). Retorna os ids, para o "Desfazer"."""
+    from finora.services import trash
+    if scope not in DELETE_SCOPES:
+        raise ValueError("Opção de exclusão inválida.")
+    e = s.get(Entry, entry_id)
+    if scope == "following":
+        targets = [e] + [x for x in _following(s, e) if x.id != e.id and _open(x)]
+    elif scope in ("open", "all") and e.series_id:
+        q = select(Entry).where(Entry.series_id == e.series_id).order_by(Entry.due_date, Entry.id)
+        targets = [x for x in s.scalars(q) if scope == "all" or _open(x)]
+    else:
+        targets = [e]
     ids = [x.id for x in targets]
-    trash.move(s, targets)
-    s.commit()
+    try:
+        trash.move(s, targets)
+        s.commit()
+    except Exception:
+        s.rollback()
+        raise
     return ids
 
 

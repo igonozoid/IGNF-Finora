@@ -193,6 +193,24 @@ def test_marcar_como_pago_e_excluir(window, dialogs, monkeypatch):
     assert "Mercado" in _names(page) and page.undo_bar.isHidden()
 
 
+def test_excluir_serie_pergunta_as_opcoes_do_mcc(window, dialogs):
+    from finora.models import Entry
+    page = _page(window)
+    aluguel = next(e for e in page.model.rows if e.description == "Aluguel")      # série de 3, em aberto
+    dialogs.choice = None                                                       # cancela
+    page._delete(aluguel)
+    assert any("série de 3 lançamentos (3 em aberto)" in t for t in dialogs.shown)
+    assert "Aluguel" in _names(page)
+    dialogs.choice = "Todos em aberto (3)"
+    page._delete(aluguel)
+    with db.Session() as s:
+        assert s.query(Entry).filter_by(description="Aluguel").count() == 0         # foram para a lixeira
+    assert "Aluguel" not in _names(page) and not page.undo_bar.isHidden()
+    page.undo_delete()                                                          # Desfazer traz os 3 de volta
+    with db.Session() as s:
+        assert s.query(Entry).filter_by(description="Aluguel").count() == 3
+
+
 def test_lixeira_restaura(window, monkeypatch):
     from finora.ui.trash_dialog import TrashDialog
     page = _page(window)

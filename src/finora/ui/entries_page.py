@@ -236,12 +236,30 @@ def ask_scope(parent, action: str, following: int) -> str | None:
     return "one" if box.clickedButton() is one else "following" if box.clickedButton() is nxt else None
 
 
+def ask_delete_scope(parent, info: entries.SeriesInfo) -> str | None:
+    """Exclusão numa série (como o FMultDelMov do MCC): 'one', 'following', 'open', 'all' ou None."""
+    box = QMessageBox(parent)
+    box.setWindowTitle("Excluir lançamento")
+    box.setText(f"Este lançamento faz parte de uma série de {info.total} lançamentos "
+                f"({info.open} em aberto). O que você quer excluir?")
+    box.setInformativeText("Tudo vai para a Lixeira, de onde dá para restaurar.")
+    options = [("one", box.addButton("Só este", QMessageBox.AcceptRole))]
+    if info.following_open:
+        options.append(("following", box.addButton("Este e os próximos em aberto", QMessageBox.AcceptRole)))
+    if info.open > 1:
+        options.append(("open", box.addButton(f"Todos em aberto ({info.open})", QMessageBox.AcceptRole)))
+    options.append(("all", box.addButton(f"Todos, pagos inclusive ({info.total})", QMessageBox.AcceptRole)))
+    box.addButton("Cancelar", QMessageBox.RejectRole)
+    box.exec()
+    return next((scope for scope, b in options if box.clickedButton() is b), None)
+
+
 def confirm_delete(parent, e: EntryView) -> tuple[str, list[int]] | None:
     """Pergunta e manda para a lixeira. Retorna (mensagem, ids para o Desfazer), ou None se cancelou."""
     with Session() as s:
-        following = entries.in_series(s, e.id)
-    if following:
-        scope = ask_scope(parent, "Excluir", following)
+        info = entries.series_info(s, e.id)
+    if info.total > 1:
+        scope = ask_delete_scope(parent, info)
         if scope is None:
             return None
     else:

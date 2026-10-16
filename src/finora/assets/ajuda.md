@@ -46,7 +46,8 @@ Receitas, despesas e transferências entre suas contas.
 - **Regras automáticas**: ao digitar a descrição de um lançamento novo, a categoria e o contato podem vir
   preenchidos (veja **Categorias › Regras automáticas**).
 - **Excluir**: o lançamento vai para a **Lixeira** (ícone da lixeira na barra). Logo depois de excluir aparece
-  **Desfazer**. Na lixeira dá para restaurar quando quiser; nada é apagado de verdade.
+  **Desfazer**. Na lixeira dá para restaurar quando quiser; nada é apagado de verdade. Num parcelamento ou
+  repetição, escolha: só este, este e os próximos em aberto, todos em aberto ou todos (pagos inclusive).
 - **Imprimir/Exportar**: a lista como está na tela (com os filtros).
 
 ## Contas {#accounts}

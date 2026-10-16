@@ -241,6 +241,55 @@ def test_excluir_este_e_proximos(ctx):
     assert [e.id for e in _list(ctx)] == [ids[0]]
 
 
+def _serie(ctx, n=5):
+    """Série mensal com a 1ª e a 3ª pagas (out, nov, dez, jan, fev)."""
+    s = ctx["s"]
+    ids = entries.create(s, ctx["eid"], _data(ctx, repeat="monthly", times=n))
+    entries.set_paid(s, ids[0], True, date(2026, 10, 10))
+    entries.set_paid(s, ids[2], True, date(2026, 12, 10))
+    return ids
+
+
+def test_info_da_serie(ctx):
+    ids = _serie(ctx)
+    info = entries.series_info(ctx["s"], ids[1])
+    assert (info.total, info.open, info.following_open) == (5, 3, 2)
+    (avulso,) = entries.create(ctx["s"], ctx["eid"], _data(ctx))
+    assert entries.series_info(ctx["s"], avulso).total == 1
+
+
+def test_excluir_todos_em_aberto_da_serie(ctx):
+    s = ctx["s"]
+    ids = _serie(ctx)
+    gone = entries.delete(s, ids[3], scope="open")                 # inclui o em aberto ANTES deste (o 2º)
+    assert gone == [ids[1], ids[3], ids[4]]
+    left = [e.id for e in entries.list_entries(s, ctx["eid"], year=2026, month=10, period="all", today=TODAY)]
+    assert left == [ids[0], ids[2]]                                  # os pagos ficam
+
+
+def test_excluir_a_serie_toda_e_restaurar(ctx):
+    from finora.services import trash
+    s = ctx["s"]
+    ids = _serie(ctx)
+    gone = entries.delete(s, ids[2], scope="all")                  # pagos inclusive
+    assert gone == ids
+    assert entries.list_entries(s, ctx["eid"], year=2026, month=10, period="all", today=TODAY) == []
+    assert trash.restore(s, gone) == 5
+    with pytest.raises(ValueError, match="inválida"):
+        entries.delete(s, ids[0], scope="tudo")
+
+
+def test_excluir_serie_respeita_fechamento(ctx):
+    from finora.services import period_lock
+    s = ctx["s"]
+    ids = entries.create(s, ctx["eid"], _data(ctx, due_date=date(2026, 8, 10), repeat="monthly", times=3))
+    period_lock.set_lock(s, ctx["eid"], date(2026, 8, 31))
+    with pytest.raises(period_lock.PeriodLockedError):            # agosto está fechado: nada é excluído
+        entries.delete(s, ids[1], scope="all")
+    assert len(entries.list_entries(s, ctx["eid"], year=2026, month=10, period="all", today=TODAY)) == 3
+    assert entries.delete(s, ids[1], scope="following") == ids[1:]    # setembro em diante: pode
+
+
 def test_lixeira_some_de_tudo_e_volta(ctx):
     from sqlalchemy import func, select
 

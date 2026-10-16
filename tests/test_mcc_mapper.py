@@ -219,3 +219,75 @@ def test_hash_do_mcc_e_usuario_que_ja_existe(session, plus, tmp_path):
     assert session.scalar(select(func.count(User.id)).where(User.email == "admin@exemplo.test")) == 1
     assert users.authenticate(session, "admin@exemplo.test", "outra-senha")   # continua com a senha do Finora
     assert any("já existia" in w for w in r.warnings)
+
+
+# ---------- reimportar sem duplicar (Fase 2.8) ----------
+def _reimport(s, path):
+    with reader.open_copy(path) as con:
+        return mapper.import_companies(s, con)
+
+
+def _counts(s):
+    from finora.models import ImportMap, User
+    return {m.__name__: s.scalar(select(func.count(m.id)))
+            for m in (Entity, Account, Contact, CostCenter, Category, Entry, User, ImportMap)}
+
+
+def test_importar_de_novo_nao_duplica(imported, tmp_path):
+    s, r = imported
+    before = _counts(s)
+    r2 = _reimport(s, tmp_path / "mcc.db")
+    assert _counts(s) == before
+    assert r2.reimport and (r2.created, r2.updated, r2.trashed) == (0, 0, 0)
+    assert (r2.entities, r2.accounts, r2.entries, r2.movements) == (r.entities, r.accounts, r.entries, r.movements)
+    assert period_lock.locked_through(s, r.entities[1]) == date(2026, 3, 31)
+    assert not r.reimport and r.created == len(r.entries) + len(r.movements)
+
+
+def test_reimportar_aplica_o_que_mudou_no_mcc(imported, tmp_path):
+    import sqlite3
+    from datetime import date as d
+    from finora.services.mcc_import import conference
+    s, r = imported
+    path = tmp_path / "mcc.db"
+    con = sqlite3.connect(path)
+    con.execute("UPDATE lancamentos SET valor=500 WHERE id=1")             # fevereiro: período fechado
+    con.execute("UPDATE lancamentos SET situacao='V', data_pagamento='2026-10-14' WHERE id=20")
+    con.execute("DELETE FROM lancamentos WHERE id=21")
+    con.execute("CREATE TEMP TABLE novo AS SELECT * FROM lancamentos WHERE id=19")
+    con.execute("UPDATE novo SET id=999, valor=77.70")
+    con.execute("INSERT INTO lancamentos SELECT * FROM novo")
+    con.execute("UPDATE contas SET saldo_inicial=11111.11 WHERE id=1")
+    con.execute("UPDATE movbancarias SET valor=2500 WHERE id=4")
+    con.execute("DELETE FROM movbancarias WHERE id=6")
+    con.commit()
+    con.close()
+    accounts_before = s.scalar(select(func.count(Account.id)))
+    with reader.open_copy(path) as c:
+        r2 = mapper.import_companies(s, c)
+        rep = conference.build(s, c, r2, [d.fromisoformat(x) for x in GABARITO["saldos"]])
+    assert (r2.created, r2.updated, r2.trashed) == (1, 3, 2)
+    assert s.get(Entry, r.entries[1]).amount == D("500.00")
+    e20 = s.get(Entry, r.entries[20])
+    assert (e20.status, e20.paid_date) == ("paid", date(2026, 10, 14))
+    assert s.get(Entry, r.entries[21]) is None and trash.get(s, r.entries[21]).deleted_at is not None
+    assert s.get(Entry, r.movements[6]) is None
+    assert s.get(Entry, r2.entries[999]).amount == D("77.70")
+    assert s.get(Account, r.accounts[1]).opening_balance == D("11111.11")
+    assert s.get(Entry, r.movements[4]).amount == D("2500.00")
+    assert s.scalar(select(func.count(Account.id))) == accounts_before
+    assert period_lock.locked_through(s, r.entities[1]) == date(2026, 3, 31)  # reabriu só durante a atualização
+    assert rep.ok, rep.problems
+
+
+def test_reimportar_nao_mexe_no_que_e_do_finora(imported, tmp_path):
+    s, r = imported
+    mine = entity_admin.create(s, name="Minha casa", person_type="PF")
+    mine_accounts = s.scalar(select(func.count(Account.id)).where(Account.entity_id == mine))
+    cid = next(iter(r.contacts.values()))
+    s.get(Contact, cid).name = "Nome que eu acertei"
+    s.commit()
+    _reimport(s, tmp_path / "mcc.db")
+    assert s.get(Entity, mine).name == "Minha casa"
+    assert s.scalar(select(func.count(Account.id)).where(Account.entity_id == mine)) == mine_accounts
+    assert s.get(Contact, cid).name == "Nome que eu acertei"                # contato que já veio não é sobrescrito

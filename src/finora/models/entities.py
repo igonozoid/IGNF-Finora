@@ -399,6 +399,18 @@ class ExchangeRate(Base):
     source: Mapped[str] = mapped_column(String(20), default="manual")     # manual | bcb (PTAX)
 
 
+class ImportMap(Base):
+    """De onde veio cada registro importado (ex.: lançamento 123 do MCC -> lançamento 456 do Finora). É o que permite
+    reimportar atualizando em vez de duplicar."""
+    __tablename__ = "import_map"
+    __table_args__ = (UniqueConstraint("source", "kind", "source_id", name="uq_import_map"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(20))           # "mcc"
+    kind: Mapped[str] = mapped_column(String(20))             # empresas, contas, lancamentos, grupo…
+    source_id: Mapped[str] = mapped_column(String(160))
+    target: Mapped[str] = mapped_column(String(64))           # id no Finora (ou a série, no caso de "grupo")
+
+
 class User(Base):
     """Quem usa o app. Sem senha e sendo o único usuário, o app abre direto (como na edição Free)."""
     __tablename__ = "users"

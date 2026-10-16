@@ -21,8 +21,14 @@ mesma senha. Decisão D1: um módulo Financeiro só; ele (e Contatos) recebe o m
 aviso. Acesso: "todas as empresas" ou administrador = todas as entidades importadas; senão, as dele no MCC.
 
 Valores que o Finora não aceita (CNPJ inválido, UF, CEP, e-mail) não param a importação: o campo fica vazio e
-vira um aviso em `ImportResult.warnings`. Ainda fora: reimportar sem duplicar (2.8) e as linhas de OFX (o MCC só
-guarda o identificador, não dá para remontar o extrato).
+vira um aviso em `ImportResult.warnings`. Fora: as linhas de OFX (o MCC só guarda o identificador, não dá para
+remontar o extrato).
+
+Reimportar (Fase 2.8): cada registro trazido fica ligado ao de origem (tabela import_map). Importar de novo o mesmo
+MCC atualiza o que já veio (lançamentos, movimentações, contas, centros, dados da empresa), cria o que é novo e manda
+para a lixeira o que sumiu do MCC; nada duplica. Contatos e usuários que já vieram não são mexidos (o que você
+completou no Finora fica). O MCC manda enquanto durar o piloto: o período fechado é reaberto durante a atualização e
+fechado de novo na data do MCC. O que foi criado direto no Finora não é tocado.
 """
 import base64
 import sqlite3
@@ -36,8 +42,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from finora.core import settings
-from finora.models import Account, Category, Contact, Entity, Entry, Permission, User, UserEntity
-from finora.services import accounts, contacts, cost_centers, entity_admin, period_lock, scope, users
+from finora.models import Account, Category, Contact, CostCenter, Entity, Entry, ImportMap, Permission, User, UserEntity
+from finora.services import accounts, contacts, cost_centers, entity_admin, period_lock, scope, trash, users
 from finora.services.mcc_import import reader
 
 CENT = Decimal("0.01")
@@ -75,6 +81,10 @@ class ImportResult:
     contacts_created_from_text: list[str] = field(default_factory=list)   # marcados "a revisar"
     paid_without_date: list[int] = field(default_factory=list)   # D6: lançamentos do MCC (ids)
     rounding: list[Rounding] = field(default_factory=list)        # valores com mais de 2 casas no MCC
+    reimport: bool = False                                        # já tinha vindo antes (alguma empresa)
+    created: int = 0                                              # lançamentos/movimentações novos
+    updated: int = 0                                              # já existiam e mudaram
+    trashed: int = 0                                              # sumiram do MCC: foram para a lixeira
     warnings: list[str] = field(default_factory=list)
 
 
@@ -125,18 +135,54 @@ def _when(text: str | None) -> datetime | None:
 
 
 class _Importer:
+    SOURCE = "mcc"
+
     def __init__(self, s: Session, con: sqlite3.Connection, companies: list[int] | None):
         self.s, self.con, self.r = s, con, ImportResult()
+        self.links = {(m.kind, m.source_id): m.target
+                      for m in s.scalars(select(ImportMap).where(ImportMap.source == self.SOURCE))}
         self.companies = [e for e in reader.rows(con, "empresas") if companies is None or e["id"] in companies]
         if not self.companies:
             raise ValueError("Nenhuma empresa do MCC para importar.")
         self.first_entity: int | None = None
+        self.new_entities: set[int] = set()                # criadas nesta importação (não reaproveitadas)
         self.groups: dict[tuple[int, str], int] = {}
         self.no_account: dict[int, int] = {}
         self.names: dict[int, dict[str, int]] = {}         # entidade -> nome normalizado -> contato
 
     def warn(self, text: str):
         self.r.warnings.append(text)
+
+    # ---------- vínculo com o MCC (reimportar sem duplicar) ----------
+    def linked(self, kind: str, src, model=None) -> int | None:
+        """Id no Finora do que já veio do MCC (None se nunca veio, ou se foi apagado no Finora)."""
+        target = self.links.get((kind, str(src)))
+        if target is None:
+            return None
+        obj = trash.get(self.s, int(target)) if model is Entry else self.s.get(model, int(target))
+        return obj.id if obj is not None else None
+
+    def link(self, kind: str, src, target) -> None:
+        key = (kind, str(src))
+        if self.links.get(key) == str(target):
+            return
+        row = self.s.scalar(select(ImportMap).where(ImportMap.source == self.SOURCE, ImportMap.kind == kind,
+                                                    ImportMap.source_id == str(src)))
+        if row is None:
+            self.s.add(ImportMap(source=self.SOURCE, kind=kind, source_id=str(src), target=str(target)))
+        else:
+            row.target = str(target)
+        self.links[key] = str(target)
+
+    @staticmethod
+    def assign(obj, **values) -> bool:
+        """Grava só o que mudou (assim a reimportação não enche o histórico de alterações). True se mudou algo."""
+        changed = False
+        for k, v in values.items():
+            if getattr(obj, k) != v:
+                setattr(obj, k, v)
+                changed = True
+        return changed
 
     def money(self, row: dict, table: str, column: str) -> Decimal:
         """Valor com 2 casas; se o MCC tinha mais casas de verdade, anota para o relatório de conferência."""
@@ -149,6 +195,15 @@ class _Importer:
     def entity(self, e: dict) -> int:
         ptype = "PJ" if e["pessoa"] == "J" else "PF"
         name = e["nome"].strip()
+        eid = self.linked("empresas", e["id"], Entity)
+        if eid is not None:                                # reimportação: mesma entidade, dados atualizados
+            self.r.reimport = True
+            if period_lock.locked_through(self.s, eid):    # o MCC manda: reabre só durante a atualização
+                period_lock.set_lock(self.s, eid, None)
+            self._entity_details(e, eid, self.s.get(Entity, eid).name)
+            self.r.entities[e["id"]] = eid
+            self.first_entity = self.first_entity or eid
+            return eid
         if self.s.scalar(select(Entity.id).where(Entity.name.ilike(name))):
             name = f"{name} (MCC)"
         model = "business" if ptype == "PJ" else "personal"
@@ -163,7 +218,15 @@ class _Importer:
                                       dre_model=model)
         for acc in self.s.scalars(select(Account).where(Account.entity_id == eid)):   # a conta que vem de brinde
             self.s.delete(acc)
+        self.link("empresas", e["id"], eid)
+        self.new_entities.add(eid)
         self.s.commit()
+        self._entity_details(e, eid, name)
+        self.r.entities[e["id"]] = eid
+        self.first_entity = self.first_entity or eid
+        return eid
+
+    def _entity_details(self, e: dict, eid: int, name: str):
         details = {"document2": e.get("documento2"), "address": e.get("endereco"), "district": e.get("bairro"),
                    "city": e.get("cidade"), "state": e.get("uf"), "zip_code": e.get("cep"),
                    "phone": e.get("telefone"), "email": e.get("email"), "website": e.get("site")}
@@ -176,11 +239,8 @@ class _Importer:
                     self.warn(f"{name}: {key} \"{value}\" não foi aceito ({exc}).")
         entity_admin.set_uses_cost_centers(self.s, eid, bool(e.get("usa_centro_custo", 1)))
         logo = next((r["imagem"] for r in reader.rows(self.con, "empresa_logos", "empresa_id=?", (e["id"],))), None)
-        if logo:
+        if logo and entity_admin.get_logo(self.s, eid) != bytes(logo):
             entity_admin.set_logo(self.s, eid, bytes(logo))
-        self.r.entities[e["id"]] = eid
-        self.first_entity = self.first_entity or eid
-        return eid
 
     def preferences(self, e: dict, eid: int):
         cfg = {r["chave"]: r["valor"] for r in reader.rows(self.con, "empresa_config", "empresa_id=?", (e["id"],))}
@@ -205,6 +265,13 @@ class _Importer:
             eid, shared = self._owner(c["empresa_id"])
             kind = "cash" if c["tipo"] == "C" else "bank"
             limit = self.money(c, "contas", "limite") if kind == "bank" and c.get("limite") else None
+            aid = self.linked("contas", c["id"], Account)
+            if aid is not None:                            # já veio: saldo inicial, limite e ativa do MCC
+                self.assign(self.s.get(Account, aid), opening_balance=self.money(c, "contas", "saldo_inicial"),
+                            credit_limit=limit or None, is_active=bool(c["ativa"]))
+                self.s.commit()
+                self.r.accounts[c["id"]] = aid
+                continue
             name = c["descricao"].strip()
             for attempt in (name, f"{name} (MCC)"):
                 try:
@@ -216,6 +283,8 @@ class _Importer:
                         raise
             if not c["ativa"]:
                 accounts.set_active(self.s, aid, False)
+            self.link("contas", c["id"], aid)
+            self.s.commit()
             self.r.accounts[c["id"]] = aid
 
     def cost_center_rows(self):
@@ -226,9 +295,18 @@ class _Importer:
             if not (exp or inc):
                 exp = inc = True
                 self.warn(f"Centro \"{c['nome']}\" não valia para nada no MCC: ficou para despesas e receitas.")
-            self.r.cost_centers[c["id"]] = cost_centers.create(
-                self.s, self.r.entities[c["empresa_id"]], c["nome"], self.money(c, "centros", "orcamento") or None,
-                applies_expense=exp, applies_income=inc, projection=self.money(c, "centros", "projecao") or None)
+            budget = self.money(c, "centros", "orcamento") or None
+            projection = self.money(c, "centros", "projecao") or None
+            ccid = self.linked("centros", c["id"], CostCenter)
+            if ccid is not None:
+                self.assign(self.s.get(CostCenter, ccid), budget=budget if exp else None, applies_expense=exp,
+                            applies_income=inc, projection=projection if inc else None)
+            else:
+                ccid = cost_centers.create(self.s, self.r.entities[c["empresa_id"]], c["nome"], budget,
+                                           applies_expense=exp, applies_income=inc, projection=projection)
+                self.link("centros", c["id"], ccid)
+            self.s.commit()
+            self.r.cost_centers[c["id"]] = ccid
 
     def _details(self, p: dict, who: str) -> dict:
         raw = {"phone": p.get("telefone"), "email": p.get("email"), "document2": p.get("documento2"),
@@ -254,9 +332,15 @@ class _Importer:
             eid, shared = self._owner(p["empresa_id"])
             role = "customer" if p["tipo"] == "C" else "supplier"
             key = (eid, normalize(p["nome"]))
+            old = self.linked("pessoas", p["id"], Contact)
+            if old is not None:                            # já veio: fica como você deixou no Finora
+                by_name.setdefault(key, old)
+                self.r.contacts[p["id"]] = old
+                continue
             if key in by_name:                             # mesmo nome como cliente e fornecedor: um contato só
                 c = self.s.get(Contact, by_name[key])
                 setattr(c, contacts.ROLES[role][0], True)
+                self.link("pessoas", p["id"], c.id)
                 self.s.commit()
                 self.r.contacts[p["id"]] = c.id
                 continue
@@ -273,25 +357,37 @@ class _Importer:
                 cid = contacts.create(self.s, eid, name=p["nome"], person_type=ptype, roles={role},
                                       details=details, shared=shared)
             by_name[key] = cid
+            self.link("pessoas", p["id"], cid)
+            self.s.commit()
             self.r.contacts[p["id"]] = cid
 
     def _group(self, eid: int, tipo: str) -> int:
         if (eid, tipo) not in self.groups:
-            model = self.s.get(Entity, eid).dre_model or "personal"
-            expense, income = ITEM_GROUPS[model]
-            from finora.services import categories
-            self.groups[(eid, tipo)] = categories.create(
-                self.s, eid, name="Despesas do MCC" if tipo == "D" else "Receitas do MCC",
-                dre_group=expense if tipo == "D" else income)
+            gid = self.linked("grupo_itens", f"{eid}|{tipo}", Category)
+            if gid is None:
+                model = self.s.get(Entity, eid).dre_model or "personal"
+                expense, income = ITEM_GROUPS[model]
+                from finora.services import categories
+                gid = categories.create(self.s, eid, name="Despesas do MCC" if tipo == "D" else "Receitas do MCC",
+                                        dre_group=expense if tipo == "D" else income)
+                self.link("grupo_itens", f"{eid}|{tipo}", gid)
+                self.s.commit()
+            self.groups[(eid, tipo)] = gid
         return self.groups[(eid, tipo)]
 
     def category(self, empresa_id: int, tipo: str, item: str) -> int:
         key = (empresa_id, tipo, normalize(item))
         if key not in self.r.categories:
-            from finora.services import categories
-            eid = self.r.entities[empresa_id]
-            self.r.categories[key] = categories.create(self.s, eid, name=item.strip()[:80] or "Sem descrição",
-                                                       parent_id=self._group(eid, tipo))
+            src = f"{empresa_id}|{tipo}|{key[2]}"
+            cid = self.linked("itens", src, Category)       # reclassificada no Finora? continua valendo
+            if cid is None:
+                from finora.services import categories
+                eid = self.r.entities[empresa_id]
+                cid = categories.create(self.s, eid, name=item.strip()[:80] or "Sem descrição",
+                                        parent_id=self._group(eid, tipo))
+                self.link("itens", src, cid)
+                self.s.commit()
+            self.r.categories[key] = cid
         return self.r.categories[key]
 
     def item_rows(self):
@@ -326,14 +422,52 @@ class _Importer:
         if account_id in self.r.accounts:
             return self.r.accounts[account_id]
         if eid not in self.no_account:
-            self.no_account[eid] = accounts.create(self.s, eid, name="A definir (MCC)", kind="cash",
-                                                   opening_balance=Decimal(0))
+            aid = self.linked("sem_conta", eid, Account)
+            if aid is None:
+                aid = accounts.create(self.s, eid, name="A definir (MCC)", kind="cash", opening_balance=Decimal(0))
+                self.link("sem_conta", eid, aid)
+                self.s.commit()
+            self.no_account[eid] = aid
             self.warn(f"{self.s.get(Entity, eid).name}: lançamentos sem conta no MCC foram para a conta "
                       "\"A definir (MCC)\".")
         return self.no_account[eid]
 
+    def _series(self, grupo: str | None) -> str | None:
+        if not grupo:
+            return None
+        sid = self.links.get(("grupo", str(grupo)))
+        if sid is None:
+            sid = uuid.uuid4().hex
+            self.link("grupo", grupo, sid)
+        return sid
+
+    def _upsert(self, kind: str, src: int, values: dict) -> int:
+        """Cria o lançamento ou, se já veio do MCC, atualiza só o que mudou."""
+        eid = self.linked(kind, src, Entry)
+        if eid is None:
+            e = Entry(**values)
+            self.s.add(e)
+            self.s.flush()
+            self.link(kind, src, e.id)
+            self.r.created += 1
+            return e.id
+        if self.assign(trash.get(self.s, eid), **values):
+            self.r.updated += 1
+        return eid
+
+    def _sweep(self, kind: str, seen: set[int]):
+        """O que já veio do MCC e não está mais lá (apagado de vez no MCC) vai para a lixeira do Finora."""
+        mine = set(self.r.entities.values())
+        for (k, src), target in list(self.links.items()):
+            if k != kind or int(src) in seen:
+                continue
+            e = self.s.get(Entry, int(target))             # fora da lixeira
+            if e is not None and e.entity_id in mine:
+                trash.move(self.s, [e])
+                self.r.trashed += 1
+
     def entry_rows(self):
-        series: dict[str, str] = {}
+        seen: set[int] = set()
         for l in reader.rows(self.con, "lancamentos"):
             if l["empresa_id"] not in self.r.entities:
                 continue
@@ -345,7 +479,7 @@ class _Importer:
                 paid_day = _day(l["vencimento"])
                 self.r.paid_without_date.append(l["id"])
             total = l.get("total_parcelas") or 0
-            e = Entry(entity_id=eid, kind=kind, account_id=self._account_for(eid, l["conta_id"]),
+            values = dict(entity_id=eid, kind=kind, account_id=self._account_for(eid, l["conta_id"]),
                       category_id=self.category(l["empresa_id"], l["tipo"], l["descricao"]),
                       cost_center_id=self.r.cost_centers.get(l.get("centro_id")),
                       contact_id=self._contact_for(eid, l.get("pessoa"), kind),
@@ -356,15 +490,16 @@ class _Importer:
                       competence_date=_day(l["data_mov"]), due_date=_day(l["vencimento"]),
                       status="paid" if paid else "pending", paid_date=paid_day if paid else None,
                       installment=f"{l['parcela']}/{total}" if total and total > 1 and l.get("parcela") else None,
-                      series_id=series.setdefault(l["grupo"], uuid.uuid4().hex) if l.get("grupo") else None,
+                      series_id=self._series(l.get("grupo")),
                       deleted_at=_when(l.get("excluido_em")), deleted_by="MCC" if l.get("excluido_em") else None)
-            self.s.add(e)
-            self.s.flush()
-            self.r.entries[l["id"]] = e.id
+            self.r.entries[l["id"]] = self._upsert("lancamentos", l["id"], values)
+            seen.add(l["id"])
+        self._sweep("lancamentos", seen)
         self.s.commit()
 
     def movement_rows(self):
         labels = {"T": "Transferência", "D": "Depósito", "R": "Retirada"}
+        seen: set[int] = set()
         for m in reader.rows(self.con, "movbancarias"):
             if m["empresa_id"] not in self.r.entities:
                 continue
@@ -374,16 +509,16 @@ class _Importer:
                 continue
             day, paid = _day(m["data"]), m["situacao"] == "V"
             obs = (m.get("observacao") or "").strip()
-            e = Entry(entity_id=eid, kind="transfer" if m["tipo"] == "T" else ADJUST[m["tipo"]],
+            values = dict(entity_id=eid, kind="transfer" if m["tipo"] == "T" else ADJUST[m["tipo"]],
                       account_id=self.r.accounts[m["origem_id"]],
                       dest_account_id=self.r.accounts[m["destino_id"]] if m["tipo"] == "T" else None,
                       amount=self.money(m, "movbancarias", "valor"), description=(obs or labels[m["tipo"]])[:200],
                       notes=obs or None, competence_date=day, due_date=day,
                       status="paid" if paid else "pending", paid_date=day if paid else None,
                       deleted_at=_when(m.get("excluido_em")), deleted_by="MCC" if m.get("excluido_em") else None)
-            self.s.add(e)
-            self.s.flush()
-            self.r.movements[m["id"]] = e.id
+            self.r.movements[m["id"]] = self._upsert("movbancarias", m["id"], values)
+            seen.add(m["id"])
+        self._sweep("movbancarias", seen)
         self.s.commit()
 
     # ---------- usuários ----------
@@ -394,6 +529,17 @@ class _Importer:
             access.setdefault(ue["usuario_id"], []).append(ue["empresa_id"])
         for u in reader.rows(self.con, "usuarios"):
             email = (u["email"] or "").strip().lower()
+            old = self.linked("usuarios", u["id"], User)
+            if old is not None:                            # já veio: ganha só as entidades criadas agora
+                self.r.users[u["id"]] = old                # (acesso tirado no Finora não volta)
+                mine = imported if u["admin"] or u.get("todas_empresas", 1) else \
+                    [self.r.entities[e] for e in access.get(u["id"], []) if e in self.r.entities]
+                mine = [eid for eid in mine if eid in self.new_entities and self.s.get(UserEntity, (old, eid)) is None]
+                for eid in mine:
+                    self.s.add(UserEntity(user_id=old, entity_id=eid))
+                if mine and not u["admin"]:
+                    self._permissions(u, old, mine)
+                continue
             existing = self.s.scalar(select(User).where(User.email.ilike(email))) if email else None
             if existing is not None:                       # já existe no Finora: só ganha acesso às entidades novas
                 uid = existing.id
@@ -415,6 +561,7 @@ class _Importer:
                 self.s.flush()
                 uid = user.id
             self.r.users[u["id"]] = uid
+            self.link("usuarios", u["id"], uid)
             mine = imported if u["admin"] or u.get("todas_empresas", 1) else \
                 [self.r.entities[e] for e in access.get(u["id"], []) if e in self.r.entities]
             for eid in mine:
@@ -451,8 +598,8 @@ class _Importer:
         for e in self.companies:
             eid = self.r.entities[e["id"]]
             self.preferences(e, eid)
-            if e.get("bloqueio_ate"):
-                period_lock.set_lock(self.s, eid, _day(e["bloqueio_ate"]))
+            if e.get("bloqueio_ate") or period_lock.locked_through(self.s, eid):
+                period_lock.set_lock(self.s, eid, _day(e.get("bloqueio_ate")))
         n_ofx = len(reader.rows(self.con, "ofx_importados"))
         if n_ofx:
             self.warn(f"{n_ofx} marcas de extrato OFX já importado no MCC não vieram: na conciliação do Finora, "
@@ -465,5 +612,6 @@ def users_level_label(level: int) -> str:
 
 
 def import_companies(s: Session, con: sqlite3.Connection, companies: list[int] | None = None) -> ImportResult:
-    """Importa as empresas do MCC (todas, ou só as indicadas) como entidades novas. `con` vem de reader.open_copy."""
+    """Importa as empresas do MCC (todas, ou só as indicadas). Na 1ª vez cria as entidades; nas seguintes atualiza o
+    que já veio e cria o que é novo (sem duplicar). `con` vem de reader.open_copy."""
     return _Importer(s, con, companies).run()

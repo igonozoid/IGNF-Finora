@@ -207,6 +207,36 @@ def test_contato_ampliado_com_abas(window):
     assert "E-mail" in f.error.text()
 
 
+def test_contato_rg_ie_bairro_pessoa_de_contato_e_banco(plus, window, monkeypatch):
+    from finora.services import doc_lookup
+    window.go_to("contacts")
+    page = window.page("contacts")
+    page._new()
+    f = page.form
+    doc2_label = f.doc2_box.itemAt(0).widget().label
+    assert doc2_label.text() == "RG"
+    f.type_group.button(1).click()                                       # PJ
+    assert doc2_label.text() == "Inscrição estadual"
+    f.name.setText("Cooperativa Serra Verde")
+    f.details["document2"].setText("987.654.321.000")
+    f.details["contact_person"].setText("Ana, financeiro")
+    monkeypatch.setattr(doc_lookup, "cep", lambda n: doc_lookup.AddressData(
+        "37010-000", "Av. Brasil, Industrial", "Varginha", "MG", "Industrial"))
+    f.details["zip_code"].setText("37010000")
+    f._lookup_cep()
+    assert f.details["address"].text() == "Av. Brasil" and f.details["district"].text() == "Industrial"
+    for key, value in (("bank_name", "001 - Banco do Brasil"), ("bank_branch", "4321"),
+                       ("bank_account", "11111-1"), ("bank_holder", "Cooperativa Serra Verde")):
+        f.details[key].setText(value)
+    f.save_btn.click()
+    with db.Session() as s:
+        c = next(x for x in contacts.list_contacts(s, window.profile.id) if x.name == "Cooperativa Serra Verde")
+    assert (c.get("document2"), c.get("contact_person"), c.get("district")) == \
+        ("987.654.321.000", "Ana, financeiro", "Industrial")
+    assert (c.get("bank_name"), c.get("bank_branch"), c.get("bank_account")) == \
+        ("001 - Banco do Brasil", "4321", "11111-1")
+
+
 def test_autopreencher_cnpj_e_cep(plus, window, monkeypatch):
     from finora.services import doc_lookup
     monkeypatch.setattr(doc_lookup, "cnpj", lambda n: doc_lookup.CompanyData(

@@ -83,10 +83,15 @@ def test_dados_extras_do_contato(session, profile):
     s, eid = session, profile.id
     cid = contacts.create(s, eid, name="Maria", details={
         "phone": "(19) 99999-1234", "email": "maria@exemplo.com", "zip_code": "13010050", "address": "Rua A, 10",
-        "city": "Campinas", "state": "sp", "pix_key": "maria@exemplo.com", "bank_info": "Itaú · 0412 · 55210-3",
-        "notes": "Vem às terças"})
+        "city": "Campinas", "state": "sp", "pix_key": "maria@exemplo.com", "bank_name": "Itaú",
+        "bank_branch": "0412", "bank_account": "55210-3", "bank_holder": "Maria Souza", "district": "Centro",
+        "document2": "MG-12.345.678", "contact_person": "Filha, Joana", "notes": "Vem às terças"})
     c = contacts.list_contacts(s, eid)[0]
     assert (c.get("zip_code"), c.get("state"), c.get("phone")) == ("13010-050", "SP", "(19) 99999-1234")
+    assert (c.get("bank_name"), c.get("bank_branch"), c.get("bank_account"), c.get("bank_holder")) == \
+        ("Itaú", "0412", "55210-3", "Maria Souza")
+    assert (c.get("district"), c.get("document2")) == ("Centro", "MG-12.345.678")
+    assert [x.name for x in contacts.list_contacts(s, eid, search="joana")] == ["Maria"]         # pessoa de contato
     assert [x.name for x in contacts.list_contacts(s, eid, search="99999")] == ["Maria"]       # pelo telefone
     assert [x.name for x in contacts.list_contacts(s, eid, search="exemplo.com")] == ["Maria"] # pelo e-mail
     contacts.update(s, cid, name="Maria", person_type="PF", document=None, roles=set(),

@@ -101,6 +101,10 @@ Quem você paga e quem te paga, com CPF/CNPJ. Os contatos digitados num lançame
 O CPF/CNPJ é usado no **recibo** e no relatório de **Imposto de Renda**. Nas edições pagas, o CNPJ preenche
 nome e endereço sozinho.
 
+No cadastro: **RG** (pessoa física) ou **inscrição estadual** (empresa), **pessoa de contato** (com quem falar;
+entra na busca), endereço com **bairro** (o CEP preenche) e, na aba Bancário, chave Pix, **banco, agência, conta
+e titular** em campos separados.
+
 ## Estoque {#stock}
 
 Módulo opcional: ligue em **Configurações › Módulos desta entidade** (cada entidade liga o que usa).

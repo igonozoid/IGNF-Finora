@@ -143,8 +143,13 @@ class ContactForm(QFrame):
         dl.addWidget(field_label("Nome", t))
         dl.addWidget(self.name)
         self.details: dict[str, QLineEdit] = {}
+        self.doc2_box = QVBoxLayout()
+        self.doc2_box.setSpacing(3)
+        self._detail(self.doc2_box, "document2", "RG", "Opcional", mono=True)
+        dl.addLayout(self.doc2_box)
         self._detail(dl, "phone", "Telefone / WhatsApp", "(11) 98888-1234")
         self._detail(dl, "email", "E-mail", "nome@exemplo.com")
+        self._detail(dl, "contact_person", "Pessoa de contato", "Com quem falar (ex.: Ana, financeiro)")
 
         dl.addWidget(field_label("Papéis", t, "Um mesmo contato pode ter vários papéis.\n"
                                                "Os lançamentos marcam o papel sozinhos: despesa = Eu pago, "
@@ -175,6 +180,7 @@ class ContactForm(QFrame):
         self.cep_btn.clicked.connect(self._lookup_cep)
         el.addWidget(self.cep_btn, 0, Qt.AlignLeft)
         self._detail(el, "address", "Endereço", "Rua, número, complemento")
+        self._detail(el, "district", "Bairro", "")
         city_row = QHBoxLayout()
         city_row.setSpacing(theme.SP_M)
         cbox, sbox = QVBoxLayout(), QVBoxLayout()
@@ -192,7 +198,16 @@ class ContactForm(QFrame):
         bl.setContentsMargins(0, 0, 0, 0)
         bl.setSpacing(theme.SP_M)
         self._detail(bl, "pix_key", "Chave Pix", "CPF, e-mail, telefone ou chave aleatória")
-        self._detail(bl, "bank_info", "Banco · agência · conta", "Ex.: Itaú · 0412 · 55210-3")
+        self._detail(bl, "bank_name", "Banco", "Ex.: 341 - Itaú")
+        acc_row = QHBoxLayout()
+        acc_row.setSpacing(theme.SP_M)
+        abox, cbox = QVBoxLayout(), QVBoxLayout()
+        self._detail(abox, "bank_branch", "Agência", "0412", mono=True)
+        self._detail(cbox, "bank_account", "Conta", "55210-3", mono=True)
+        acc_row.addLayout(abox, 1)
+        acc_row.addLayout(cbox, 1)
+        bl.addLayout(acc_row)
+        self._detail(bl, "bank_holder", "Titular", "Se a conta não for do próprio contato")
         hint = QLabel("Útil para pagar o contato ou para conferir um recebimento.", wordWrap=True)
         hint.setProperty("role", "field")
         bl.addWidget(hint)
@@ -261,6 +276,7 @@ class ContactForm(QFrame):
     def _type_changed(self):
         pf = self._ptype() == "PF"
         self.doc_lbl.label.setText("CPF" if pf else "CNPJ")
+        self.doc2_box.itemAt(0).widget().label.setText("RG" if pf else "Inscrição estadual")
         self.doc.setPlaceholderText("000.000.000-00" if pf else "00.000.000/0000-00")
 
     def _format_doc(self):
@@ -283,6 +299,7 @@ class ContactForm(QFrame):
         self.doc.setText(documents.fmt(documents.digits(self.doc.text())))
         self.name.setText(data.trade_name or data.name)
         filled = self._fill_empty(data.details)
+        self._split_district()
         note = f"Dados da Receita: {data.name}"
         if data.status and data.status.upper() != "ATIVA":
             note += f" — situação {data.status}"
@@ -303,16 +320,25 @@ class ContactForm(QFrame):
             return
         self._error(None)
         self.details["zip_code"].setText(addr.zip_code)
-        for key, value in (("address", addr.address), ("city", addr.city), ("state", addr.state)):
+        for key, value in (("address", addr.address), ("district", addr.district), ("city", addr.city),
+                           ("state", addr.state)):
             if value:
                 self.details[key].setText(value)
+        self._split_district()
         self.details["address"].setFocus()
         self.details["address"].end(False)
+
+    def _split_district(self):
+        """A busca devolve "Rua X, Bairro": com o bairro no campo próprio, ele sai do fim do endereço."""
+        district = self.details["district"].text().strip()
+        address = self.details["address"].text().strip()
+        if district and address.lower().endswith(", " + district.lower()):
+            self.details["address"].setText(address[: -len(district) - 2])
 
     def _fill_empty(self, details: dict) -> list[str]:
         """Põe os dados nos campos ainda vazios (não apaga o que você já digitou). Devolve o que preencheu."""
         labels = {"phone": "telefone", "email": "e-mail", "zip_code": "CEP", "address": "endereço",
-                  "city": "cidade", "state": "UF"}
+                  "city": "cidade", "state": "UF", "district": "bairro"}
         filled = []
         for key, value in details.items():
             edit = self.details.get(key)

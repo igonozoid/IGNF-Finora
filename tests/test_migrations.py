@@ -109,3 +109,23 @@ def test_banco_com_dados_ganha_admin_e_valores_na_moeda_principal(tmp_path):
     assert [(u[0], bool(u[1]), u[2]) for u in users] == [("Rodrigo", True, None)]
     assert access == [(1, 1)] and float(base) == 42.5 and (ent[0], bool(ent[1])) == ("PF", True)
     eng.dispose()
+
+
+def test_dados_bancarios_do_contato_viram_campos_separados(tmp_path):
+    """Migração 0027: o texto "banco · agência · conta" do contato vai para os campos novos."""
+    from alembic import command
+    eng = _engine(tmp_path / "contatos.db")
+    with eng.begin() as conn:
+        command.upgrade(db._alembic(conn), "0026")
+        conn.exec_driver_sql("INSERT INTO entities (id, name, currency) VALUES (1, 'Ana', 'BRL')")
+        for cid, info in ((1, "Itaú · 0412 · 55210-3"), (2, "Caixa, ag 1, cc 2"), (3, None)):
+            conn.exec_driver_sql("INSERT INTO contacts (id, entity_id, person_type, name, bank_info, is_customer, "
+                                 "is_supplier, is_employee, shared) VALUES (?, 1, 'PF', ?, ?, 0, 0, 0, 0)",
+                                 (cid, f"C{cid}", info))
+        command.upgrade(db._alembic(conn), "0027")
+    with eng.connect() as conn:
+        rows = conn.exec_driver_sql("SELECT id, bank_name, bank_branch, bank_account FROM contacts "
+                                    "ORDER BY id").all()
+    assert rows == [(1, "Itaú", "0412", "55210-3"), (2, "Caixa, ag 1, cc 2", None, None), (3, None, None, None)]
+    assert "bank_info" not in {c["name"] for c in inspect(eng).get_columns("contacts")}
+    eng.dispose()

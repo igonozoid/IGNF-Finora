@@ -18,8 +18,9 @@ ROLES = {
 }
 PERSON_TYPES = {"PF": "Pessoa física", "PJ": "Pessoa jurídica"}
 # Dados extras (todos opcionais): campo -> tamanho máximo
-DETAILS = {"phone": 30, "email": 120, "zip_code": 9, "address": 200, "city": 80, "state": 2,
-           "pix_key": 120, "bank_info": 120, "notes": 1000}
+DETAILS = {"phone": 30, "email": 120, "document2": 30, "contact_person": 80, "zip_code": 9, "address": 200,
+           "district": 80, "city": 80, "state": 2, "pix_key": 120, "bank_name": 60, "bank_branch": 20,
+           "bank_account": 30, "bank_holder": 120, "notes": 1000}
 UFS = {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI",
        "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"}
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -69,7 +70,8 @@ def list_contacts(s: Session, entity_id: int, search: str = "", role: str | None
     if search.strip():
         like = f"%{search.strip().lower()}%"
         d = documents.digits(search)
-        conds = [func.lower(Contact.name).like(like), func.lower(Contact.email).like(like)]
+        conds = [func.lower(Contact.name).like(like), func.lower(Contact.email).like(like),
+                 func.lower(Contact.contact_person).like(like)]
         if d:
             conds += [Contact.document.like(f"%{d}%"), Contact.phone.like(f"%{d}%")]
         q = q.where(or_(*conds))

@@ -100,10 +100,16 @@ class Contact(Base):
     email: Mapped[str | None] = mapped_column(String(120))
     zip_code: Mapped[str | None] = mapped_column(String(9))
     address: Mapped[str | None] = mapped_column(String(200))
+    district: Mapped[str | None] = mapped_column(String(80))              # bairro
     city: Mapped[str | None] = mapped_column(String(80))
     state: Mapped[str | None] = mapped_column(String(2))
+    document2: Mapped[str | None] = mapped_column(String(30))             # RG (PF) ou inscrição estadual (PJ)
+    contact_person: Mapped[str | None] = mapped_column(String(80))        # com quem falar
     pix_key: Mapped[str | None] = mapped_column(String(120))
-    bank_info: Mapped[str | None] = mapped_column(String(120))     # banco · agência · conta
+    bank_name: Mapped[str | None] = mapped_column(String(60))
+    bank_branch: Mapped[str | None] = mapped_column(String(20))           # agência
+    bank_account: Mapped[str | None] = mapped_column(String(30))
+    bank_holder: Mapped[str | None] = mapped_column(String(120))          # titular da conta
     notes: Mapped[str | None] = mapped_column(String(1000))
 
 class Entry(Base):

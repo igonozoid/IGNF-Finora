@@ -211,6 +211,31 @@ def test_excluir_serie_pergunta_as_opcoes_do_mcc(window, dialogs):
         assert s.query(Entry).filter_by(description="Aluguel").count() == 3
 
 
+def test_levar_para_outra_entidade(plus, window, monkeypatch):
+    from finora.models import Entry
+    from finora.services import entity_admin
+    from finora.ui.move_dialog import MoveDialog
+    page = _page(window)
+    assert not page._other_entities()                                     # uma entidade só: a ação não aparece
+    with db.Session() as s:
+        other = entity_admin.create(s, name="Padaria Sol")
+    assert page._other_entities()
+    mercado = next(e for e in page.model.rows if e.description == "Mercado")
+
+    def fake_exec(dlg):
+        assert dlg.entity.currentText() == "Padaria Sol" and dlg.account.currentText() == "Conta principal"
+        dlg.confirm()
+
+    monkeypatch.setattr(MoveDialog, "exec", fake_exec)
+    msgs = []
+    page.message.connect(msgs.append)
+    page.move_to_entity([mercado])
+    assert "Mercado" not in _names(page)
+    assert msgs[-1].startswith("1 lançamento levado para Padaria Sol")
+    with db.Session() as s:
+        assert s.query(Entry).filter_by(description="Mercado").one().entity_id == other
+
+
 def test_lixeira_restaura(window, monkeypatch):
     from finora.ui.trash_dialog import TrashDialog
     page = _page(window)

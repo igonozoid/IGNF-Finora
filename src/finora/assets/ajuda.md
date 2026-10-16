@@ -48,6 +48,10 @@ Receitas, despesas e transferências entre suas contas.
 - **Excluir**: o lançamento vai para a **Lixeira** (ícone da lixeira na barra). Logo depois de excluir aparece
   **Desfazer**. Na lixeira dá para restaurar quando quiser; nada é apagado de verdade. Num parcelamento ou
   repetição, escolha: só este, este e os próximos em aberto, todos em aberto ou todos (pagos inclusive).
+- **Levar para outra entidade** (botão direito, com uma ou várias linhas selecionadas; edições com várias
+  entidades): escolha a entidade e a conta de lá. Categoria e contato passam para os de mesmo nome; o centro de
+  custo não compartilhado fica em branco. Transferências, compras no cartão e lançamentos gerados por Estoque,
+  Vendas ou Pecuária não podem ser levados.
 - **Imprimir/Exportar**: a lista como está na tela (com os filtros).
 
 ## Contas {#accounts}

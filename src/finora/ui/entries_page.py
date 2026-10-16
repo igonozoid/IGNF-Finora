@@ -1419,6 +1419,27 @@ class EntriesPage(QWidget):
                           else f"\"{e.description}\" voltou a ficar em aberto.")
         self.refresh(select_id=e.id)
 
+    def _other_entities(self) -> bool:
+        """Há outra entidade para onde levar lançamentos (edições com várias entidades)?"""
+        from finora.services import entry_move
+        with Session() as s:
+            return bool(entry_move.destinations(s, self.profile.id))
+
+    def move_to_entity(self, rows: list[EntryView]):
+        """Leva os lançamentos para outra entidade (no MCC: transferir para outra conta controle)."""
+        from finora.ui.move_dialog import MoveDialog
+        dlg = MoveDialog(self, rows, self.profile.id, self.t)
+        dlg.exec()
+        r = dlg.result_info
+        if r is None:
+            return
+        msg = f"{r.moved} {'lançamento levado' if r.moved == 1 else 'lançamentos levados'} para " \
+              f"{dlg.entity.currentText()}."
+        if r.categories_cleared:
+            msg += f" {r.categories_cleared} ficaram sem categoria (não havia uma de mesmo nome lá)."
+        self.message.emit(msg)
+        self.refresh()
+
     def _show_statements(self, sts):
         """Faturas de cartão que vencem no mês, com link para abrir (elas não são linhas da tabela)."""
         if not sts:
@@ -1447,11 +1468,15 @@ class EntriesPage(QWidget):
         e: EntryView = idx.data(Qt.UserRole)
         menu = QMenu(self)
         sel = self._selected()
+        multi = self._other_entities()
         if len(sel) > 1:                             # vários selecionados
             n = len([x for x in sel if x.status == "pending"])
             act = menu.addAction(qta.icon("fa6s.circle-check", color=self.t["pos"]),
                                  f"Marcar {n} como pagos hoje", self._pay_selected)
             act.setEnabled(n > 0)
+            if multi:
+                menu.addAction(qta.icon("fa6s.building", color=self.t["mut"]),
+                               f"Levar {len(sel)} para outra entidade…", lambda: self.move_to_entity(sel))
             menu.exec(self.table.viewport().mapToGlobal(pos))
             return
         if e.on_card:
@@ -1463,6 +1488,9 @@ class EntriesPage(QWidget):
                            "Marcar como em aberto" if e.is_paid else pay_label, lambda: self._toggle_paid(e))
         menu.addAction(qta.icon("fa6s.pen", color=self.t["mut"]), "Editar", lambda: self.edit_entry(e))
         menu.addAction(qta.icon("fa6s.clone", color=self.t["mut"]), "Duplicar", lambda: self.duplicate_entry(e))
+        if multi and e.kind != "transfer" and not e.on_card:
+            menu.addAction(qta.icon("fa6s.building", color=self.t["mut"]), "Levar para outra entidade…",
+                           lambda: self.move_to_entity([e]))
         if e.kind != "transfer" and not e.on_card:
             menu.addAction(qta.icon("fa6s.receipt", color=self.t["mut"]), "Emitir recibo…",
                            lambda: self.issue_receipt(e))

@@ -322,3 +322,22 @@ def test_regras_automaticas_preenchem_o_lancamento_novo(window, monkeypatch):
     form.desc.setText("Boleto ENEL outubro")
     form.desc.editingFinished.emit()
     assert form.category.currentText().endswith("Luz") and not form.rule_note.isHidden()
+
+
+def test_filtro_a_revisar_so_aparece_quando_ha(window):
+    from finora.models import Contact
+    window.go_to("contacts")
+    page = window.page("contacts")
+    review = next(b for b in page.filter_group.buttons() if b.property("role_key") == "review")
+    assert review.isHidden()
+    with db.Session() as s:
+        cid = contacts.create(s, window.profile.id, name="Posto Beira Rio")
+        s.get(Contact, cid).needs_review = True
+        s.commit()
+    page.refresh()
+    assert not review.isHidden() and review.text() == "A revisar (1)"
+    review.click()
+    assert [c.name for c in page._items] == ["Posto Beira Rio"]
+    page.form.open_contact(page._items[0])
+    page.form.save_btn.click()                                     # salvar tira a marca
+    assert review.text() == "A revisar (0)"

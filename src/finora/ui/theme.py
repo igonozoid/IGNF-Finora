@@ -187,6 +187,7 @@ QTreeView::item:hover {{ background: {t['panel']}; }}
 QLabel[tone="pos"] {{ color: {t['pos']}; }}
 QLabel[tone="neg"] {{ color: {t['neg']}; }}
 QLabel[tone="mut"] {{ color: {t['mut']}; }}
+QLabel[tone="acc"] {{ color: {t['acc']}; border-color: {t['acc']}; }}
 QFrame#listRow, QFrame#row {{ border: none; border-bottom: 1px solid {t['line']}; }}
 QFrame#row:hover {{ background: {t['bg']}; }}
 QChartView {{ background: transparent; border: none; }}

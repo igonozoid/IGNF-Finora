@@ -110,7 +110,9 @@ def test_lancamentos_series_contatos_e_movimentacoes(imported):
     coop_e = s.get(Entry, r.entries[18])                                     # "COOPERATIVA AGRICOLA..." sem acento
     assert coop_e.contact_id == r.contacts[2]
     assert s.get(Entry, r.entries[2]).contact_id == r.contacts[4]           # maiúsculas, contato compartilhado
-    assert r.contacts_created_from_text == 3                                 # Posto Beira Rio, Folha, Imobiliária
+    assert r.contacts_created_from_text == ["Posto Beira Rio", "Folha de julho", "Imobiliária Central"]
+    posto = s.scalars(select(Contact).where(Contact.name == "Posto Beira Rio")).one()
+    assert posto.needs_review and not s.get(Contact, r.contacts[2]).needs_review   # do cadastro do MCC: não
     quinz = [s.get(Entry, r.entries[i]) for i in (14, 15, 16, 17)]
     assert len({e.series_id for e in quinz}) == 1 and [e.installment for e in quinz] == ["1/5", "2/5", "3/5", "4/5"]
     excl = trash.get(s, r.entries[23])

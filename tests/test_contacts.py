@@ -39,7 +39,7 @@ def test_criar_listar_e_filtrar(session, profile):
     assert [c.name for c in contacts.list_contacts(s, eid, role="supplier")] == ["Enel", "Maria Diarista"]
     assert [c.name for c in contacts.list_contacts(s, eid, search="maria")] == ["Maria Diarista"]
     assert [c.name for c in contacts.list_contacts(s, eid, search="11.222")] == ["Enel"]
-    assert contacts.counts(s, eid) == {"all": 3, "customer": 1, "supplier": 2, "employee": 1}
+    assert contacts.counts(s, eid) == {"all": 3, "customer": 1, "supplier": 2, "employee": 1, "review": 0}
 
 
 def test_validacoes(session, profile):
@@ -107,3 +107,17 @@ def test_dados_extras_do_contato(session, profile):
 def test_dados_extras_invalidos(session, profile, details, msg):
     with pytest.raises(ValueError, match=msg):
         contacts.create(session, profile.id, name="X", details=details)
+
+
+def test_contato_a_revisar(session, profile):
+    from finora.models import Contact
+    s, eid = session, profile.id
+    cid = contacts.create(s, eid, name="Posto Beira Rio")
+    s.get(Contact, cid).needs_review = True                       # como a importação do MCC faz
+    s.commit()
+    contacts.create(s, eid, name="Enel")
+    assert contacts.counts(s, eid)["review"] == 1
+    assert [c.name for c in contacts.list_contacts(s, eid, role="review")] == ["Posto Beira Rio"]
+    assert contacts.list_contacts(s, eid, search="posto")[0].needs_review
+    contacts.update(s, cid, name="Posto Beira Rio", person_type="PJ", document=None, roles={"supplier"})
+    assert contacts.counts(s, eid)["review"] == 0                 # salvar = conferido

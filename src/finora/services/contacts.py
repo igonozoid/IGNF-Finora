@@ -37,6 +37,7 @@ class ContactView:
     last_date: date | None
     details: dict = field(default_factory=dict, compare=False)     # telefone, e-mail, endereço, banco…
     shared: bool = False             # compartilhado com todas as entidades
+    needs_review: bool = False       # criado sozinho (importação): conferir
 
     def get(self, key: str) -> str:
         return self.details.get(key) or ""
@@ -67,6 +68,8 @@ def list_contacts(s: Session, entity_id: int, search: str = "", role: str | None
          .order_by(func.lower(Contact.name)))
     if role in ROLES:
         q = q.where(getattr(Contact, ROLES[role][0]))
+    elif role == "review":
+        q = q.where(Contact.needs_review.is_(True))
     if search.strip():
         like = f"%{search.strip().lower()}%"
         d = documents.digits(search)
@@ -76,7 +79,7 @@ def list_contacts(s: Session, entity_id: int, search: str = "", role: str | None
             conds += [Contact.document.like(f"%{d}%"), Contact.phone.like(f"%{d}%")]
         q = q.where(or_(*conds))
     return [ContactView(c.id, c.name, c.person_type, c.document, _roles(c), n, last,
-                        {k: getattr(c, k) for k in DETAILS}, bool(c.shared))
+                        {k: getattr(c, k) for k in DETAILS}, bool(c.shared), bool(c.needs_review))
             for c, n, last in s.execute(q)]
 
 
@@ -85,6 +88,8 @@ def counts(s: Session, entity_id: int) -> dict[str, int]:
     out = {"all": s.scalar(select(func.count(Contact.id)).where(scope.contacts(entity_id)))}
     for k, (col, *_r) in ROLES.items():
         out[k] = s.scalar(select(func.count(Contact.id)).where(scope.contacts(entity_id), getattr(Contact, col)))
+    out["review"] = s.scalar(select(func.count(Contact.id)).where(scope.contacts(entity_id),
+                                                                  Contact.needs_review.is_(True)))
     return out
 
 
@@ -159,6 +164,7 @@ def update(s: Session, contact_id: int, *, name: str, person_type: str, document
     for key, value in clean_details(details).items():
         setattr(c, key, value)
     c.person_type = person_type
+    c.needs_review = False                 # salvar no cadastro = conferido
     _apply_roles(c, set(roles))
     s.commit()
 

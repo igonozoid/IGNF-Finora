@@ -50,7 +50,7 @@ class ImportResult:
     categories: dict[tuple[int, str, str], int] = field(default_factory=dict)   # (empresa, D/R, item) -> categoria
     entries: dict[int, int] = field(default_factory=dict)        # lançamento do MCC -> lançamento
     movements: dict[int, int] = field(default_factory=dict)      # movimentação bancária do MCC -> lançamento
-    contacts_created_from_text: int = 0
+    contacts_created_from_text: list[str] = field(default_factory=list)   # marcados "a revisar"
     paid_without_date: list[int] = field(default_factory=list)   # D6: lançamentos do MCC (ids)
     warnings: list[str] = field(default_factory=list)
 
@@ -86,6 +86,7 @@ class _Importer:
         self.first_entity: int | None = None
         self.groups: dict[tuple[int, str], int] = {}
         self.no_account: dict[int, int] = {}
+        self.names: dict[int, dict[str, int]] = {}         # entidade -> nome normalizado -> contato
 
     def warn(self, text: str):
         self.r.warnings.append(text)
@@ -246,15 +247,25 @@ class _Importer:
 
     # ---------- lançamentos ----------
     def _contact_for(self, eid: int, name: str | None, kind: str) -> int | None:
+        """Pessoa em texto livre (Fase 2.3): o contato de mesmo nome (sem acento/maiúscula, o da entidade antes do
+        compartilhado) ou um novo, marcado "a revisar"."""
         if not (name or "").strip():
             return None
+        if eid not in self.names:
+            index: dict[str, int] = {}
+            for c in self.s.scalars(select(Contact).where(scope.contacts(eid))
+                                    .order_by((Contact.entity_id == eid).desc(), Contact.id)):
+                index.setdefault(normalize(c.name), c.id)
+            self.names[eid] = index
         target = normalize(name)
-        for c in self.s.scalars(select(Contact).where(scope.contacts(eid))):
-            if normalize(c.name) == target:
-                return c.id
-        cid = contacts.create(self.s, eid, name=" ".join(name.split())[:150],
-                              roles={"supplier" if kind == "expense" else "customer"})
-        self.r.contacts_created_from_text += 1
+        if target in self.names[eid]:
+            return self.names[eid][target]
+        clean = " ".join(name.split())[:150]
+        cid = contacts.create(self.s, eid, name=clean, roles={"supplier" if kind == "expense" else "customer"})
+        self.s.get(Contact, cid).needs_review = True
+        self.s.commit()
+        self.names[eid][target] = cid
+        self.r.contacts_created_from_text.append(clean)
         return cid
 
     def _account_for(self, eid: int, account_id: int | None) -> int:

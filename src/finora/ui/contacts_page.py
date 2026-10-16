@@ -17,7 +17,8 @@ from finora.ui.widgets import button, field_label, lock_icon, shared_checkbox, s
 
 PANEL_W = 320
 STACK_BELOW = 760   # abaixo dessa largura, o cadastro ocupa o lugar da lista
-FILTERS = [("all", "Todos")] + [(k, label) for k, (_c, label, _h) in contacts.ROLES.items()]
+FILTERS = [("all", "Todos")] + [(k, label) for k, (_c, label, _h) in contacts.ROLES.items()] + \
+    [("review", "A revisar")]
 LOOKUP_MSG = ("Autopreencher pelo CNPJ (dados públicos da Receita Federal) e o endereço pelo CEP é um recurso das "
               "edições Plus e Pro.")
 
@@ -42,6 +43,12 @@ class ContactRow(QWidget):
             sub.setFont(theme.mono_font())
         text.addWidget(sub)
         lay.addLayout(text, 1)
+        if c.needs_review:
+            rv = QLabel("A revisar")
+            rv.setProperty("role", "badge")
+            rv.setProperty("tone", "acc")
+            rv.setToolTip("Criado sozinho a partir de um nome (importação do MCC). Confira os dados e salve.")
+            lay.addWidget(rv, 0, Qt.AlignVCenter)
         if c.shared:
             sh = QLabel("Compartilhado")
             sh.setProperty("role", "badge")
@@ -438,8 +445,11 @@ class ContactsPage(QWidget):
             b.setProperty("role_key", k)
             b.setProperty("label", label)
             b.setCursor(Qt.PointingHandCursor)
-            if k != "all":
+            if k in contacts.ROLES:
                 b.setToolTip(contacts.ROLES[k][2])
+            elif k == "review":
+                b.setToolTip("Contatos criados sozinhos (importação do MCC) para você conferir.\n"
+                             "Salvar o contato tira a marca.")
             self.filter_group.addButton(b, i)
             pills.addWidget(b)
         pills.addStretch(1)
@@ -523,6 +533,8 @@ class ContactsPage(QWidget):
             n = contacts.counts(s, self.profile.id)
         for b in self.filter_group.buttons():
             b.setText(f"{b.property('label')} ({n[b.property('role_key')]})")
+            if b.property("role_key") == "review":            # só aparece quando há o que revisar
+                b.setVisible(bool(n["review"]) or self.role == "review")
 
         self.list.blockSignals(True)  # recarregar a lista não conta como clique do usuário
         self.list.clear()

@@ -95,6 +95,8 @@ class Contact(Base):
     is_supplier: Mapped[bool] = mapped_column(Boolean, default=False)
     is_employee: Mapped[bool] = mapped_column(Boolean, default=False)
     shared: Mapped[bool] = mapped_column(Boolean, default=False)      # aparece em todas as entidades
+    # Criado sozinho (ex.: importação do MCC a partir de um nome solto): confira e salve para tirar a marca
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
     # Contato ampliado (todos opcionais)
     phone: Mapped[str | None] = mapped_column(String(30))
     email: Mapped[str | None] = mapped_column(String(120))

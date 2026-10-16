@@ -403,6 +403,18 @@ class EntryForm(QFrame):
                                                  "Todo dia/semana/mês/ano, a cada 15 dias ou a cada 2, 3 ou 6 meses:\n"
                                                  "repete o mesmo valor várias vezes."))
         rl.addLayout(rrow)
+        crow = QHBoxLayout()
+        crow.setSpacing(4)
+        self.competence_first = QCheckBox("Contar todas as parcelas na data da compra")
+        crow.addWidget(self.competence_first)
+        crow.addWidget(help_icon("Ligado: na DRE (por competência), a compra inteira entra no mês da 1ª\n"
+                                 "parcela, como o MCC faz. Desligado: cada parcela conta no mês em que\n"
+                                 "vence. O vencimento das parcelas é o mesmo nos dois casos.", t))
+        crow.addStretch(1)
+        self.competence_row = QWidget()
+        self.competence_row.setLayout(crow)
+        crow.setContentsMargins(0, 0, 0, 0)
+        rl.addWidget(self.competence_row)
         self.repeat_preview = QLabel(wordWrap=True)
         self.repeat_preview.setProperty("role", "field")
         rl.addWidget(self.repeat_preview)
@@ -438,6 +450,7 @@ class EntryForm(QFrame):
         self.due.dateChanged.connect(self._update_repeat)
         self.due.dateChanged.connect(self._card_mode)
         self.account.currentIndexChanged.connect(self._card_mode)
+        self.account.currentIndexChanged.connect(self._update_repeat)
         self.account.currentIndexChanged.connect(self._currency_mode)
         self.dest.currentIndexChanged.connect(self._currency_mode)
         self.paid.toggled.connect(self.paid_date.setEnabled)
@@ -584,6 +597,7 @@ class EntryForm(QFrame):
         every = self.every.currentData()
         self.times.setVisible(rep != "none")
         self.every.setVisible(rep == "installments")
+        self.competence_row.setVisible(rep == "installments" and self._card() is None)
         self.amount_lbl.label.setText("Valor total" if rep == "installments" else "Valor")
         try:
             value = money.parse(self.amount.text())
@@ -634,6 +648,7 @@ class EntryForm(QFrame):
         self.paid_date.setEnabled(False)
         self.repeat.setCurrentIndex(0)
         self.every.setCurrentIndex(self.every.findData("monthly"))
+        self.competence_first.setChecked(False)
         self.times.setValue(12)
         self.repeat_frame.show()
         self.attach.set_entry(None)
@@ -741,6 +756,7 @@ class EntryForm(QFrame):
             paid_date=self.paid_date.date().toPython() if self.paid.isChecked() else None,
             repeat=self.repeat.currentData() if self.editing is None else "none", times=self.times.value(),
             dest_amount=dest_value, notes=self.notes.toPlainText(), every=self.every.currentData(),
+            competence_first=self.competence_first.isChecked() and self._card() is None,
         )
 
     def _save(self):

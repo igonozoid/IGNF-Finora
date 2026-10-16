@@ -32,6 +32,8 @@ Receitas, despesas e transferências entre suas contas.
   período, por vencimento, competência ou pagamento, tipo, contato e centro de custo.
 - **Repetir**: todo dia, toda semana, a cada 15 dias, todo mês, a cada 2, 3 ou 6 meses, todo ano… ou
   **parcelar** (o valor é dividido nas parcelas, que vencem todo mês ou no intervalo que você escolher).
+  No parcelado, o nº do documento ganha "1/3", "2/3"… em cada parcela, e a opção **Contar todas as parcelas
+  na data da compra** põe a compra inteira no mês da 1ª parcela na DRE (como no MCC).
 - **Cartão de crédito**: compras no cartão entram na fatura do mês certo, conforme o dia de fechamento.
 - **Observações**: anote o que quiser no lançamento (juros pagos, o combinado com o fornecedor, onde está o
   comprovante). Aparecem ao parar o mouse sobre a descrição, entram na busca, no recibo, no relatório

@@ -88,6 +88,26 @@ def test_parcelado_a_cada_15_dias(window):
     form.cancel_btn.click()
 
 
+def test_parcelado_com_documento_e_competencia_da_compra(window):
+    page = _page(window)
+    window.new_entry()
+    form = page.form
+    assert form.competence_row.isHidden()                               # só no parcelado
+    _fill(form, desc="Plantadeira", amount="3.000,00", day=1, repeat="installments", times=3)
+    assert not form.competence_row.isHidden() and not form.competence_first.isChecked()
+    form.doc.setText("NF-778")
+    form.competence_first.setChecked(True)
+    form.save_btn.click()
+    from finora.models import Entry
+    with db.Session() as s:
+        rows = s.query(Entry).filter_by(description="Plantadeira").order_by(Entry.due_date).all()
+        assert [e.document_no for e in rows] == ["NF-778 1/3", "NF-778 2/3", "NF-778 3/3"]
+        assert len({e.competence_date for e in rows}) == 1 and len({e.due_date for e in rows}) == 3
+    window.new_entry()
+    assert not form.competence_first.isChecked()                         # formulário novo volta ao padrão
+    form.cancel_btn.click()
+
+
 def test_transferencia_entre_contas(window):
     with db.Session() as s:
         accounts.create(s, window.profile.id, name="Carteira", kind="cash", opening_balance=D(0))

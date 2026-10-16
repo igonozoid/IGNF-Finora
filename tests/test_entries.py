@@ -107,6 +107,60 @@ def test_parcelado_quinzenal_como_no_mcc(ctx):
         entries.create(ctx["s"], ctx["eid"], _data(ctx, repeat="installments", every="hourly", times=2))
 
 
+def test_documento_da_parcela_ganha_n_de_n():
+    assert entries.installment_doc("NF-4521", "2/3") == "NF-4521 2/3"
+    assert entries.installment_doc("NF-4521 1/3", "2/3") == "NF-4521 2/3"        # troca, não repete
+    assert entries.installment_doc("  ", "2/3") is None                           # sem documento continua vazio
+    assert entries.installment_doc("Boleto 10/2026", None) == "Boleto 10/2026"    # fora do parcelado, intacto
+
+
+def test_parcelado_documento_e_competencia_na_data_da_compra(ctx):
+    s = ctx["s"]
+    ids = entries.create(s, ctx["eid"], _data(ctx, description="Adubo", amount=D("4000.00"), document_no="NF-4521",
+                                              due_date=date(2026, 8, 10), repeat="installments", times=3,
+                                              competence_first=True))
+    out = [entries.get(s, i) for i in ids]
+    assert [e.document_no for e in out] == ["NF-4521 1/3", "NF-4521 2/3", "NF-4521 3/3"]
+    assert [e.due_date for e in out] == [date(2026, 8, 10), date(2026, 9, 10), date(2026, 10, 10)]
+    assert {e.competence_date for e in out} == {date(2026, 8, 10)}                # todas na data da compra
+    # padrão (como era antes): cada parcela conta no mês em que vence
+    ids2 = entries.create(s, ctx["eid"], _data(ctx, description="Geladeira", amount=D("900"), repeat="installments",
+                                               times=3))
+    assert [entries.get(s, i).competence_date for i in ids2] == [date(2026, 10, 10), date(2026, 11, 10),
+                                                                  date(2026, 12, 10)]
+    # competence_first só vale no parcelado
+    (one,) = entries.create(s, ctx["eid"], _data(ctx, competence_first=True))
+    assert entries.get(s, one).competence_date == entries.get(s, one).due_date
+
+
+def test_editar_parcelas_mantem_competencia_e_sufixo(ctx):
+    s = ctx["s"]
+    ids = entries.create(s, ctx["eid"], _data(ctx, description="Adubo", amount=D("3000.00"), document_no="NF-1",
+                                              due_date=date(2026, 8, 10), repeat="installments", times=3,
+                                              competence_first=True))
+    # edita a 2ª parcela "e as próximas": muda o documento e o vencimento da 2ª
+    entries.update(s, ids[1], _data(ctx, description="Adubo orgânico", amount=D("1000.00"), document_no="NF-2 2/3",
+                                    due_date=date(2026, 9, 15)), scope="following")
+    out = [entries.get(s, i) for i in ids]
+    assert [e.document_no for e in out] == ["NF-1 1/3", "NF-2 2/3", "NF-2 3/3"]
+    assert [e.due_date for e in out] == [date(2026, 8, 10), date(2026, 9, 15), date(2026, 10, 10)]
+    assert {e.competence_date for e in out} == {date(2026, 8, 10)}                # competência não andou
+    assert [e.description for e in out] == ["Adubo", "Adubo orgânico", "Adubo orgânico"]
+
+
+def test_dre_por_competencia_respeita_a_data_da_compra(ctx):
+    from finora.services import reports
+    s, eid = ctx["s"], ctx["eid"]
+    entries.create(s, eid, _data(ctx, description="TV", amount=D("3000.00"), due_date=date(2026, 8, 10),
+                                 repeat="installments", times=3, competence_first=True))
+    aug = reports.analytical(s, eid, date(2026, 8, 1), date(2026, 8, 31))
+    sep = reports.analytical(s, eid, date(2026, 9, 1), date(2026, 9, 30))
+    assert sum(e.amount for e in aug if e.description == "TV") == D("3000.00")   # a compra inteira em agosto
+    assert [e for e in sep if e.description == "TV"] == []
+    dre_aug = reports.dre(s, eid, [(2026, 8)])
+    assert sum(r.values[0] for r in dre_aug.rows if r.style == "line") == D("-3000.00")
+
+
 def test_repete_a_cada_2_3_e_6_meses(ctx):
     s = ctx["s"]
     for rep, last in (("bimonthly", date(2027, 4, 10)), ("quarterly", date(2027, 7, 10)),

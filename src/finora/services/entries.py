@@ -6,6 +6,7 @@ Convenções:
 - Lançamentos de uma recorrência/parcelamento compartilham `series_id`.
 """
 import calendar
+import re
 import uuid
 from dataclasses import dataclass, replace
 from datetime import date
@@ -264,6 +265,9 @@ class EntryData:
     dest_amount: Decimal | None = None     # transferência entre contas de moedas diferentes
     notes: str | None = None               # observações (também na transferência)
     every: str = "monthly"                 # parcelado: intervalo entre as parcelas (INTERVALS)
+    # parcelado: todas as parcelas com a competência (data da DRE) da 1ª, como o MCC faz por padrão.
+    # Desligado, cada parcela conta no mês em que vence. Não vale no cartão (lá a data é a da compra).
+    competence_first: bool = False
 
 
 MAX_NOTES = 1000
@@ -308,20 +312,39 @@ def _validate(s: Session, entity_id: int, d: EntryData) -> None:
         raise ValueError(f"Escolha de 2 a {MAX_REPEAT} vezes.")
 
 
-def _set_dates(s: Session, e: Entry, d: EntryData, when: date, paid_first: bool) -> None:
-    """Datas e situação. Compra/estorno num cartão configurado vai direto para a fatura certa."""
+def _on_card(s: Session, d: EntryData) -> bool:
+    from finora.services import cards
+    return d.kind != "transfer" and cards.is_configured(s.get(Account, d.account_id))
+
+
+def _set_dates(s: Session, e: Entry, d: EntryData, when: date, paid_first: bool,
+               competence: date | None = None) -> None:
+    """Datas e situação. Compra/estorno num cartão configurado vai direto para a fatura certa.
+    Fora do cartão, `when` é o vencimento e a competência é `competence` (padrão: o próprio vencimento)."""
     from finora.services import cards
     acc = s.get(Account, d.account_id)
-    if d.kind != "transfer" and cards.is_configured(acc):
+    if _on_card(s, d):
         _closing, due = cards.statement_for(when, acc.closing_day, acc.due_day)
         e.competence_date, e.due_date = when, due
         e.status, e.paid_date = cards.CARD_STATUS, due
-    elif paid_first and d.paid:
-        e.due_date = e.competence_date = when
+        return
+    e.due_date, e.competence_date = when, competence or when
+    if paid_first and d.paid:
         e.status, e.paid_date = "paid", d.paid_date or when
     else:
-        e.due_date = e.competence_date = when
         e.status, e.paid_date = "pending", None
+
+
+_INSTALLMENT_SUFFIX = re.compile(r"\s*\d+/\d+$")
+
+
+def installment_doc(doc: str | None, installment: str | None) -> str | None:
+    """Nº do documento de uma parcela, como no MCC: "NF-4521" -> "NF-4521 2/3". Sem documento continua vazio
+    (a parcela já aparece ao lado da descrição). Um sufixo n/N que já esteja lá é trocado, não repetido."""
+    base = _INSTALLMENT_SUFFIX.sub("", (doc or "").strip())
+    if not installment:
+        return (doc or "").strip() or None
+    return f"{base} {installment}" if base else None
 
 
 def _apply(e: Entry, d: EntryData, entity_id: int, contact_id: int | None) -> None:
@@ -348,15 +371,18 @@ def create(s: Session, entity_id: int, d: EntryData) -> list[int]:
     n = 1 if d.repeat == "none" else d.times
     amounts = split(d.amount, n) if d.repeat == "installments" else [d.amount] * n
     series = uuid.uuid4().hex if n > 1 else None
+    competence = d.due_date if d.repeat == "installments" and d.competence_first else None
     ids = []
     try:
         for i in range(n):
             e = Entry(entity_id=entity_id)
             _apply(e, d, entity_id, contact_id)
             e.amount = amounts[i]
-            _set_dates(s, e, d, occurrence(d.due_date, d.repeat, i, d.every) if n > 1 else d.due_date, i == 0)
+            _set_dates(s, e, d, occurrence(d.due_date, d.repeat, i, d.every) if n > 1 else d.due_date, i == 0,
+                       competence)
             e.series_id = series
             e.installment = f"{i + 1}/{n}" if d.repeat == "installments" else None
+            e.document_no = installment_doc(e.document_no, e.installment)
             s.add(e)
             s.flush()
             ids.append(e.id)
@@ -387,15 +413,21 @@ def update(s: Session, entry_id: int, d: EntryData, scope: str = "one") -> int:
     d = replace(d, repeat="none")
     _validate(s, e.entity_id, d)
     contact_id = None if d.kind == "transfer" else contacts.get_or_create(s, e.entity_id, d.contact, d.kind)
+    card = _on_card(s, d)
     try:
         targets = [e] + ([x for x in _following(s, e) if x.id != e.id and _open(x)]
                          if scope == "following" else [])
+        # Competência separada do vencimento (parcelado na data da compra): continua onde estava.
+        own_competence = {x.id: x.competence_date for x in targets
+                          if x.status != "card" and x.competence_date != x.due_date}
         for x in targets:
             _apply(x, d, e.entity_id, contact_id)
+            x.document_no = installment_doc(x.document_no, x.installment)
             x.amount = d.amount
             if x is not e:   # os próximos mantêm a própria data; só recalcula a fatura se mudou de conta
-                _set_dates(s, x, d, x.competence_date, False)
-        _set_dates(s, e, d, d.due_date, True)
+                when = x.competence_date if card or x.status == "card" else x.due_date
+                _set_dates(s, x, d, when, False, None if card else own_competence.get(x.id))
+        _set_dates(s, e, d, d.due_date, True, None if card else own_competence.get(e.id))
         s.commit()
     except Exception:
         s.rollback()

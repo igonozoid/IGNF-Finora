@@ -71,6 +71,7 @@ class SettingsPage(QWidget):
     nav_requested = Signal(str)
     profile_changed = Signal(object)
     restart_requested = Signal()
+    entities_changed = Signal()          # trouxe entidades do MCC: "Trocar entidade" passa a mostrá-las
 
     def __init__(self, profile: Profile, t: dict, parent=None):
         super().__init__(parent)
@@ -90,7 +91,7 @@ class SettingsPage(QWidget):
         self.data_location.message.connect(self.message.emit)
         self.data_location.restart_requested.connect(self.restart_requested.emit)
         self.admin_sections = [self._profile_section(), self.data_location, self.currencies,
-                               self._backup_section(), self._lock_section()]
+                               self._backup_section(), self._mcc_section(), self._lock_section()]
         for w in self.admin_sections:
             bl.addWidget(w)
         self.security = self._security_section()
@@ -492,6 +493,33 @@ class SettingsPage(QWidget):
         self.message.emit("Backup automático ligado." if on else "Backup automático desligado.")
 
     # ---------- fechamento de período ----------
+    def _mcc_section(self) -> QFrame:
+        box, lay = _section("Trazer dados do MCC", "fa6s.file-import", self.t)
+        lay.addWidget(_muted("Traz as empresas do MCC (contas, centros de custo, clientes e fornecedores, lançamentos, "
+                             "movimentações e usuários) como entidades do Finora. Antes de gravar, uma prévia confere "
+                             "os saldos e totais com o MCC; importar de novo atualiza sem duplicar."))
+        if not allowed(current_edition(), "mcc_import"):
+            self.mcc_btn = None
+            lay.addWidget(upgrade_box("Trazer dados do MCC é um recurso das edições Plus e Pro (cada empresa vira "
+                                      "uma entidade).", self.t, self, compact=True))
+            return box
+        row = QHBoxLayout()
+        self.mcc_btn = button("Abrir o assistente…", "secondary", self.t, "fa6s.wand-magic-sparkles", "fg")
+        self.mcc_btn.clicked.connect(self.open_mcc_import)
+        row.addWidget(self.mcc_btn)
+        row.addStretch(1)
+        lay.addLayout(row)
+        return box
+
+    def open_mcc_import(self):
+        from finora.ui.mcc_import_dialog import MccImportDialog
+        dlg = MccImportDialog(self, self.t)
+        dlg.imported.connect(self.entities_changed.emit)
+        dlg.imported.connect(self.refresh)
+        dlg.imported.connect(lambda: self.message.emit("Dados do MCC importados."))
+        self.mcc_dialog = dlg                    # os testes de tela pegam o diálogo aberto
+        dlg.exec()
+
     def _lock_section(self) -> QFrame:
         box, lay = _section("Fechamento de período", "fa6s.lock", self.t)
         lay.addWidget(_muted("Conferiu um mês e está tudo certo? Feche-o: lançamentos até a data escolhida não "

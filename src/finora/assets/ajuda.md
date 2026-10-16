@@ -245,6 +245,26 @@ você faz um backup agora, restaura um backup e, nas edições pagas, manda uma 
 
 **Importante:** guarde de vez em quando uma cópia fora do computador (pendrive ou nuvem).
 
+## Trazer dados do MCC {#mcc}
+
+Nas edições Plus e Pro, **Configurações › Trazer dados do MCC** traz as empresas do MCC para o Finora: cada
+empresa vira uma entidade, com contas, centros de custo, clientes e fornecedores, lançamentos, transferências,
+depósitos e retiradas, e os usuários.
+
+1. **Escolher arquivo**: aponte o `mcc.db` do MCC. O Finora lê uma cópia; o MCC não muda. Desmarque as empresas
+   que não quer trazer.
+2. **Ver prévia**: o Finora importa e **confere** os saldos de cada conta e os totais (a pagar, a receber, pago,
+   recebido) com o MCC, e depois desfaz tudo. Nada é gravado na prévia.
+3. **Importar**: só libera quando a conferência bate. Antes de gravar, o Finora faz um backup
+   (`antes-de-importar-…` em **Backup**); se algo der errado no meio, nada fica gravado.
+
+Diferenças **explicadas** não impedem: lançamento pago no MCC sem data de pagamento (entra com a data de
+vencimento) e valores com mais de 2 casas (arredondados). **Exportar conferência** gera a planilha para guardar.
+
+Pode **importar de novo** depois: o que já veio é atualizado, o que é novo entra e o que sumiu do MCC vai para a
+lixeira. Contatos e usuários que já vieram ficam como você deixou, e o que você criou no Finora não é mexido.
+Contatos criados a partir do nome solto no lançamento aparecem em **Contatos › A revisar**.
+
 ## Rede local {#rede}
 
 Nas edições Plus e Pro, vários computadores podem usar os mesmos dados: um deles (ou um servidor Linux) guarda

@@ -76,3 +76,14 @@ def test_reimportacao_que_falha_deixa_a_anterior_inteira(session, plus, mcc, mon
     assert session.get(Entry, r.entries[1]).amount == D("412.37")
     assert session.get(Entry, r.entries[21]) is not None
     assert period_lock.locked_through(session, r.entities[1]) == datetime(2026, 3, 31).date()
+
+
+def test_previa_confere_e_nao_grava_nada(session, plus, mcc):
+    with reader.open_copy(mcc) as con:
+        r, rep = mapper.preview(session, con)
+    assert r.entities and rep.ok, rep.problems
+    assert (_count(session, Entity), _count(session, Entry), _count(session, ImportMap)) == (0, 0, 0)
+    assert mapper.already_imported(session) == set()
+    with reader.open_copy(mcc) as con:
+        mapper.import_safely(session, con, companies=[2])
+    assert mapper.already_imported(session) == {2}

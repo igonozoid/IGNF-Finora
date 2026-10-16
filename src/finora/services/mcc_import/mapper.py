@@ -31,6 +31,7 @@ completou no Finora fica). O MCC manda enquanto durar o piloto: o período fecha
 fechado de novo na data do MCC. O que foi criado direto no Finora não é tocado.
 """
 import base64
+from contextlib import contextmanager
 import sqlite3
 import unicodedata
 import uuid
@@ -139,8 +140,8 @@ def _when(text: str | None) -> datetime | None:
 class _Importer:
     SOURCE = "mcc"
 
-    def __init__(self, s: Session, con: sqlite3.Connection, companies: list[int] | None):
-        self.s, self.con, self.r = s, con, ImportResult()
+    def __init__(self, s: Session, con: sqlite3.Connection, companies: list[int] | None, dry_run: bool = False):
+        self.s, self.con, self.r, self.dry_run = s, con, ImportResult(), dry_run
         self.links = {(m.kind, m.source_id): m.target
                       for m in s.scalars(select(ImportMap).where(ImportMap.source == self.SOURCE))}
         self.companies = [e for e in reader.rows(con, "empresas") if companies is None or e["id"] in companies]
@@ -599,7 +600,8 @@ class _Importer:
         self.user_rows()
         for e in self.companies:
             eid = self.r.entities[e["id"]]
-            self.preferences(e, eid)
+            if not self.dry_run:                           # preferências ficam fora do banco: na prévia, não
+                self.preferences(e, eid)
             if e.get("bloqueio_ate") or period_lock.locked_through(self.s, eid):
                 period_lock.set_lock(self.s, eid, _day(e.get("bloqueio_ate")))
         n_ofx = len(reader.rows(self.con, "ofx_importados"))
@@ -613,10 +615,35 @@ def users_level_label(level: int) -> str:
     return {0: "Nenhum", 1: "Leitura", 2: "Total"}[level]
 
 
-def import_companies(s: Session, con: sqlite3.Connection, companies: list[int] | None = None) -> ImportResult:
+def import_companies(s: Session, con: sqlite3.Connection, companies: list[int] | None = None, *,
+                     dry_run: bool = False) -> ImportResult:
     """Importa as empresas do MCC (todas, ou só as indicadas). Na 1ª vez cria as entidades; nas seguintes atualiza o
     que já veio e cria o que é novo (sem duplicar). `con` vem de reader.open_copy."""
-    return _Importer(s, con, companies).run()
+    return _Importer(s, con, companies, dry_run).run()
+
+
+@contextmanager
+def _transaction(s: Session):
+    """Uma transação só para a importação inteira: os commit() dos serviços viram SAVEPOINTs dentro dela.
+    Devolve (sessão de trabalho, transação); quem chama decide desfazer (prévia) ou deixar gravar."""
+    s.commit()
+    eng = s.get_bind()
+    with eng.connect() as conn:
+        # O pysqlite só abre a transação no 1º INSERT; aqui ela tem de abrir já (BEGIN explícito), senão o 1º
+        # SAVEPOINT vira a própria transação e o RELEASE dele grava tudo de vez.
+        raw = conn.connection.driver_connection if eng.dialect.name == "sqlite" else None
+        if raw is not None:
+            level, raw.isolation_level = raw.isolation_level, None
+        try:
+            with conn.begin() as trans:
+                if raw is not None:
+                    conn.exec_driver_sql("BEGIN")
+                with Session(conn, join_transaction_mode="create_savepoint") as work:
+                    yield work, trans
+        finally:
+            if raw is not None:
+                raw.isolation_level = level
+    s.expire_all()
 
 
 def import_safely(s: Session, con: sqlite3.Connection, companies: list[int] | None = None, *,
@@ -625,24 +652,29 @@ def import_safely(s: Session, con: sqlite3.Connection, companies: list[int] | No
     no meio, nada fica gravado (nem entidade pela metade). O backup fica em ImportResult.backup e aparece em
     Configurações › Backup, para voltar atrás depois se a conferência não agradar."""
     from finora.services import backup
-    s.commit()
-    eng = s.get_bind()
-    safety = backup.before_import(eng, backup_dir, now)
-    with eng.connect() as conn:
-        # O pysqlite só abre a transação no 1º INSERT; aqui ela tem de abrir já (BEGIN explícito), senão o 1º
-        # SAVEPOINT vira a própria transação e o RELEASE dele grava tudo de vez.
-        raw = conn.connection.driver_connection if eng.dialect.name == "sqlite" else None
-        if raw is not None:
-            level, raw.isolation_level = raw.isolation_level, None
-        try:
-            with conn.begin():
-                if raw is not None:
-                    conn.exec_driver_sql("BEGIN")
-                with Session(conn, join_transaction_mode="create_savepoint") as work:
-                    r = import_companies(work, con, companies)   # os commit() de dentro viram SAVEPOINTs
-        finally:
-            if raw is not None:
-                raw.isolation_level = level
-    s.expire_all()
+    safety = backup.before_import(s.get_bind(), backup_dir, now)
+    with _transaction(s) as (work, _trans):
+        r = import_companies(work, con, companies)
     r.backup = safety
     return r
+
+
+def preview(s: Session, con: sqlite3.Connection, companies: list[int] | None = None, days=None):
+    """Prévia (Fase 2.11): importa e confere dentro da transação e desfaz tudo no fim — nada fica gravado.
+    Devolve (ImportResult, Conference); os ids do resultado não valem fora daqui."""
+    from finora.services.mcc_import import conference
+    with _transaction(s) as (work, trans):
+        r = import_companies(work, con, companies, dry_run=True)
+        rep = conference.build(work, con, r, days)
+        work.close()
+        trans.rollback()
+    return r, rep
+
+
+def already_imported(s: Session) -> set[int]:
+    """Empresas do MCC (ids) que já vieram e cuja entidade ainda existe: importar de novo atualiza."""
+    out = set()
+    for m in s.scalars(select(ImportMap).where(ImportMap.source == _Importer.SOURCE, ImportMap.kind == "empresas")):
+        if s.get(Entity, int(m.target)) is not None:
+            out.add(int(m.source_id))
+    return out

@@ -417,6 +417,7 @@ class MainWindow(QMainWindow):
         cfg.nav_requested.connect(self.set_nav)
         cfg.profile_changed.connect(self.set_profile)
         cfg.modules_changed.connect(self._apply_access)          # ligou/desligou módulo: o menu muda
+        cfg.entities_changed.connect(self._apply_access)         # trouxe entidades do MCC
         self.page("admin").entities_changed.connect(self._apply_access)     # "Trocar entidade" passa a valer
         for p in self.pages:
             self.stack.addWidget(p)

@@ -157,7 +157,10 @@ def apply_to_existing(s: Session, entity_id: int) -> int:
             continue
         e.category_id = r.category_id or e.category_id
         e.contact_id = e.contact_id or r.contact_id
-        e.cost_center_id = e.cost_center_id or r.cost_center_id
+        if not e.cost_center_id and r.cost_center_id:          # só se o centro vale para esse tipo
+            from finora.services import cost_centers
+            if cost_centers.applies(s.get(CostCenter, r.cost_center_id), e.kind):
+                e.cost_center_id = r.cost_center_id
         n += 1
     s.commit()
     return n

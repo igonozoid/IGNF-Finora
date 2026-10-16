@@ -324,9 +324,13 @@ def _validate(s: Session, entity_id: int, d: EntryData) -> None:
         if cat.kind != d.kind:
             raise ValueError("Essa categoria é de " + ("receita." if cat.kind == "income" else "despesa."))
     if d.cost_center_id is not None and d.kind not in NO_CATEGORY:
+        from finora.services import cost_centers
         cc = s.get(CostCenter, d.cost_center_id)
         if not scope.visible(cc, entity_id):
             raise ValueError("Centro de custo inválido.")
+        if not cost_centers.applies(cc, d.kind):
+            raise ValueError(f"O centro de custo \"{cc.name}\" não vale para "
+                             + ("receitas." if d.kind == "income" else "despesas."))
     if not d.description.strip():
         raise ValueError("Escreva uma descrição (ex.: Conta de luz).")
     if len((d.notes or "").strip()) > MAX_NOTES:

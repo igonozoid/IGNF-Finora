@@ -572,7 +572,7 @@ class EntryForm(QFrame):
         items = []
         if allowed(current_edition(), "cost_centers"):
             with Session() as s:
-                items = cost_centers.choices(s, self.profile.id, keep)
+                items = cost_centers.choices(s, self.profile.id, keep, kind=self._kind())
         self.cost_center.clear()
         self.cost_center.addItem("Nenhum", None)
         for cid, name in items:
@@ -596,7 +596,10 @@ class EntryForm(QFrame):
         self._set_visible(self.adjust_box, k in entries.ADJUST_KINDS)
         self._set_visible(self.dest_box, transfer)
         self._set_visible(self.category_box, not bare)
-        self._set_visible(self.cc_box, not bare and self._has_cc)
+        cur = self.cost_center.currentData()                      # só os que valem para o tipo
+        self._load_cost_centers(cur if self.editing is not None and self.editing.cost_center_id == cur else None)
+        if cur and self.cost_center.findData(cur) >= 0:
+            self.cost_center.setCurrentIndex(self.cost_center.findData(cur))
         self._currency_mode()
         self._set_visible(self.contact_box, not bare)
         self.account_lbl.label.setText("Da conta" if transfer else "Conta")

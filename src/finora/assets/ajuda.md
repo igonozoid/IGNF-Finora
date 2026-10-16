@@ -91,6 +91,10 @@ Não diferenciam acentos nem maiúsculas; se duas regras servirem, vale a de tex
 Um segundo jeito de agrupar, além da categoria: Casa, Carro, Viagem, Obra… Útil para saber quanto custou um
 projeto ao todo. Edições pagas.
 
+Cada centro diz se **vale para despesas**, **para receitas** ou para os dois (no MCC: centro de custo e centro de
+lucro); no lançamento aparecem só os que valem para o tipo dele. Quem vale para despesas pode ter um **orçamento**
+por mês; quem vale para receitas, uma **projeção** por mês (a coluna Recebido mostra quanto já entrou).
+
 ## Contatos {#contacts}
 
 Quem você paga e quem te paga, com CPF/CNPJ. Os contatos digitados num lançamento aparecem aqui sozinhos.

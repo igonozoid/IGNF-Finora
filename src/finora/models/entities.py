@@ -70,9 +70,14 @@ class CostCenter(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
     name: Mapped[str] = mapped_column(String(80))
-    budget: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    budget: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))         # orçamento mensal de despesa
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     shared: Mapped[bool] = mapped_column(Boolean, default=False)      # aparece em todas as entidades
+    # Para que tipo de lançamento ele vale (como no MCC: centro de custo / centro de lucro) e a projeção mensal
+    # de receita (o "orçamento" das receitas).
+    applies_expense: Mapped[bool] = mapped_column(Boolean, default=True)
+    applies_income: Mapped[bool] = mapped_column(Boolean, default=True)
+    projection: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
 
 class Contact(Base):
     __tablename__ = "contacts"

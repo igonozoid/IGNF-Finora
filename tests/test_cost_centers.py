@@ -64,3 +64,35 @@ def test_lancamento_guarda_o_centro_e_relatorio(session, profile):
                                                due_date=date(2026, 10, 7), account_id=bank, dest_account_id=other,
                                                cost_center_id=casa))
     assert entries.get(s, t_id).cost_center_id is None
+
+
+# ---------- aplica a despesas/receitas e projeção (MCC: centro de custo / centro de lucro) ----------
+def test_centro_so_de_receita_com_projecao(session, profile):
+    s, eid = session, profile.id
+    bank = accounts.list_accounts(s, eid)[0].id
+    vendas = cost_centers.create(s, eid, "Vendas", applies_expense=False, applies_income=True,
+                                 projection=D("20000"), budget=D("999"))
+    adm = cost_centers.create(s, eid, "Administrativo", D("3000"), applies_income=False)
+    lavoura = cost_centers.create(s, eid, "Lavoura", D("8000"), projection=D("15000"))     # os dois
+    names = lambda kind: [n for _i, n in cost_centers.choices(s, eid, kind=kind)]
+    assert names("expense") == ["Administrativo", "Lavoura"]
+    assert names("income") == ["Lavoura", "Vendas"]
+    assert names(None) == ["Administrativo", "Lavoura", "Vendas"]                         # regras: todos
+    with pytest.raises(ValueError, match="não vale para despesas"):
+        _entry(s, eid, bank, vendas, "10", date(2026, 10, 5))
+    with pytest.raises(ValueError, match="não vale para receitas"):
+        _entry(s, eid, bank, adm, "10", date(2026, 10, 5), kind="income")
+    _entry(s, eid, bank, vendas, "5000", date(2026, 10, 5), kind="income", desc="Venda")
+    by = {c.name: c for c in cost_centers.list_centers(s, eid, 2026, 10)}
+    v = by["Vendas"]
+    assert (v.applies_expense, v.applies_income, v.budget, v.projection) == (False, True, None, D("20000"))
+    assert v.received == D("5000") and v.income_share == D("0.25") and v.applies_label == "Só receitas"
+    assert by["Administrativo"].projection is None and by["Lavoura"].applies_label == "Despesas e receitas"
+    with pytest.raises(ValueError, match="Marque se o centro vale"):
+        cost_centers.create(s, eid, "Nada", applies_expense=False, applies_income=False)
+    with pytest.raises(ValueError, match="projeção não pode ser negativa"):
+        cost_centers.update(s, lavoura, "Lavoura", D("8000"), projection=D("-1"))
+    cost_centers.update(s, lavoura, "Lavoura", D("8000"))                                  # omitidos: mantém
+    assert next(c for c in cost_centers.list_centers(s, eid, 2026, 10) if c.name == "Lavoura").projection == D("15000")
+    cost_centers.update(s, lavoura, "Lavoura", D("8000"), applies_income=False)          # deixa de valer: zera
+    assert next(c for c in cost_centers.list_centers(s, eid, 2026, 10) if c.name == "Lavoura").projection is None

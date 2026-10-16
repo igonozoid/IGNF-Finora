@@ -52,3 +52,25 @@ def test_centros_bloqueados_na_free(window):
     form = window.page("entries").form
     form._load_cost_centers()
     assert form.cost_center.count() == 1                     # só "Nenhum": o campo fica escondido na Free
+
+
+def test_centro_de_lucro_so_aparece_na_receita(plus, window, qtbot):
+    page = window.page("cost_centers")
+    window.go_to("cost_centers")
+    assert page.for_expense.isChecked() and page.for_income.isChecked()          # novo: vale para os dois
+    page.name_edit.setText("Vendas")
+    page.for_expense.setChecked(False)
+    assert page.budget_edit.isHidden() and not page.projection_edit.isHidden()
+    page.projection_edit.setText("20.000,00")
+    page.save_btn.click()
+    pump(qtbot)
+    row = next(r for r in range(page.table.rowCount()) if page.table.item(r, 0).text() == "Vendas")
+    assert page.table.item(row, 1).text() == "—" and "Projeção do mês: R$ 20.000,00" in \
+        (page.table.item(row, 5).toolTip())
+    window.go_to("entries")
+    form = window.page("entries").form
+    window.new_entry()
+    assert form.cost_center.findText("Vendas") < 0                                 # despesa: não aparece
+    form.kind_group.button(1).click()                                              # receita
+    assert form.cost_center.findText("Vendas") >= 0
+    form.cancel_btn.click()

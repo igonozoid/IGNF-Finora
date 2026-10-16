@@ -26,7 +26,7 @@ LOCK_MSG = ("Centros de custo e orçamento por centro são recursos das ediçõe
             "separa os gastos por Casa, Carro, Viagem… e vê quando um deles estoura o orçamento do mês.")
 R = Qt.AlignRight | Qt.AlignVCenter
 L = Qt.AlignLeft | Qt.AlignVCenter
-C_NAME, C_BUDGET, C_SPENT, C_BAR, C_STATUS = range(5)
+C_NAME, C_BUDGET, C_SPENT, C_BAR, C_STATUS, C_INCOME = range(6)
 
 
 class UsageBar(QWidget):
@@ -81,13 +81,15 @@ class CostCentersPage(QWidget):
         bar.setSpacing(theme.SP_M)
         bar.addWidget(self.title)
         bar.addWidget(help_icon("Realizado = despesas do mês (pela data da compra ou do vencimento) que têm esse "
-                                "centro de custo.\nOrçado = quanto você quer gastar nele por mês.", t))
+                                "centro de custo.\nOrçado = quanto você quer gastar nele por mês.\n"
+                                "Recebido = receitas do mês com esse centro (a dica mostra a projeção).", t))
         bar.addStretch(1)
         bar.addWidget(self.show_inactive)
         bar.addWidget(self.new_btn)
 
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["CENTRO DE CUSTO", "ORÇADO (MÊS)", "REALIZADO", "CONSUMO", "STATUS"])
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["CENTRO DE CUSTO", "ORÇADO (MÊS)", "REALIZADO", "CONSUMO", "STATUS",
+                                              "RECEBIDO"])
         self.table.verticalHeader().hide()
         self.table.verticalHeader().setDefaultSectionSize(theme.ROW_H)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -97,7 +99,7 @@ class CostCentersPage(QWidget):
         self.table.setWordWrap(False)
         hdr = self.table.horizontalHeader()
         hdr.setHighlightSections(False)
-        for col, w in ((C_BUDGET, 120), (C_SPENT, 120), (C_BAR, 120), (C_STATUS, 90)):
+        for col, w in ((C_BUDGET, 120), (C_SPENT, 120), (C_BAR, 120), (C_STATUS, 90), (C_INCOME, 130)):
             hdr.setSectionResizeMode(col, QHeaderView.Fixed)
             hdr.resizeSection(col, w)
             if col != C_BAR:
@@ -132,11 +134,28 @@ class CostCentersPage(QWidget):
         self.budget_edit.setFont(theme.mono_font())
         self.budget_edit.setAlignment(Qt.AlignRight)
         self.active = QCheckBox("Ativo (aparece nos lançamentos)")
+        self.for_expense = QCheckBox("Vale para despesas")
+        self.for_income = QCheckBox("Vale para receitas")
+        for chk, tip in ((self.for_expense, "Centro de custo: aparece no lançamento de despesa."),
+                         (self.for_income, "Centro de lucro: aparece no lançamento de receita.")):
+            chk.setToolTip(tip)
+        self.projection_edit = QLineEdit(placeholderText="Opcional")
+        self.projection_edit.setFont(theme.mono_font())
+        self.projection_edit.setAlignment(Qt.AlignRight)
         fl.addWidget(field_label("Nome", t))
         fl.addWidget(self.name_edit)
-        fl.addWidget(field_label("Orçamento por mês", t, "Quanto você pretende gastar nesse centro a cada mês.\n"
-                                                          "Deixe vazio para só acompanhar, sem limite."))
+        fl.addWidget(self.for_expense)
+        fl.addWidget(self.for_income)
+        self.budget_lbl = field_label("Orçamento por mês (despesas)", t,
+                                      "Quanto você pretende gastar nesse centro a cada mês.\n"
+                                      "Deixe vazio para só acompanhar, sem limite.")
+        fl.addWidget(self.budget_lbl)
         fl.addWidget(self.budget_edit)
+        self.projection_lbl = field_label("Projeção por mês (receitas)", t,
+                                          "Quanto você espera receber nesse centro a cada mês\n"
+                                          "(no MCC: projeção do centro de lucro).")
+        fl.addWidget(self.projection_lbl)
+        fl.addWidget(self.projection_edit)
         fl.addWidget(self.active)
         self.shared = shared_checkbox()
         fl.addWidget(self.shared)
@@ -175,8 +194,10 @@ class CostCentersPage(QWidget):
         self.cancel_btn.clicked.connect(self._cancel)
         self.save_btn.clicked.connect(self._save)
         self.delete_btn.clicked.connect(self._delete)
-        for e in (self.name_edit, self.budget_edit):
+        for e in (self.name_edit, self.budget_edit, self.projection_edit):
             e.returnPressed.connect(self._save)
+        self.for_expense.toggled.connect(self._applies_changed)
+        self.for_income.toggled.connect(self._applies_changed)
         self.table.cellClicked.connect(lambda r, _c: self._edit(self.items[r].id) if r < len(self.items) else None)
         self._new()
 
@@ -224,6 +245,20 @@ class CostCentersPage(QWidget):
             if c.status == "over":
                 st.setToolTip(f"Passou {money.fmt(c.spent - c.budget, cur)} do orçamento.")
             self.table.setItem(r, C_STATUS, st)
+            if c.applies_income:
+                inc = item(money.fmt(c.received, cur) if c.received else "—",
+                           tone="pos" if c.received else "mut")
+                if c.projection:
+                    inc.setToolTip(f"Projeção do mês: {money.fmt(c.projection, cur)} · "
+                                   f"{c.income_share:.0%} recebido")
+            else:
+                inc = item("—", tone="mut")
+                inc.setToolTip("Este centro não vale para receitas.")
+            self.table.setItem(r, C_INCOME, inc)
+            if not c.applies_expense:
+                for col in (C_BUDGET, C_SPENT, C_STATUS):
+                    self.table.setItem(r, col, item("—", tone="mut"))
+                self.table.removeCellWidget(r, C_BAR)
             if c.id == (select_id or (self.editing.id if self.editing else None)):
                 self.table.selectRow(r)
         self.table.setVisible(bool(self.items))
@@ -257,6 +292,10 @@ class CostCentersPage(QWidget):
         self.form_title.setText("Novo centro de custo")
         self.name_edit.clear()
         self.budget_edit.clear()
+        self.projection_edit.clear()
+        self.for_expense.setChecked(True)
+        self.for_income.setChecked(True)
+        self._applies_changed()
         self.active.setChecked(True)
         self.shared.setChecked(False)
         self.active.hide()
@@ -276,6 +315,11 @@ class CostCentersPage(QWidget):
         self.form_title.setText("Editar centro de custo")
         self.name_edit.setText(c.name)
         self.budget_edit.setText(money.fmt(c.budget, self.profile.currency).split(" ", 1)[1] if c.budget else "")
+        self.projection_edit.setText(money.fmt(c.projection, self.profile.currency).split(" ", 1)[1]
+                                     if c.projection else "")
+        self.for_expense.setChecked(c.applies_expense)
+        self.for_income.setChecked(c.applies_income)
+        self._applies_changed()
         self.active.setChecked(c.is_active)
         self.shared.setChecked(c.shared)
         self.active.show()
@@ -283,6 +327,13 @@ class CostCentersPage(QWidget):
         self._error(None)
         self._open = True
         self._arrange()
+
+    def _applies_changed(self):
+        """Orçamento só para quem vale para despesas; projeção só para quem vale para receitas."""
+        for w in (self.budget_lbl, self.budget_edit):
+            w.setVisible(self.for_expense.isChecked())
+        for w in (self.projection_lbl, self.projection_edit):
+            w.setVisible(self.for_income.isChecked())
 
     def _cancel(self):
         self._new()
@@ -294,15 +345,23 @@ class CostCentersPage(QWidget):
         except ValueError:
             self._error("Orçamento inválido. Use o formato 1.234,56.")
             return
+        text = self.projection_edit.text().strip()
+        try:
+            projection = money.parse(text) if text else None
+        except ValueError:
+            self._error("Projeção inválida. Use o formato 1.234,56.")
+            return
+        applies = dict(applies_expense=self.for_expense.isChecked(), applies_income=self.for_income.isChecked(),
+                       projection=projection)
         try:
             with Session() as s:
                 if self.editing:
                     cost_centers.update(s, self.editing.id, self.name_edit.text(), budget, self.active.isChecked(),
-                                        shared=self.shared.isChecked())
+                                        shared=self.shared.isChecked(), **applies)
                     cc_id, msg = self.editing.id, "Centro de custo atualizado."
                 else:
                     cc_id = cost_centers.create(s, self.profile.id, self.name_edit.text(), budget,
-                                                shared=self.shared.isChecked())
+                                                shared=self.shared.isChecked(), **applies)
                     msg = "Centro de custo criado. Escolha-o nos lançamentos."
         except ValueError as e:
             self._error(str(e))

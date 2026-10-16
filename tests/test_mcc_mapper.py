@@ -155,3 +155,32 @@ def test_dados_ruins_viram_aviso_sem_parar(session, plus, tmp_path):
     text = " ".join(r.warnings)
     assert "CNPJ inválido" in text and "state \"XX\"" in text and "email \"sem-arroba\"" in text
     assert len(r.entries) == 28                                                 # importou tudo mesmo assim
+
+
+def test_arredondamento_registrado(session, plus, tmp_path):
+    """Fase 2.4: valor com mais de 2 casas é arredondado e anotado; resíduo de REAL (0,1 + 0,2) não conta."""
+    import sqlite3
+    p = tmp_path / "mcc.db"
+    shutil.copy2(DATA / "mcc_exemplo.db", p)
+    con = sqlite3.connect(p)
+    con.execute("UPDATE lancamentos SET valor=10.555 WHERE id=1")
+    con.execute("UPDATE lancamentos SET valor=0.1 + 0.2 WHERE id=3")          # 0.30000000000000004
+    con.execute("UPDATE contas SET saldo_inicial=2500.505 WHERE id=3")
+    con.execute("UPDATE centros SET orcamento=3000.004 WHERE id=1")
+    con.commit()
+    con.close()
+    with reader.open_copy(p) as c:
+        r = mapper.import_companies(session, c)
+    notes = {(x.table, x.mcc_id, x.column): x for x in r.rounding}
+    assert set(notes) == {("lancamentos", 1, "valor"), ("contas", 3, "saldo_inicial"), ("centros", 1, "orcamento")}
+    v = notes[("lancamentos", 1, "valor")]
+    assert (v.original, v.imported, v.difference) == ("10.555", D("10.56"), D("0.005"))
+    assert notes[("centros", 1, "orcamento")].imported == D("3000.00")
+    assert session.get(Entry, r.entries[1]).amount == D("10.56")
+    assert session.get(Entry, r.entries[3]).amount == D("0.30")                # ruído: só converte
+    assert mapper.rounding_of(None) == (D("0.00"), None)
+
+
+def test_exemplo_sem_arredondamento(imported):
+    _s, r = imported
+    assert r.rounding == []                                                     # 1333,33 + 1333,33 + 1333,34

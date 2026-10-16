@@ -35,10 +35,25 @@ from finora.services import accounts, contacts, cost_centers, entity_admin, peri
 from finora.services.mcc_import import reader
 
 CENT = Decimal("0.01")
+NOISE = Decimal("0.0001")      # abaixo disso é resíduo do REAL (0.30000000000000004), não arredondamento de verdade
 # grupo da DRE dos itens importados, por modelo: (despesa, receita)
 ITEM_GROUPS = {"personal": ("outras", "receitas"), "business": ("administrativas", "receita_bruta")}
 FIRST_FIELD = {"conta": "account", "documento": "document", "data": "date", "descricao": "description"}
 ADJUST = {"D": "deposit", "R": "withdrawal"}
+
+
+@dataclass(frozen=True)
+class Rounding:
+    """Valor do MCC com mais de 2 casas que foi arredondado (Fase 2.4)."""
+    table: str             # lancamentos | movbancarias | contas | centros
+    mcc_id: int
+    column: str            # valor, saldo_inicial, limite, orcamento, projecao
+    original: str          # como estava no MCC
+    imported: Decimal      # com 2 casas
+
+    @property
+    def difference(self) -> Decimal:
+        return self.imported - Decimal(self.original)
 
 
 @dataclass
@@ -52,6 +67,7 @@ class ImportResult:
     movements: dict[int, int] = field(default_factory=dict)      # movimentação bancária do MCC -> lançamento
     contacts_created_from_text: list[str] = field(default_factory=list)   # marcados "a revisar"
     paid_without_date: list[int] = field(default_factory=list)   # D6: lançamentos do MCC (ids)
+    rounding: list[Rounding] = field(default_factory=list)        # valores com mais de 2 casas no MCC
     warnings: list[str] = field(default_factory=list)
 
 
@@ -64,6 +80,13 @@ def normalize(text: str | None) -> str:
 def money(v) -> Decimal:
     """REAL do MCC -> Decimal com 2 casas (pelo texto do número, sem resíduo de ponto flutuante)."""
     return Decimal(repr(float(v or 0))).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def rounding_of(v) -> tuple[Decimal, str | None]:
+    """(valor com 2 casas, texto original se o arredondamento mudou o valor de verdade; senão None)."""
+    exact = Decimal(repr(float(v or 0)))
+    value = exact.quantize(CENT, rounding=ROUND_HALF_UP)
+    return value, (str(exact) if abs(exact - value) >= NOISE else None)
 
 
 def _day(text: str | None) -> date | None:
@@ -90,6 +113,13 @@ class _Importer:
 
     def warn(self, text: str):
         self.r.warnings.append(text)
+
+    def money(self, row: dict, table: str, column: str) -> Decimal:
+        """Valor com 2 casas; se o MCC tinha mais casas de verdade, anota para o relatório de conferência."""
+        value, original = rounding_of(row.get(column))
+        if original is not None:
+            self.r.rounding.append(Rounding(table, row["id"], column, original, value))
+        return value
 
     # ---------- empresas ----------
     def entity(self, e: dict) -> int:
@@ -150,11 +180,11 @@ class _Importer:
                 continue
             eid, shared = self._owner(c["empresa_id"])
             kind = "cash" if c["tipo"] == "C" else "bank"
-            limit = money(c.get("limite")) if kind == "bank" and c.get("limite") else None
+            limit = self.money(c, "contas", "limite") if kind == "bank" and c.get("limite") else None
             name = c["descricao"].strip()
             for attempt in (name, f"{name} (MCC)"):
                 try:
-                    aid = accounts.create(self.s, eid, name=attempt, kind=kind, opening_balance=money(c["saldo_inicial"]),
+                    aid = accounts.create(self.s, eid, name=attempt, kind=kind, opening_balance=self.money(c, "contas", "saldo_inicial"),
                                           credit_limit=limit or None, shared=shared)
                     break
                 except ValueError as exc:
@@ -173,8 +203,8 @@ class _Importer:
                 exp = inc = True
                 self.warn(f"Centro \"{c['nome']}\" não valia para nada no MCC: ficou para despesas e receitas.")
             self.r.cost_centers[c["id"]] = cost_centers.create(
-                self.s, self.r.entities[c["empresa_id"]], c["nome"], money(c["orcamento"]) or None,
-                applies_expense=exp, applies_income=inc, projection=money(c["projecao"]) or None)
+                self.s, self.r.entities[c["empresa_id"]], c["nome"], self.money(c, "centros", "orcamento") or None,
+                applies_expense=exp, applies_income=inc, projection=self.money(c, "centros", "projecao") or None)
 
     def _details(self, p: dict, who: str) -> dict:
         raw = {"phone": p.get("telefone"), "email": p.get("email"), "document2": p.get("documento2"),
@@ -295,7 +325,8 @@ class _Importer:
                       category_id=self.category(l["empresa_id"], l["tipo"], l["descricao"]),
                       cost_center_id=self.r.cost_centers.get(l.get("centro_id")),
                       contact_id=self._contact_for(eid, l.get("pessoa"), kind),
-                      amount=money(l["valor"]), description=(l["descricao"] or "").strip()[:200],
+                      amount=self.money(l, "lancamentos", "valor"),
+                      description=(l["descricao"] or "").strip()[:200],
                       document_no=(l.get("documento") or "").strip()[:40] or None,
                       notes=(l.get("observacao") or "").strip() or None,
                       competence_date=_day(l["data_mov"]), due_date=_day(l["vencimento"]),
@@ -322,7 +353,7 @@ class _Importer:
             e = Entry(entity_id=eid, kind="transfer" if m["tipo"] == "T" else ADJUST[m["tipo"]],
                       account_id=self.r.accounts[m["origem_id"]],
                       dest_account_id=self.r.accounts[m["destino_id"]] if m["tipo"] == "T" else None,
-                      amount=money(m["valor"]), description=(obs or labels[m["tipo"]])[:200],
+                      amount=self.money(m, "movbancarias", "valor"), description=(obs or labels[m["tipo"]])[:200],
                       notes=obs or None, competence_date=day, due_date=day,
                       status="paid" if paid else "pending", paid_date=day if paid else None,
                       deleted_at=_when(m.get("excluido_em")), deleted_by="MCC" if m.get("excluido_em") else None)

@@ -37,6 +37,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -85,6 +86,7 @@ class ImportResult:
     created: int = 0                                              # lançamentos/movimentações novos
     updated: int = 0                                              # já existiam e mudaram
     trashed: int = 0                                              # sumiram do MCC: foram para a lixeira
+    backup: Path | None = None                                    # cópia do Finora de antes (import_safely)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -615,3 +617,32 @@ def import_companies(s: Session, con: sqlite3.Connection, companies: list[int] |
     """Importa as empresas do MCC (todas, ou só as indicadas). Na 1ª vez cria as entidades; nas seguintes atualiza o
     que já veio e cria o que é novo (sem duplicar). `con` vem de reader.open_copy."""
     return _Importer(s, con, companies).run()
+
+
+def import_safely(s: Session, con: sqlite3.Connection, companies: list[int] | None = None, *,
+                  backup_dir: Path | None = None, now: datetime | None = None) -> ImportResult:
+    """O que a tela usa (Fase 2.9): faz um backup do Finora e importa tudo numa transação só — se algo der errado
+    no meio, nada fica gravado (nem entidade pela metade). O backup fica em ImportResult.backup e aparece em
+    Configurações › Backup, para voltar atrás depois se a conferência não agradar."""
+    from finora.services import backup
+    s.commit()
+    eng = s.get_bind()
+    safety = backup.before_import(eng, backup_dir, now)
+    with eng.connect() as conn:
+        # O pysqlite só abre a transação no 1º INSERT; aqui ela tem de abrir já (BEGIN explícito), senão o 1º
+        # SAVEPOINT vira a própria transação e o RELEASE dele grava tudo de vez.
+        raw = conn.connection.driver_connection if eng.dialect.name == "sqlite" else None
+        if raw is not None:
+            level, raw.isolation_level = raw.isolation_level, None
+        try:
+            with conn.begin():
+                if raw is not None:
+                    conn.exec_driver_sql("BEGIN")
+                with Session(conn, join_transaction_mode="create_savepoint") as work:
+                    r = import_companies(work, con, companies)   # os commit() de dentro viram SAVEPOINTs
+        finally:
+            if raw is not None:
+                raw.isolation_level = level
+    s.expire_all()
+    r.backup = safety
+    return r

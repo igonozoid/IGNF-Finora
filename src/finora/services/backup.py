@@ -15,6 +15,7 @@ from finora.core import db
 AUTO_PREFIX = "auto-"
 SAFETY_PREFIX = "antes-de-restaurar-"
 UPDATE_PREFIX = "antes-de-atualizar-"   # cópia feita pelo init_db antes de aplicar migrações
+IMPORT_PREFIX = "antes-de-importar-"    # cópia feita antes de importar o MCC
 KEEP_AUTO = 7
 KEEP_CLOUD = 14
 CLOUD_SUBDIR = "IGNF-Finora"            # dentro da pasta da nuvem
@@ -113,6 +114,18 @@ def restore_from(path: Path, db_file: Path | None = None, backup_dir: Path | Non
     db.engine.dispose()                                    # fecha as conexões abertas do app
     _copy(Path(path), db_file)
     return safety
+
+
+def before_import(eng, backup_dir: Path | None = None, now: datetime | None = None) -> Path | None:
+    """Cópia do banco antes de trazer dados de outro sistema (MCC). Fica junto dos outros backups locais.
+    None se o banco for só de memória (testes)."""
+    dest = Path(backup_dir or db.BACKUP_DIR) / f"{IMPORT_PREFIX}{(now or datetime.now()):%Y-%m-%d_%H%M%S}.db"
+    if eng.dialect.name != "sqlite":
+        from finora.services import dbcopy
+        return dbcopy.export_to_file(eng, dest)
+    if not eng.url.database or eng.url.database == ":memory:":
+        return None
+    return backup_to(dest, Path(eng.url.database))
 
 
 def auto_backup(backup_dir: Path | None = None, db_file: Path | None = None, keep: int = KEEP_AUTO,

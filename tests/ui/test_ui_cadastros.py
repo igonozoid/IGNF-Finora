@@ -43,6 +43,27 @@ def test_contas_editar_e_inativar(window):
     assert len(page._items) == 1 and not page._items[0].is_active
 
 
+def test_conta_compartilhada(plus, window):
+    from finora.services import accounts, entity_admin
+    with db.Session() as s:
+        other = entity_admin.create(s, name="Padaria Sol")
+    page = _accounts(window)
+    assert not page.shared.isHidden() and not page.shared.isChecked()      # edição com várias entidades
+    page.kind_box.setCurrentIndex(page.kind_box.findData("card"))
+    assert page.shared.isHidden()                                           # cartão não pode
+    page.name_edit.setText("Itaú da família")
+    page.kind_box.setCurrentIndex(page.kind_box.findData("bank"))
+    page.balance_edit.setText("500")
+    page.shared.setChecked(True)
+    page.save_btn.click()
+    itau = next(a for a in page._items if a.name == "Itaú da família")
+    assert itau.shared
+    with db.Session() as s:
+        assert itau.id in [a.id for a in accounts.list_accounts(s, other)]   # aparece na outra entidade
+    page._edit(itau.id)
+    assert page.shared.isChecked()
+
+
 def test_contas_em_janela_estreita(window, qtbot):
     page = _accounts(window)
     window.resize(800, 480)

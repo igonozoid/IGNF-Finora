@@ -33,7 +33,7 @@ def search(s: Session, entity_id: int, text: str, per_kind: int = 6) -> list[Hit
     cur = s.get(Entity, entity_id).currency
     hits: list[Hit] = []
 
-    for a in s.scalars(select(Account).where(Account.entity_id == entity_id, func.lower(Account.name).like(like))
+    for a in s.scalars(select(Account).where(scope.accounts(entity_id), func.lower(Account.name).like(like))
                        .order_by(Account.name).limit(per_kind)):
         hits.append(Hit("account", a.id, a.name, ACC_KINDS.get(a.kind, a.kind) + ("" if a.is_active else " · inativa")))
 

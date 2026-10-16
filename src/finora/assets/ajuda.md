@@ -68,6 +68,11 @@ Banco, carteira, cartão de crédito e investimentos. O saldo inicial é o saldo
 Finora. Cartões têm dia de fechamento, dia de vencimento e limite. Conta que não usa mais pode ser **inativada**
 (o histórico continua nos relatórios).
 
+**Compartilhada com todas as entidades** (edições com várias entidades): a conta aparece em todas e cada uma lança
+nela; o saldo é um só e soma os lançamentos de todas (cada entidade continua vendo só os próprios lançamentos na
+lista). Cartão de crédito não pode ser compartilhado. Depois que outra entidade lançou nela, a conta precisa
+continuar compartilhada (dá para inativar).
+
 ## Categorias {#categories}
 
 Grupos de gasto e de ganho, em árvore. Cada grupo pertence a uma linha da **DRE pessoal** (Moradia,

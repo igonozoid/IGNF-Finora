@@ -65,10 +65,11 @@ def _fill_base_amount(s: Session, _ctx, _instances) -> None:
             continue
         acc = s.get(Account, e.account_id)
         day = e.competence_date or e.due_date or date.today()
-        if acc is None or acc.entity_id is None:
+        ent = e.entity_id or (acc.entity_id if acc is not None else None)
+        if acc is None or ent is None:
             e.base_amount = e.amount
             continue
-        conv = converters.get(acc.entity_id) or converters.setdefault(acc.entity_id, Converter(s, acc.entity_id))
+        conv = converters.get(ent) or converters.setdefault(ent, Converter(s, ent))
         e.base_amount = conv.convert(e.amount, acc.currency, day)
 
 

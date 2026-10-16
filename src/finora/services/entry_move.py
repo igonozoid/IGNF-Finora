@@ -35,7 +35,7 @@ def destinations(s: Session, origin_id: int) -> list[tuple[int, str, list[tuple[
     for ent in s.scalars(select(Entity).where(Entity.is_active, Entity.id != origin_id).order_by(func.lower(Entity.name))):
         if not permissions.at_least(permissions.level(s, current.user_id, ent.id, "financial"), "full"):
             continue
-        accs = [(a.id, a.name) for a in s.scalars(select(Account).where(Account.entity_id == ent.id, Account.is_active)
+        accs = [(a.id, a.name) for a in s.scalars(select(Account).where(scope.accounts(ent.id), Account.is_active)
                                                   .order_by(Account.id)) if not cards.is_configured(a)]
         if accs:
             out.append((ent.id, ent.name, accs))
@@ -88,7 +88,7 @@ def move_to_entity(s: Session, entry_ids: list[int], dest_entity_id: int, accoun
     if not permissions.at_least(permissions.level(s, current.user_id, dest.id, "financial"), "full"):
         raise permissions.AccessDenied(f"Você não tem acesso Total ao Financeiro em {dest.name}.")
     acc = s.get(Account, account_id) if account_id else None
-    if acc is None or acc.entity_id != dest.id or not acc.is_active:
+    if not scope.visible(acc, dest.id) or not acc.is_active:
         raise ValueError(f"Escolha uma conta ativa de {dest.name}.")
     if cards.is_configured(acc):
         raise ValueError("Escolha uma conta que não seja cartão de crédito.")

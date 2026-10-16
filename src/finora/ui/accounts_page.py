@@ -13,7 +13,9 @@ from finora.services import accounts, cards
 from finora.services.setup import Profile
 from finora.ui import theme
 from finora.ui.card_statements import open_statements
-from finora.ui.widgets import button, field_label, icon_label, lock_icon, set_tone, show_upgrade, upgrade_box
+from finora.ui.widgets import (
+    button, field_label, icon_label, lock_icon, set_tone, shared_checkbox, show_upgrade, upgrade_box,
+)
 
 KIND_ICONS = {
     "bank": "fa6s.building-columns",
@@ -65,6 +67,9 @@ class AccountCard(QFrame):
         lay.addLayout(top)
 
         info = QLabel(f"{a.kind_label} · {a.card_info}" if a.kind == "card" else a.kind_label)
+        if a.shared:
+            info.setText(info.text() + (f" · compartilhada por {a.owner}" if a.owner else " · compartilhada"))
+            info.setToolTip("Aparece em todas as entidades. O saldo soma os lançamentos de todas elas.")
         info.setProperty("role", "field")
         lay.addWidget(info)
         lay.addSpacing(theme.SP_S)
@@ -254,6 +259,12 @@ class AccountsPage(QWidget):
         self.card_hint.setProperty("role", "field")
         cg.addWidget(self.card_hint, 4, 0, 1, 2)
         fl.addWidget(self.card_box)
+        self.shared = shared_checkbox("Compartilhada com todas as entidades")
+        self.shared.setToolTip("A conta aparece em todas as entidades e cada uma lança nela;\n"
+                               "o saldo é um só (soma os lançamentos de todas), como a conta\n"
+                               "sem conta controle do MCC. Cartão de crédito não pode.")
+        self._shared_allowed = not self.shared.isHidden()      # só nas edições com várias entidades
+        fl.addWidget(self.shared)
 
         if not accounts.multi_currency():
             msg = "Contas em outra moeda fazem parte das edições Plus e Pro."
@@ -291,6 +302,7 @@ class AccountsPage(QWidget):
 
     def _kind_changed(self):
         self.card_box.setVisible(self.kind_box.currentData() == "card")
+        self.shared.setVisible(self._shared_allowed and self.kind_box.currentData() != "card")
         if self.kind_box.currentData() == "card":
             self.balance_lbl.label.setText("Fatura inicial")
             tip = ("Quanto você devia no cartão quando começou a usar o Finora.\n"
@@ -342,6 +354,7 @@ class AccountsPage(QWidget):
         self.closing_spin.setValue(0)
         self.due_spin.setValue(0)
         self.limit_edit.clear()
+        self.shared.setChecked(False)
         self._error(None)
         self._mark_invalid(False)
         self._update_lock()
@@ -367,6 +380,7 @@ class AccountsPage(QWidget):
         self.due_spin.setValue(a.due_day or 0)
         self.limit_edit.setText("" if a.credit_limit is None else
                                 money.fmt(a.credit_limit, a.currency).split(" ", 1)[1])
+        self.shared.setChecked(a.shared)
         self._error(None)
         self._update_lock()
         self._open = True
@@ -396,7 +410,8 @@ class AccountsPage(QWidget):
             return
         data = dict(name=self.name_edit.text(), kind=self.kind_box.currentData(), opening_balance=value,
                     currency=self.currency_box.currentData(), closing_day=self.closing_spin.value() or None,
-                    due_day=self.due_spin.value() or None, credit_limit=limit)
+                    due_day=self.due_spin.value() or None, credit_limit=limit,
+                    shared=self.shared.isChecked() and self.kind_box.currentData() != "card")
         try:
             with Session() as s:
                 if self.editing:

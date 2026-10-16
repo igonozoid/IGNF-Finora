@@ -302,11 +302,11 @@ def _validate(s: Session, entity_id: int, d: EntryData) -> None:
     if d.amount is None or d.amount <= 0:
         raise ValueError("O valor precisa ser maior que zero.")
     acc = s.get(Account, d.account_id) if d.account_id else None
-    if acc is None or acc.entity_id != entity_id:
+    if not scope.visible(acc, entity_id):                     # da entidade ou compartilhada
         raise ValueError("Escolha a conta.")
     if d.kind == "transfer":
         dest = s.get(Account, d.dest_account_id) if d.dest_account_id else None
-        if dest is None or dest.entity_id != entity_id:
+        if not scope.visible(dest, entity_id):
             raise ValueError("Escolha a conta de destino da transferência.")
         if dest.id == acc.id:
             raise ValueError("A conta de origem e a de destino precisam ser diferentes.")
@@ -577,7 +577,7 @@ def pay(s: Session, entry_id: int, when: date | None = None, *, amount: Decimal 
                          "edite o lançamento.")
     if new_account:
         acc = s.get(Account, account_id)
-        if acc is None or acc.entity_id != e.entity_id or not acc.is_active:
+        if not scope.visible(acc, e.entity_id) or not acc.is_active:
             raise ValueError("Escolha uma conta ativa.")
         if cards.is_configured(acc):
             raise ValueError("Para pagar com o cartão, lance a compra no cartão de crédito.")

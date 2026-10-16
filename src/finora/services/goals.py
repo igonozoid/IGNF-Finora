@@ -91,7 +91,8 @@ def _check(s: Session, entity_id: int, name: str, target: Decimal, account_id: i
         raise ValueError("Informe quanto quer juntar.")
     if account_id is not None:
         acc = s.get(Account, account_id)
-        if acc is None or acc.entity_id != entity_id or acc.kind == "card":
+        from finora.services import scope
+        if not scope.visible(acc, entity_id) or acc.kind == "card":
             raise ValueError("Escolha uma conta desta entidade (cartão não serve).")
     dup = s.scalar(select(Goal.id).where(Goal.entity_id == entity_id, func.lower(Goal.name) == name.lower(),
                                          Goal.id != (exclude_id or 0)))

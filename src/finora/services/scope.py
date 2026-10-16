@@ -1,12 +1,17 @@
 """O que cada entidade enxerga: o que é dela + o que foi marcado como compartilhado com todas.
 
-Contatos e centros de custo: compartilhados um a um. Categorias: compartilha-se o grupo (com as subcategorias),
-porque o grupo é a linha da DRE. Lançamentos, contas e saldos nunca são compartilhados.
+Contatos, centros de custo e contas: compartilhados um a um. Categorias: compartilha-se o grupo (com as
+subcategorias), porque o grupo é a linha da DRE. Lançamentos nunca são compartilhados; o saldo de uma conta
+compartilhada soma os lançamentos de todas as entidades que a usam (como a conta sem conta controle do MCC).
 """
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, aliased
 
-from finora.models import Category, Contact, CostCenter
+from finora.models import Account, Category, Contact, CostCenter
+
+
+def accounts(entity_id: int):
+    return or_(Account.entity_id == entity_id, Account.shared.is_(True))
 
 
 def contacts(entity_id: int):
@@ -34,5 +39,5 @@ def category_visible(s: Session, cat: Category | None, entity_id: int) -> bool:
 
 
 def visible(obj, entity_id: int) -> bool:
-    """Contato ou centro de custo pode ser usado nesta entidade?"""
+    """Contato, centro de custo ou conta pode ser usado nesta entidade?"""
     return obj is not None and (obj.entity_id == entity_id or bool(obj.shared))

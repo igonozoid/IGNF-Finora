@@ -49,6 +49,8 @@ class Account(Base):
     closing_day: Mapped[int | None] = mapped_column(Integer)
     due_day: Mapped[int | None] = mapped_column(Integer)
     credit_limit: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    # Compartilhada com todas as entidades (no MCC: conta sem conta controle). O saldo soma os lançamentos de todas.
+    shared: Mapped[bool] = mapped_column(Boolean, default=False)
 
 class Category(Base):
     __tablename__ = "categories"

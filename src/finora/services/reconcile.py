@@ -95,8 +95,9 @@ def import_ofx(s: Session, entity_id: int, account_id: int, data: bytes) -> Impo
 
 def import_lines(s: Session, entity_id: int, account_id: int, lines: list[OfxLine]) -> ImportResult:
     """Grava as linhas do extrato (OFX ou planilha) que ainda não estão lá e liga sozinho o que não deixa dúvida."""
+    from finora.services import scope
     acc = s.get(Account, account_id)
-    if acc is None or acc.entity_id != entity_id:
+    if not scope.visible(acc, entity_id):
         raise ValueError("Escolha a conta do extrato.")
     known = set(s.scalars(select(BankLine.fitid).where(BankLine.account_id == account_id)))
     new = []

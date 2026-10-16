@@ -72,3 +72,40 @@ def test_outra_moeda_so_na_pro(session, profile):
     acc_id = accounts.create(session, profile.id, name="Wise", kind="bank", opening_balance=D(0), currency="BRL")
     with pytest.raises(accounts.LimitError):
         accounts.update(session, acc_id, name="Wise", kind="bank", opening_balance=D(0), currency="USD")
+
+
+# ---------- cheque especial (limite da conta no banco) ----------
+def test_limite_so_em_banco_e_cartao(session, profile):
+    s, eid = session, profile.id
+    bank = accounts.create(s, eid, name="Itaú", kind="bank", opening_balance=D("100"), credit_limit=D("500"))
+    cash = accounts.create(s, eid, name="Carteira", kind="cash", opening_balance=D("0"), credit_limit=D("500"))
+    views = {a.id: a for a in accounts.list_accounts(s, eid)}
+    assert views[bank].credit_limit == D("500") and views[cash].credit_limit is None    # carteira não tem
+    with pytest.raises(ValueError, match="negativo"):
+        accounts.update(s, bank, name="Itaú", kind="bank", opening_balance=D("100"), credit_limit=D("-1"))
+    accounts.update(s, bank, name="Itaú", kind="bank", opening_balance=D("100"), credit_limit=None)
+    assert accounts.limit_checks(s, eid) == {}                                          # sem limite, sem checagem
+
+
+def test_aviso_quando_o_saldo_previsto_passa_do_limite(session, profile):
+    from finora.services import entries
+    from finora.services.entries import EntryData
+    s, eid = session, profile.id
+    today = date(2026, 10, 15)
+    bank = accounts.create(s, eid, name="Itaú", kind="bank", opening_balance=D("100"), credit_limit=D("500"))
+
+    def add(kind, amount, due):
+        entries.create(s, eid, EntryData(kind=kind, description=kind, amount=D(amount), due_date=due,
+                                         account_id=bank))
+    c = accounts.limit_checks(s, eid, today)[bank]
+    assert (c.balance, c.available, c.over_now, c.over_soon) == (D("100"), D("600"), False, False)
+    add("expense", "400", date(2026, 10, 10))          # atrasada: conta como hoje -> -300
+    add("expense", "350", date(2026, 10, 20))          # -> -650: passa do limite de 500 no dia 20
+    add("income", "1000", date(2026, 10, 25))          # volta a +350
+    add("expense", "5000", date(2026, 12, 1))          # fora dos 30 dias: não entra
+    c = accounts.limit_checks(s, eid, today)[bank]
+    assert c.lowest == D("-650") and c.lowest_day == date(2026, 10, 20)
+    assert c.over_soon and not c.over_now
+    _entry(s, eid, "expense", bank, "700")            # paga: saldo de hoje -600 (já passou)
+    c = accounts.limit_checks(s, eid, today)[bank]
+    assert c.balance == D("-600") and c.over_now and c.available == D("-100")

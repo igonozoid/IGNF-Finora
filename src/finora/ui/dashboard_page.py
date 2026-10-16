@@ -313,6 +313,7 @@ class DashboardPage(QWidget):
             business = getattr(s.get(Entity, self.profile.id), "dre_model", "") == "business"
             flow = dashboard.monthly_flow(s, self.profile.id, 6, ref)
             accs = accounts.list_accounts(s, self.profile.id)
+            limits = accounts.limit_checks(s, self.profile.id, today)
             due = dashboard.due_soon(s, self.profile.id, 7, today)
             bills = cards.open_statements(s, self.profile.id, today + timedelta(days=7), today)
             top = dashboard.top_expenses(s, self.profile.id, year, month)
@@ -350,6 +351,12 @@ class DashboardPage(QWidget):
             row.addWidget(name, 1)
             v = QLabel(money.fmt(a.balance, a.currency))
             v.setFont(_mono())
+            lim = limits.get(a.id)
+            if lim and (lim.over_now or lim.over_soon):      # cheque especial: passou ou vai passar do limite
+                from finora.ui.accounts_page import limit_warning
+                row.addWidget(icon_label("fa6s.triangle-exclamation", t, "neg", 11))
+                set_tone(v, "neg")
+                v.setToolTip(limit_warning(lim, a.currency))
             row.addWidget(v)
             w = QFrame(objectName="listRow")
             w.setLayout(row)

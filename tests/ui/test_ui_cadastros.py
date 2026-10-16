@@ -64,6 +64,38 @@ def test_conta_compartilhada(plus, window):
     assert page.shared.isChecked()
 
 
+def test_cheque_especial_na_conta_do_banco(window):
+    from datetime import date, timedelta
+    from decimal import Decimal as D
+    from finora.services import entries
+    from finora.services.entries import EntryData
+    page = _accounts(window)
+    page.kind_box.setCurrentIndex(page.kind_box.findData("cash"))
+    assert page.card_box.isHidden()                                       # carteira: sem limite
+    page.kind_box.setCurrentIndex(page.kind_box.findData("bank"))
+    assert not page.card_box.isHidden() and page.closing_spin.isHidden()  # banco: só o limite
+    assert page.limit_lbl.label.text() == "Limite do cheque especial"
+    page.name_edit.setText("Itaú PJ")
+    page.balance_edit.setText("100,00")
+    page.limit_edit.setText("500,00")
+    page.save_btn.click()
+    itau = next(a for a in page._items if a.name == "Itaú PJ")
+    assert itau.credit_limit == D("500.00")
+    with db.Session() as s:
+        entries.create(s, window.profile.id, EntryData(kind="expense", description="Folha", amount=D("900"),
+                                                       due_date=date.today() + timedelta(days=3), account_id=itau.id))
+    page.refresh()
+    text = " ".join(lbl.text() for card in page.findChildren(type(page.form), "card")
+                    for lbl in card.findChildren(type(page.form_title)))
+    assert "Cheque especial R$ 500,00 · disponível R$ 600,00" in text
+    assert "passa do limite do cheque especial" in text
+    window.go_to("dashboard")                                             # Dashboard: valor em vermelho com aviso
+    dash = window.page("dashboard")
+    dash.refresh()
+    tips = [lbl.toolTip() for lbl in dash.findChildren(type(page.form_title))]
+    assert any("passa do limite do cheque especial" in t for t in tips)
+
+
 def test_contas_em_janela_estreita(window, qtbot):
     page = _accounts(window)
     window.resize(800, 480)

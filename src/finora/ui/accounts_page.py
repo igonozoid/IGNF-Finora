@@ -33,13 +33,23 @@ def _repolish(w: QWidget):
     w.style().polish(w)
 
 
+def limit_warning(c: accounts.LimitCheck, currency: str) -> str:
+    """Aviso de cheque especial: já passou do limite, ou vai passar com o que está em aberto."""
+    if c.over_now:
+        return f"Passou do limite do cheque especial em {money.fmt(-(c.balance + c.limit), currency)}."
+    if c.over_soon:
+        return (f"Com o que está em aberto, o saldo chega a {money.fmt(c.lowest, currency)} em "
+                f"{c.lowest_day:%d/%m}: passa do limite do cheque especial.")
+    return ""
+
+
 class AccountCard(QFrame):
     edit = Signal(int)
     toggle = Signal(int, bool)
     statements = Signal(int)
 
     def __init__(self, a: accounts.AccountView, t: dict, selected: bool = False, card: dict | None = None,
-                 base_currency: str = "BRL"):
+                 base_currency: str = "BRL", limit: accounts.LimitCheck | None = None):
         super().__init__(objectName="card")
         self.setProperty("inactive", not a.is_active)
         self.setProperty("selected", selected)
@@ -91,6 +101,16 @@ class AccountCard(QFrame):
                 approx.setProperty("role", "field")
             approx.setToolTip("Cadastre ou atualize as cotações em Configurações › Moedas e cotações.")
             lay.addWidget(approx)
+        if limit:                      # conta no banco com cheque especial
+            lim = QLabel(f"Cheque especial {money.fmt(limit.limit, a.currency)} · disponível "
+                         f"{money.fmt(limit.available, a.currency)}")
+            lim.setProperty("role", "field")
+            lay.addWidget(lim)
+            warn = limit_warning(limit, a.currency)
+            if warn:
+                w = QLabel(warn, wordWrap=True)
+                set_tone(w, "neg")
+                lay.addWidget(w)
         if card:                       # cartão com fechamento/vencimento: fatura atual e limite
             st = card["statement"]
             fat = QLabel(f"Fatura {st.label}: {money.fmt(st.charges, a.currency)} · {st.status_label(card['today'])}")
@@ -139,6 +159,7 @@ class AccountsPage(QWidget):
         self.editing: accounts.AccountView | None = None
         self._items: list[accounts.AccountView] = []
         self._cards: dict[int, dict] = {}   # cartões configurados: fatura atual e limite livre
+        self._limits: dict[int, accounts.LimitCheck] = {}   # contas no banco com cheque especial
         self._cols = 0
 
         # Barra superior
@@ -254,6 +275,9 @@ class AccountsPage(QWidget):
         cg.addWidget(field_label("Limite", self.t, "Limite total do cartão. Serve para mostrar quanto ainda\n"
                                                    "dá para gastar."), 2, 0, 1, 2)
         cg.addWidget(self.limit_edit, 3, 0, 1, 2)
+        self.closing_lbl = cg.itemAtPosition(0, 0).widget()
+        self.due_lbl = cg.itemAtPosition(0, 1).widget()
+        self.limit_lbl = cg.itemAtPosition(2, 0).widget()
         self.card_hint = QLabel("Informe o fechamento e o vencimento para as compras irem para a fatura certa.",
                                 wordWrap=True)
         self.card_hint.setProperty("role", "field")
@@ -301,7 +325,18 @@ class AccountsPage(QWidget):
         self.form_slot.addStretch(1)
 
     def _kind_changed(self):
-        self.card_box.setVisible(self.kind_box.currentData() == "card")
+        kind = self.kind_box.currentData()
+        self.card_box.setVisible(kind in ("card", "bank"))
+        for w in (self.closing_lbl, self.due_lbl, self.closing_spin, self.due_spin, self.card_hint):
+            w.setVisible(kind == "card")
+        if kind == "bank":
+            self.limit_lbl.label.setText("Limite do cheque especial")
+            self.limit_lbl.help.setToolTip("Quanto o banco deixa ficar no negativo. O Finora avisa quando o\n"
+                                           "saldo, com o que está em aberto, vai passar dele.")
+        else:
+            self.limit_lbl.label.setText("Limite")
+            self.limit_lbl.help.setToolTip("Limite total do cartão. Serve para mostrar quanto ainda\n"
+                                           "dá para gastar.")
         self.shared.setVisible(self._shared_allowed and self.kind_box.currentData() != "card")
         if self.kind_box.currentData() == "card":
             self.balance_lbl.label.setText("Fatura inicial")
@@ -455,6 +490,7 @@ class AccountsPage(QWidget):
         with Session() as s:
             self._items = accounts.list_accounts(s, self.profile.id, self.show_inactive.isChecked())
             self._cards = {}
+            self._limits = accounts.limit_checks(s, self.profile.id, today)
             for a in self._items:
                 if a.kind == "card" and a.closing_day and a.due_day:
                     self._cards[a.id] = {"statement": cards.current(s, a.id, today), "today": today,
@@ -486,7 +522,7 @@ class AccountsPage(QWidget):
         editing_id = self.editing.id if self.editing else None
         for i, a in enumerate(self._items):
             card = AccountCard(a, self.t, selected=a.id == editing_id, card=self._cards.get(a.id),
-                               base_currency=self.profile.currency)
+                               base_currency=self.profile.currency, limit=self._limits.get(a.id))
             card.statements.connect(self._open_statements)
             card.edit.connect(self._edit)
             card.toggle.connect(self._toggle)

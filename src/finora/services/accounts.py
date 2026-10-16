@@ -126,6 +126,60 @@ def list_accounts(s: Session, entity_id: int, include_inactive: bool = False) ->
     return out
 
 
+@dataclass(frozen=True)
+class LimitCheck:
+    """Conta no banco com limite (cheque especial): saldo de hoje e o menor saldo previsto nos próximos dias."""
+    account_id: int
+    limit: Decimal
+    balance: Decimal
+    lowest: Decimal            # menor saldo previsto no período (contando os lançamentos em aberto)
+    lowest_day: date
+
+    @property
+    def available(self) -> Decimal:
+        """Quanto ainda dá para gastar hoje: saldo + limite."""
+        return self.balance + self.limit
+
+    @property
+    def over_now(self) -> bool:
+        return self.balance < -self.limit
+
+    @property
+    def over_soon(self) -> bool:
+        """O saldo previsto passa do limite (hoje ou nos próximos dias)."""
+        return self.lowest < -self.limit
+
+
+def limit_checks(s: Session, entity_id: int, today: date | None = None, days: int = 30) -> dict[int, LimitCheck]:
+    """Para cada conta no banco com limite: saldo de hoje e o menor saldo previsto até `days` dias, somando dia a dia
+    o que está em aberto nela (atrasados contam como hoje; de qualquer entidade, se for compartilhada)."""
+    from datetime import timedelta
+    from sqlalchemy import or_
+    today = today or date.today()
+    end = today + timedelta(days=days)
+    out = {}
+    for a in list_accounts(s, entity_id):
+        if a.kind != "bank" or not a.credit_limit:
+            continue
+        moves: dict[date, Decimal] = {}
+        q = select(Entry).where(Entry.status == "pending", Entry.due_date <= end,
+                                or_(Entry.account_id == a.id, Entry.dest_account_id == a.id))
+        for e in s.scalars(q):
+            if e.kind == "transfer" and e.dest_account_id == a.id:
+                value = Decimal(e.dest_amount if e.dest_amount is not None else e.amount)
+            else:
+                value = Decimal(e.amount) if e.kind in ("income", "deposit") else -Decimal(e.amount)
+            day = max(e.due_date, today)
+            moves[day] = moves.get(day, Decimal(0)) + value
+        bal, lowest, lowest_day = a.balance, a.balance, today
+        for day in sorted(moves):
+            bal += moves[day]
+            if bal < lowest:
+                lowest, lowest_day = bal, day
+        out[a.id] = LimitCheck(a.id, a.credit_limit, a.balance, lowest, lowest_day)
+    return out
+
+
 def total_balance(accounts: list[AccountView]) -> Decimal:
     """Dinheiro que você tem: contas ativas SEM cartões de crédito. A dívida do cartão aparece
     como fatura a pagar (contar as duas coisas seria descontar a mesma dívida duas vezes)."""
@@ -161,7 +215,12 @@ def _check(s: Session, entity_id: int, name: str, kind: str, exclude_id: int | N
 
 
 def _card_fields(kind: str, closing_day, due_day, credit_limit) -> tuple:
-    """Fechamento/vencimento/limite só existem para cartão. Dias de 1 a 31 (meses curtos usam o último dia)."""
+    """Fechamento/vencimento só existem para cartão; o limite, para cartão e para conta no banco (cheque
+    especial). Dias de 1 a 31 (meses curtos usam o último dia)."""
+    if kind == "bank":
+        if credit_limit is not None and credit_limit < 0:
+            raise ValueError("O limite não pode ser negativo.")
+        return None, None, credit_limit or None
     if kind != "card":
         return None, None, None
     if (closing_day is None) != (due_day is None):

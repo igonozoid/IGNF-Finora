@@ -68,6 +68,10 @@ Banco, carteira, cartão de crédito e investimentos. O saldo inicial é o saldo
 Finora. Cartões têm dia de fechamento, dia de vencimento e limite. Conta que não usa mais pode ser **inativada**
 (o histórico continua nos relatórios).
 
+**Cheque especial**: na conta no banco, informe o limite. O cartão da conta mostra quanto ainda está disponível e
+avisa, em vermelho, quando o saldo já passou do limite ou vai passar nos próximos 30 dias com o que está em aberto
+(o Dashboard também marca a conta).
+
 **Compartilhada com todas as entidades** (edições com várias entidades): a conta aparece em todas e cada uma lança
 nela; o saldo é um só e soma os lançamentos de todas (cada entidade continua vendo só os próprios lançamentos na
 lista). Cartão de crédito não pode ser compartilhado. Depois que outra entidade lançou nela, a conta precisa

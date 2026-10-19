@@ -1149,3 +1149,38 @@ class CenterTargetsView(TableReport):
         pct = "" if not target else f" ({(100 * actual / target).quantize(Decimal('0.1'))}%)".replace(".", ",")
         self.footer.setText(f"Meta no período <b>{self.fmt(target)}</b> &nbsp;·&nbsp; Lançado nos centros com meta "
                             f"<b>{self.fmt(actual)}</b>{pct}")
+
+
+# ---------- fluxo de caixa por centro (Fase 3.8, do MCC) ----------
+class CenterFlowView(TableReport):
+    TITLE = "Fluxo por centro"
+    COLUMNS = [("CENTRO", None, False), ("PAGO", 115, True), ("RECEBIDO", 115, True), ("A PAGAR", 115, True),
+               ("A RECEBER", 115, True), ("SALDO REALIZADO", 130, True), ("SALDO PREVISTO", 130, True)]
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.period = self.period_box()
+        self.period.setCurrentIndex(self.period.findData("ytd"))
+        self.bar.addWidget(self.period)
+        self.finish_bar("Por centro de custo: o que foi pago e recebido no período (pela data do pagamento) e o\n"
+                        "que está em aberto vencendo no período. Saldo realizado = recebido − pago;\n"
+                        "saldo previsto = a receber − a pagar (só o que está em aberto, como no MCC).")
+
+    def refresh(self):
+        first, last = reports.period_range(self.period.currentData())
+        with Session() as s:
+            data = reports.center_flow(s, self.profile.id, first, last)
+        tone = (lambda v: "pos" if v > 0 else "neg" if v < 0 else None)
+
+        def row(r: reports.CenterFlow, bold: bool = False) -> dict:
+            return {"cells": [r.name, -r.paid or None, r.received or None, -r.to_pay or None, r.to_receive or None,
+                              r.realized, r.forecast],
+                    "tones": {2: "pos", 4: "pos", 5: tone(r.realized), 6: tone(r.forecast)},
+                    "bold": bold, "muted": r.name == reports.NO_CENTER}
+
+        rows = [row(r) for r in data]
+        if data:
+            rows.append(row(reports.center_flow_total(data), bold=True))
+        self.fill(rows, "Nenhum lançamento neste período.")
+        self.footer.setText("Cadastre os centros em Centros de custo e escolha-os nos lançamentos."
+                            if all(r.name == reports.NO_CENTER for r in data) else "")

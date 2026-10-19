@@ -250,6 +250,9 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
   **Projeção** compara as receitas de cada centro de lucro com a projeção mensal. Meta no período = meta mensal x
   meses do período, com o % atingido e quanto falta (negativo = passou). Marque **Só pagos** para contar só o
   que já foi pago ou recebido. A meta é cadastrada em **Centros de custo**.
+- **Fluxo por centro**: por centro de custo, o que foi **pago** e **recebido** no período (pela data do pagamento)
+  e o que está **a pagar** e **a receber** vencendo no período. Saldo realizado = recebido − pago; saldo previsto
+  = a receber − a pagar (só o que está em aberto, como no MCC). Lançamentos sem centro ficam numa linha própria.
 
 ## Administração {#admin}
 

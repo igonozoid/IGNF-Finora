@@ -739,6 +739,55 @@ def center_targets(s: Session, entity_id: int, first: date, last: date, kind: st
     return sorted(out, key=lambda r: (r.monthly is None, -(r.pct or 0), r.name.lower()))
 
 
+# ---------- fluxo de caixa por centro (Fase 3.8, do MCC) ----------
+NO_CENTER = "Sem centro de custo"
+
+
+@dataclass(frozen=True)
+class CenterFlow:
+    name: str
+    paid: Decimal                        # despesas pagas no período (data do pagamento)
+    received: Decimal                    # receitas recebidas no período
+    to_pay: Decimal                      # despesas em aberto vencendo no período
+    to_receive: Decimal                  # receitas em aberto vencendo no período
+
+    @property
+    def realized(self) -> Decimal:
+        return self.received - self.paid
+
+    @property
+    def forecast(self) -> Decimal:
+        """Como no MCC: só o que está em aberto (a receber − a pagar)."""
+        return self.to_receive - self.to_pay
+
+
+def center_flow(s: Session, entity_id: int, first: date, last: date) -> list[CenterFlow]:
+    """Por centro: pago e recebido (pela data do pagamento; compra no cartão pela data da compra) e a pagar e a
+    receber (em aberto, pelo vencimento) no período. Sem centro vira uma linha no fim, para o total bater."""
+    from finora.models import CostCenter
+    from sqlalchemy import and_, or_
+    when_paid = or_(and_(Entry.status == "paid", Entry.paid_date.between(first, last)),
+                    and_(Entry.status == "card", Entry.competence_date.between(first, last)))
+    when_open = and_(Entry.status == "pending", Entry.due_date.between(first, last))
+    q = (select(CostCenter.name, Entry.kind, Entry.status, Entry.base_amount)
+         .select_from(Entry).outerjoin(CostCenter, Entry.cost_center_id == CostCenter.id)
+         .where(Entry.entity_id == entity_id, Entry.kind.in_(entries.RESULT_KINDS), or_(when_paid, when_open)))
+    acc: dict[str | None, list] = {}
+    for name, kind, status, amount in s.execute(q):
+        col = (0 if kind == "expense" else 1) + (0 if status in ("paid", "card") else 2)
+        acc.setdefault(name, [ZERO] * 4)[col] += Decimal(amount)
+    out = [CenterFlow(n, *(v.quantize(CENT) for v in vals)) for n, vals in acc.items() if n is not None]
+    out.sort(key=lambda r: r.name.lower())
+    if None in acc:
+        out.append(CenterFlow(NO_CENTER, *(v.quantize(CENT) for v in acc[None])))
+    return out
+
+
+def center_flow_total(rows: list[CenterFlow]) -> CenterFlow:
+    return CenterFlow("Total", *(sum((getattr(r, k) for r in rows), ZERO)
+                                 for k in ("paid", "received", "to_pay", "to_receive")))
+
+
 # ---------- analítico ----------
 def analytical(s: Session, entity_id: int, first: date, last: date, kind: str = "all") -> list:
     """Todas as receitas e despesas do período (competência), na ordem das datas. kind: all | income | expense."""

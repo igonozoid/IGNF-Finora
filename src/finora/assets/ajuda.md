@@ -246,6 +246,10 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
 - **Demonstrativo anual**: os 12 meses do ano escolhido, com a média mensal e o total, agrupados por
   **categoria, contato, centro de custo ou conta** (pela data da compra/vencimento, pago ou não). Receitas em
   cima, despesas embaixo.
+- **Metas por centro**: **Orçamento** compara as despesas de cada centro de custo com o orçamento mensal dele;
+  **Projeção** compara as receitas de cada centro de lucro com a projeção mensal. Meta no período = meta mensal x
+  meses do período, com o % atingido e quanto falta (negativo = passou). Marque **Só pagos** para contar só o
+  que já foi pago ou recebido. A meta é cadastrada em **Centros de custo**.
 
 ## Administração {#admin}
 

@@ -682,6 +682,63 @@ def by_cost_center(s: Session, entity_id: int, first: date, last: date) -> list[
     return out
 
 
+# ---------- orçamento por centro de custo / projeção por centro de lucro (Fase 3.7, do MCC) ----------
+TARGET_KINDS = {"expense": "Orçamento (centros de custo)", "income": "Projeção (centros de lucro)"}
+
+
+@dataclass(frozen=True)
+class CenterTarget:
+    name: str
+    monthly: Decimal | None              # orçamento (despesa) ou projeção (receita) mensal; None = sem meta
+    months: int
+    actual: Decimal                      # lançado no período (competência)
+    count: int
+
+    @property
+    def target(self) -> Decimal | None:
+        return None if self.monthly is None else (self.monthly * self.months).quantize(CENT)
+
+    @property
+    def pct(self) -> Decimal | None:
+        """% da meta atingido (orçamento: quanto já foi gasto; projeção: quanto já entrou)."""
+        return None if not self.target else (100 * self.actual / self.target).quantize(Decimal("0.1"))
+
+    @property
+    def left(self) -> Decimal | None:
+        """Quanto falta para a meta (negativo = passou: orçamento estourado ou projeção superada)."""
+        return None if self.target is None else self.target - self.actual
+
+
+def center_targets(s: Session, entity_id: int, first: date, last: date, kind: str = "expense",
+                   paid_only: bool = False) -> list[CenterTarget]:
+    """Meta × realizado por centro no período: despesas contra o orçamento mensal dos centros de custo, ou receitas
+    contra a projeção mensal dos centros de lucro (meta mensal × meses do período). Só os centros que valem para
+    esse tipo; os sem meta aparecem com o lançado. paid_only: só o que foi pago/recebido."""
+    from finora.models import CostCenter
+    from finora.services import scope
+    if kind not in TARGET_KINDS:
+        raise ValueError("Tipo inválido.")
+    q = (select(Entry.cost_center_id, Entry.base_amount)
+         .where(Entry.entity_id == entity_id, Entry.kind == kind, Entry.cost_center_id.is_not(None),
+                Entry.status.in_(("paid",) if paid_only else ("paid", "pending", "card")),
+                Entry.competence_date.between(first, last)))
+    acc: dict[int, list] = {}
+    for cc, amount in s.execute(q):
+        item = acc.setdefault(cc, [ZERO, 0])
+        item[0] += Decimal(amount)
+        item[1] += 1
+    months = (last.year - first.year) * 12 + last.month - first.month + 1
+    applies = CostCenter.applies_expense if kind == "expense" else CostCenter.applies_income
+    out = []
+    for c in s.scalars(select(CostCenter).where(scope.cost_centers(entity_id), applies)):
+        actual, n = acc.get(c.id, [ZERO, 0])
+        if not (n or c.is_active):
+            continue
+        monthly = c.budget if kind == "expense" else c.projection
+        out.append(CenterTarget(c.name, Decimal(monthly) if monthly else None, months, actual.quantize(CENT), n))
+    return sorted(out, key=lambda r: (r.monthly is None, -(r.pct or 0), r.name.lower()))
+
+
 # ---------- analítico ----------
 def analytical(s: Session, entity_id: int, first: date, last: date, kind: str = "all") -> list:
     """Todas as receitas e despesas do período (competência), na ordem das datas. kind: all | income | expense."""

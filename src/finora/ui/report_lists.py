@@ -1096,3 +1096,56 @@ class AnnualView(CategoryMonthsView):
 
     def _label(self, r) -> str:
         return super()._label(r) if self._by() == "category" else r.category
+
+
+# ---------- orçamento por centro de custo / projeção por centro de lucro (Fase 3.7, do MCC) ----------
+class CenterTargetsView(TableReport):
+    TITLE = "Metas por centro"
+    COLUMNS = [("CENTRO", None, False), ("META MENSAL", 115, True), ("META NO PERÍODO", 130, True),
+               ("LANÇADO", 125, True), ("% ATINGIDO", 95, True), ("FALTA", 125, True)]
+
+    def subtitle(self) -> str:
+        return f"{self.kind.currentText()} · {self.period.currentText()}" + \
+            (" · só pagos" if self.paid_only.isChecked() else "")
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.kind = QComboBox()
+        for k, label in reports.TARGET_KINDS.items():
+            self.kind.addItem(label, k)
+        self.paid_only = QCheckBox("Só pagos")
+        self.paid_only.setToolTip("Conta só o que já foi pago ou recebido (sem os em aberto)")
+        self.period = self.period_box()
+        self.period.setCurrentIndex(self.period.findData("ytd"))
+        self.kind.currentIndexChanged.connect(self.refresh)
+        self.paid_only.toggled.connect(self.refresh)
+        for w in (self.kind, self.period, self.paid_only):
+            self.bar.addWidget(w)
+        self.finish_bar("Orçamento: as despesas de cada centro de custo contra o orçamento mensal dele.\n"
+                        "Projeção: as receitas de cada centro de lucro contra a projeção mensal.\n"
+                        "Meta no período = meta mensal x meses do período. A meta é cadastrada em Centros de custo.")
+
+    def refresh(self):
+        first, last = reports.period_range(self.period.currentData())
+        kind = self.kind.currentData()
+        with Session() as s:
+            data = reports.center_targets(s, self.profile.id, first, last, kind, self.paid_only.isChecked())
+        self.set_columns([c if i != 3 else ("PAGO" if self.paid_only.isChecked() else "LANÇADO", 125, True)
+                          for i, c in enumerate(self.COLUMNS)])
+        rows = []
+        for r in data:
+            pct = "" if r.pct is None else f"{r.pct}%".replace(".", ",")
+            over = r.left is not None and r.left < 0
+            good = (not over) if kind == "expense" else (r.pct is not None and r.pct >= 100)
+            rows.append({"cells": [r.name, r.monthly, r.target, r.actual, pct, r.left],
+                         "tones": {4: ("pos" if good else "neg") if r.pct is not None else None,
+                                   5: "neg" if over and kind == "expense" else None},
+                         "muted": r.monthly is None})
+        empty = ("Nenhum centro de custo para despesas." if kind == "expense" else
+                 "Nenhum centro de lucro (centro que vale para receitas).")
+        self.fill(rows, empty + "\nCadastre em Centros de custo, com o orçamento ou a projeção mensal.")
+        target = sum((r.target for r in data if r.target is not None), Decimal(0))
+        actual = sum((r.actual for r in data if r.target is not None), Decimal(0))
+        pct = "" if not target else f" ({(100 * actual / target).quantize(Decimal('0.1'))}%)".replace(".", ",")
+        self.footer.setText(f"Meta no período <b>{self.fmt(target)}</b> &nbsp;·&nbsp; Lançado nos centros com meta "
+                            f"<b>{self.fmt(actual)}</b>{pct}")

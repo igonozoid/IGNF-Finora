@@ -234,6 +234,9 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
   **previsto** (o realizado mais o que estava em aberto vencendo até aquela data, atrasados inclusive, separado em
   a receber e a pagar). Cartão aparece, mas fica fora do total: a dívida dele já é a fatura a pagar. Marque
   **Contas inativas** para ver também as desativadas.
+- **Comparativo de saldos**: o saldo realizado de cada conta em duas datas, o que entrou e saiu entre elas (pela
+  data do pagamento) e a variação, em valor e em %. Transferências entre contas aparecem nas duas e se anulam no
+  total.
 
 ## Administração {#admin}
 

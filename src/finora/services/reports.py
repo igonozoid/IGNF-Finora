@@ -431,6 +431,84 @@ def balances_at(s: Session, entity_id: int, day: date, include_inactive: bool = 
     return BalancesAt(day, rows, real_total.quantize(CENT), prev_total.quantize(CENT), other)
 
 
+# ---------- comparativo de saldos entre duas datas (Fase 3.3, do MCC) ----------
+@dataclass(frozen=True)
+class BalanceChange:
+    account_id: int
+    name: str
+    kind: str
+    currency: str
+    start: Decimal                      # realizado no fim do 1º dia
+    inflow: Decimal                     # entrou depois do 1º dia até o 2º (inclusive)
+    outflow: Decimal                    # saiu no mesmo intervalo (positivo)
+    end: Decimal                        # realizado no fim do 2º dia
+    is_active: bool = True
+
+    @property
+    def change(self) -> Decimal:
+        return self.end - self.start
+
+    @property
+    def change_pct(self) -> Decimal | None:
+        return None if not self.start else (100 * self.change / abs(self.start)).quantize(Decimal("0.1"))
+
+
+@dataclass(frozen=True)
+class BalanceComparison:
+    first: date
+    last: date
+    rows: list[BalanceChange]
+    start: Decimal                      # totais na moeda principal, sem cartões
+    inflow: Decimal
+    outflow: Decimal
+    end: Decimal
+    other_currency: bool
+
+    @property
+    def change(self) -> Decimal:
+        return self.end - self.start
+
+
+def compare_balances(s: Session, entity_id: int, first: date, last: date,
+                     include_inactive: bool = False) -> BalanceComparison:
+    """Realizado de cada conta em duas datas e o que entrou e saiu entre elas (pela data do pagamento, como no
+    extrato). Transferência entre contas aparece nas duas (sai de uma, entra na outra) e se anula no total."""
+    from sqlalchemy import or_
+    from finora.models import Account
+    from finora.services import fx
+    if last < first:
+        first, last = last, first
+    conv = fx.Converter(s, entity_id)
+    rows, other = [], False
+    tot = {"start": ZERO, "inflow": ZERO, "outflow": ZERO, "end": ZERO}
+    for a in accounts.list_accounts(s, entity_id, include_inactive):
+        start = Decimal(s.get(Account, a.id).opening_balance)
+        inflow = outflow = ZERO
+        q = select(Entry).where(or_(Entry.account_id == a.id, Entry.dest_account_id == a.id), _realized(a.id))
+        for e in s.scalars(q):
+            when, v = _move(e, a.id)
+            if when is None or when > last:
+                continue
+            if when <= first:
+                start += v
+            elif v > 0:
+                inflow += v
+            else:
+                outflow -= v
+        row = BalanceChange(a.id, a.name, a.kind, a.currency, start.quantize(CENT), inflow.quantize(CENT),
+                            outflow.quantize(CENT), (start + inflow - outflow).quantize(CENT), a.is_active)
+        rows.append(row)
+        if a.kind == "card":
+            continue
+        if a.currency != conv.base:
+            other = True
+        for k, day in (("start", first), ("inflow", last), ("outflow", last), ("end", last)):
+            v = getattr(row, k)
+            tot[k] += v if a.currency == conv.base else conv.convert(v, a.currency, day)
+    return BalanceComparison(first, last, rows, *(tot[k].quantize(CENT) for k in ("start", "inflow", "outflow", "end")),
+                             other)
+
+
 # ---------- pontualidade (Fase 3.1, do MCC) ----------
 PUNCTUALITY_KINDS = {"income": "Recebimentos (clientes)", "expense": "Pagamentos (fornecedores)"}
 NO_CONTACT = "(sem contato)"

@@ -935,3 +935,64 @@ class BalancesAtView(TableReport):
         note = " · contas em outra moeda convertidas pela cotação da data" if rep.other_currency else ""
         self.footer.setText(f"Realizado <b>{self.fmt(rep.realized)}</b> &nbsp;·&nbsp; Previsto "
                             f"<b>{self.fmt(rep.forecast)}</b>{note}")
+
+
+# ---------- comparativo de saldos entre duas datas (Fase 3.3, do MCC) ----------
+class BalanceCompareView(TableReport):
+    TITLE = "Comparativo de saldos"
+    COLUMNS = [("CONTA", None, False), ("SALDO INICIAL", 125, True), ("ENTRADAS", 120, True), ("SAÍDAS", 120, True),
+               ("SALDO FINAL", 125, True), ("VARIAÇÃO", 125, True), ("%", 70, True)]
+
+    def subtitle(self) -> str:
+        return f"{self.first.date().toString('dd/MM/yyyy')} a {self.last.date().toString('dd/MM/yyyy')}"
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        today = QDate.currentDate()
+        self.first = QDateEdit(QDate(today.year(), today.month(), 1).addDays(-1), calendarPopup=True,
+                               displayFormat="dd/MM/yyyy")
+        self.last = QDateEdit(today, calendarPopup=True, displayFormat="dd/MM/yyyy")
+        self.inactive = QCheckBox("Contas inativas")
+        for w in (self.first, self.last):
+            w.dateChanged.connect(self.refresh)
+        self.inactive.toggled.connect(self.refresh)
+        for w in (QLabel("De"), self.first, QLabel("a"), self.last, self.inactive):
+            self.bar.addWidget(w)
+        self.finish_bar("Saldo realizado de cada conta no fim de cada data e o que entrou e saiu entre elas\n"
+                        "(pela data do pagamento, como no extrato). Transferências entre contas aparecem nas duas\n"
+                        "e se anulam no total. Cartão aparece, mas fica fora do total.")
+
+    @staticmethod
+    def _day(w: QDateEdit) -> date:
+        q = w.date()
+        return date(q.year(), q.month(), q.day())
+
+    def refresh(self):
+        with Session() as s:
+            rep = reports.compare_balances(s, self.profile.id, self._day(self.first), self._day(self.last),
+                                           self.inactive.isChecked())
+        cols = list(self.COLUMNS)
+        cols[1] = (f"SALDO EM {rep.first:%d/%m/%y}", 125, True)
+        cols[4] = (f"SALDO EM {rep.last:%d/%m/%y}", 125, True)
+        self.set_columns(cols)
+
+        def pct(v: Decimal | None) -> str:
+            return "" if v is None else f"{'+' if v > 0 else ''}{v}%".replace(".", ",")
+
+        def tone(v: Decimal) -> str | None:
+            return "pos" if v > 0 else "neg" if v < 0 else None
+
+        rows = []
+        for r in rep.rows:
+            fmt = (lambda v, c=r.currency: v if c == self.profile.currency else money.fmt(v, c))
+            rows.append({"cells": [r.name, fmt(r.start), fmt(r.inflow) if r.inflow else None,
+                                   fmt(-r.outflow) if r.outflow else None, fmt(r.end), fmt(r.change),
+                                   pct(r.change_pct)],
+                         "tones": {2: "pos", 3: "neg", 5: tone(r.change), 6: tone(r.change)},
+                         "muted": r.kind == "card" or not r.is_active})
+        if rep.rows:
+            rows.append({"cells": ["Total (sem cartões)", rep.start, rep.inflow or None, -rep.outflow or None, rep.end,
+                                   rep.change, ""], "bold": True, "tones": {5: tone(rep.change)}})
+        self.fill(rows, "Nenhuma conta.")
+        note = " · outra moeda convertida pela cotação de cada data" if rep.other_currency else ""
+        self.footer.setText(f"Variação no período <b>{self.fmt(rep.change)}</b>{note}")

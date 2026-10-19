@@ -9,7 +9,9 @@ antes das colunas e uma linha de totais no fim. O que cada relatório traz (docs
 - Clientes / Fornecedores: os cadastros (um registro por lançamento: repetem o nome).
 A data de pagamento sai do extrato; transferência só entra quando os dois lados aparecem (saída numa conta e
 entrada na outra, mesma data e valor) — o que tem um lado só fica de fora, como no saldo do próprio MCC.
-Parcelas (série) não vêm na planilha: ficam soltas (agrupar é a Fase 2.12).
+Parcelas (série) não vêm na planilha; são reagrupadas (Fase 2.12, `installments`): pelo marcador n/N no documento,
+na observação ou na descrição ("Parcela: 2/6", "P:1/12", "23_60"), e pelo mesmo documento numerado ("NFS-e 4422")
+com a mesma descrição e pessoa em vencimentos diferentes.
 
 Os ids do banco montado saem do conteúdo (nome da empresa, da conta, da pessoa; data, item, pessoa, valor,
 vencimento e conta do lançamento), não da ordem das linhas: importar de novo uma exportação mais nova da mesma
@@ -162,6 +164,7 @@ class Bundle:
     paid_dates_found: int = 0
     paid_dates_missing: int = 0
     transfers: int = 0
+    series: int = 0                            # séries de parcelas reagrupadas
     left_out: list[str] = field(default_factory=list)       # movimentações de um lado só (fora)
     balances: list[BalanceCheck] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -215,6 +218,59 @@ class _Ids:
 def company_id(company: str) -> int:
     """O id da empresa montada a partir das planilhas (o mesmo a cada vez, pelo nome)."""
     return _Ids(company).of("empresa")
+
+
+_MARK = re.compile(r"(?<![\d/])(\d{1,3})\s*[/_]\s*(\d{1,3})(?![\d/])")
+_WORD = re.compile(r"(parc|prest|\bp\s*:)", re.I)
+
+
+def _marker(r: dict) -> tuple[str, int, int] | None:
+    """(coluna, n, N) do marcador de parcela, se houver um só e ele não parecer mês/ano ("ref. 04/23")."""
+    for col in ("DOCUMENTO", "OBSERVACAO", "DESCRICAO"):
+        text = r.get(col) or ""
+        found = _MARK.findall(text)
+        if len(found) != 1:
+            continue
+        n, total = map(int, found[0])
+        if not (1 <= n <= total <= 360 and total > 1):
+            continue
+        if not _WORD.search(text) and 20 <= total <= 31 and n <= 12:
+            continue                                   # mês/ano, não parcela
+        return col, n, total
+    return None
+
+
+def installments(entries: list[dict]) -> dict[int, tuple[str, int, int]]:
+    """Índice da linha -> (chave da série, parcela, total). Fase 2.12: a planilha não traz a série."""
+    out: dict[int, tuple[str, int, int]] = {}
+    tipo = lambda r: "R" if _key(r.get("TIPO")).startswith("REC") else "D"
+    due = lambda i: parse_date(entries[i].get("VENCIMENTO")) or date.min
+    # 1) marcador n/N
+    marked: dict[tuple, list[tuple[int, int]]] = {}
+    for i, r in enumerate(entries):
+        m = _marker(r)
+        if m:
+            col, n, total = m
+            base = _key(_MARK.sub(" ", r[col]))
+            marked.setdefault((tipo(r), _key(r.get("NOME")), _key(r.get("DESCRICAO")), col, base, total), []).append((i, n))
+    for key, rows in marked.items():
+        group, seen, k = 0, set(), 0
+        for i, n in sorted(rows, key=lambda x: (due(x[0]), x[1])):
+            if n in seen:                                  # o mesmo número de novo: outra série com o mesmo texto
+                group, seen = group + 1, set()
+            seen.add(n)
+            out[i] = ("|".join(map(str, key)) + f"|{group}", n, key[-1])
+    # 2) mesmo documento numerado + descrição + pessoa, vencimentos diferentes
+    docs: dict[tuple, list[int]] = {}
+    for i, r in enumerate(entries):
+        doc = r.get("DOCUMENTO") or ""
+        if i not in out and re.search(r"\d", doc):
+            docs.setdefault((tipo(r), _key(doc), _key(r.get("DESCRICAO")), _key(r.get("NOME"))), []).append(i)
+    for key, rows in docs.items():
+        if len(rows) > 1 and len({due(i) for i in rows}) == len(rows):
+            for n, i in enumerate(sorted(rows, key=due), start=1):
+                out[i] = ("doc|" + "|".join(key), n, len(rows))
+    return out
 
 
 def _iso(text: str) -> str | None:
@@ -335,7 +391,11 @@ def build_db(b: Bundle, dest: str | Path, *, company: str, person_type: str = "P
                     moves.append((acc, parse_date(r["DATA"]), _money(r.get("CREDITO")), _money(r.get("DEBITO")),
                                   r.get("MOV", ""), r.get("OBS", "")))
         items = set()
-        for r in entries:
+        parts = installments(entries)
+        b.series = len({k for k, _n, _t in parts.values()})
+        for idx, r in enumerate(entries):
+            part = parts.get(idx)
+            grupo = "pl" + hashlib.sha1(f"{_key(company)}|{part[0]}".encode("utf-8")).hexdigest()[:16] if part else None
             tipo = "R" if _key(r["TIPO"]).startswith("REC") else "D"
             value = _money(r["VALOR"])
             paid = _key(r["MOVSIT"]) == "V"
@@ -351,13 +411,14 @@ def build_db(b: Bundle, dest: str | Path, *, company: str, person_type: str = "P
                     b.paid_dates_missing += 1
             items.add((tipo, r["DESCRICAO"].strip()))
             con.execute("""INSERT INTO lancamentos (id, empresa_id, tipo, data_mov, documento, descricao, pessoa, valor,
-                           situacao, vencimento, data_pagamento, observacao, conta_id, centro_id, criado_em)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           situacao, vencimento, data_pagamento, observacao, conta_id, centro_id, criado_em, grupo,
+                           parcela, total_parcelas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (ids.of("lanc", tipo, r["DATA"], r["DESCRICAO"], r.get("NOME"), value, r["VENCIMENTO"],
                                 r.get("CONTA")), eid, tipo, _iso(r["DATA"]), r.get("DOCUMENTO") or None, r["DESCRICAO"].strip(),
                          r.get("NOME") or None, float(value), "V" if paid else "P", due.isoformat(),
                          pay.isoformat() if pay else None, r.get("OBSERVACAO") or None, acc_id.get(r.get("CONTA")),
-                         cc_id.get(r.get("CENTRO DE CUSTO")), f"{_iso(r['DATA'])} 00:00:00"))
+                         cc_id.get(r.get("CENTRO DE CUSTO")), f"{_iso(r['DATA'])} 00:00:00", grupo,
+                         part[1] if part else None, part[2] if part else None))
         for i, (tipo, desc) in enumerate(sorted(items), start=1):
             con.execute("INSERT INTO itens (id, empresa_id, tipo, descricao) VALUES (?, ?, ?, ?)", (i, eid, tipo, desc))
         if b.paid_dates_missing:

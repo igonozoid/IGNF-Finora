@@ -25,7 +25,7 @@ def test_perfis_e_formato():
         "extrato-banco-azul.csv": "extrato", "extrato-caixa.csv": "extrato", "clientes.csv": "cadastro",
         "fornecedores.csv": "cadastro", "centros-fluxo.csv": "centros", "anotacoes.csv": ""}
     desp = by["analitico-despesas.csv"]
-    assert len(desp.rows) == 5                                          # rodapé de totais fora
+    assert len(desp.rows) == 11                                         # rodapé de totais fora
     assert desp.rows[1]["OBSERVACAO"] == "Honorários R$400\nFuncionários R$50"   # quebra de linha juntada
     assert desp.rows[1]["CONTA"] == "Caixa"
     assert len(by["contas.csv"].rows) == 3                              # o bloco repetido não entra
@@ -92,7 +92,7 @@ def _import(session, tmp_path, files, name="mcc.db"):
 def test_mesmo_caminho_da_importacao(session, plus, tmp_path):
     r, rep = _import(session, tmp_path, _all())
     assert rep.ok, rep.problems
-    assert len(r.entries) == 7 and len(r.movements) == 1
+    assert len(r.entries) == 13 and len(r.movements) == 1
     assert list(r.entities) == [sheets.company_id("Sítio Exemplo")]
     honor = _entry(session, "HONORÁRIOS", date(2026, 1, 2))
     assert (honor.paid_date, honor.notes) == (date(2026, 1, 2), "Honorários R$400\nFuncionários R$50")
@@ -123,3 +123,36 @@ def test_reimportar_planilhas_atualiza_sem_duplicar(session, plus, tmp_path):
     adubo = _entry(session, "ADUBO", date(2026, 3, 15))
     assert (adubo.status, adubo.paid_date) == ("paid", date(2026, 3, 15))
     assert session.scalar(select(func.count(Entry.id)).where(Entry.description == "ADUBO")) == 1
+
+
+def test_parcelas_reagrupadas(session, plus, tmp_path):
+    b = sheets.load(_all())
+    path = sheets.build_db(b, tmp_path / "mcc.db", company="Sítio Exemplo")
+    con = sqlite3.connect(path)
+    rows = {(d, v): (g, p, t) for d, v, g, p, t in con.execute(
+        "SELECT descricao, vencimento, grupo, parcela, total_parcelas FROM lancamentos")}
+    con.close()
+    seguro = [rows[("SEGURO", f"2026-0{m}-10")] for m in (2, 3, 4)]
+    assert len({g for g, _p, _t in seguro}) == 1 and [(p, t) for _g, p, t in seguro] == [(1, 3), (2, 3), (3, 3)]
+    nf = [rows[("CONSERTO", d)] for d in ("2026-02-20", "2026-03-20")]
+    assert nf[0][0] == nf[1][0] and [(p, t) for _g, p, t in nf] == [(1, 2), (2, 2)]
+    assert rows[("HONORÁRIOS", "2026-03-02")] == (None, None, None)       # "Ref 02/26" é mês/ano
+    assert rows[("ADUBO", "2026-03-15")] == (None, None, None)
+    assert b.series == 2
+
+    r, rep = _import(session, tmp_path, _all(), "de-novo.db")
+    assert rep.ok, rep.problems
+    seg = list(session.scalars(select(Entry).where(Entry.description == "SEGURO").order_by(Entry.due_date)))
+    assert len({e.series_id for e in seg}) == 1 and seg[0].series_id
+    assert [e.installment for e in seg] == ["1/3", "2/3", "3/3"]
+
+
+def test_marcador_de_parcela():
+    m = sheets._marker
+    assert m({"OBSERVACAO": "Empréstimo  Parcela: 2/24"}) == ("OBSERVACAO", 2, 24)
+    assert m({"OBSERVACAO": "Parcela Financiamento 23_60"}) == ("OBSERVACAO", 23, 60)
+    assert m({"DOCUMENTO": "NF-4521 1/3"}) == ("DOCUMENTO", 1, 3)
+    assert m({"OBSERVACAO": "Ref. 07/24"}) is None                     # mês/ano
+    assert m({"OBSERVACAO": "Referente a 04/23 05/23 e 06/23"}) is None
+    assert m({"OBSERVACAO": "Vence em 20/08/2026"}) is None              # data
+    assert m({"OBSERVACAO": "3/2"}) is None

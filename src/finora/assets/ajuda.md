@@ -270,7 +270,9 @@ depósitos e retiradas, e os usuários.
      **Relatório Analítico** de despesas e de receitas (período inteiro, situação "Todas", descritivo),
      **saldo de contas**, o **extrato de cada conta** (banco e caixa interno), **clientes** e **fornecedores**.
      Digite o nome da empresa, o tipo e, se quiser, o CNPJ/CPF. A data de pagamento sai do extrato; a
-     transferência entra quando aparece nas duas contas. As parcelas vêm soltas (sem a série).
+     transferência entra quando aparece nas duas contas. As parcelas são reagrupadas em série pelo "n/N" no
+     documento ou na observação ("Parcela: 2/6") e pelo mesmo documento numerado em vencimentos diferentes;
+     "Ref. 07/24" (mês/ano) não conta como parcela.
 
    O Finora lê uma cópia; o MCC não muda.
 2. **Ver prévia**: o Finora importa e **confere** os saldos de cada conta e os totais (a pagar, a receber, pago,

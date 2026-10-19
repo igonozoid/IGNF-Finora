@@ -28,7 +28,7 @@ FEATURES = {
 }
 
 # Chave pública que confere as licenças. Gerada por tools/license_tool.py init (a privada fica fora do Git).
-PUBLIC_KEY_HEX = "8ec33495f00e6a483ed629a16160ecc42334e98fafb505563df41fe2d716dd47"
+PUBLIC_KEY_HEX = "f962fcffa74014c01aaf9cf7fb7d449b1b51d42ba181c117a4eb540eaf153674"
 
 _cache: tuple[str, license_key.License | None] | None = None   # (chave guardada, licença lida)
 

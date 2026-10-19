@@ -237,6 +237,9 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
 - **Comparativo de saldos**: o saldo realizado de cada conta em duas datas, o que entrou e saiu entre elas (pela
   data do pagamento) e a variação, em valor e em %. Transferências entre contas aparecem nas duas e se anulam no
   total.
+- **Fechamento de caixa**: tudo o que entrou e saiu de todas as contas de dinheiro (bancos e caixa, sem cartões)
+  no período, na data do pagamento, com o saldo acumulado de todas juntas. Pagar a fatura do cartão sai do caixa
+  e aparece; dinheiro que só trocou de conta fica escondido (marque **Transferências entre contas** para ver).
 
 ## Administração {#admin}
 

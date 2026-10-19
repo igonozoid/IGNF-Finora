@@ -996,3 +996,39 @@ class BalanceCompareView(TableReport):
         self.fill(rows, "Nenhuma conta.")
         note = " · outra moeda convertida pela cotação de cada data" if rep.other_currency else ""
         self.footer.setText(f"Variação no período <b>{self.fmt(rep.change)}</b>{note}")
+
+
+# ---------- extrato de fechamento de caixa (Fase 3.4, do MCC) ----------
+class CashClosingView(TableReport):
+    TITLE = "Fechamento de caixa"
+    COLUMNS = [("DATA", 70, False), ("CONTA", 130, False), ("DESCRIÇÃO", None, False), ("CATEGORIA", 160, False),
+               ("ENTRADA", 115, True), ("SAÍDA", 115, True), ("ACUMULADO", 130, True)]
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.period = self.period_box()
+        self.internal = QCheckBox("Transferências entre contas")
+        self.internal.setToolTip("Mostra também o dinheiro que só trocou de conta (não muda o acumulado)")
+        self.internal.toggled.connect(self.refresh)
+        self.bar.addWidget(self.period)
+        self.bar.addWidget(self.internal)
+        self.finish_bar("Tudo o que entrou e saiu de todas as contas de dinheiro no período (bancos e caixa,\n"
+                        "sem cartões), na data do pagamento, com o saldo acumulado de todas juntas.\n"
+                        "Pagar a fatura do cartão sai do caixa e aparece aqui.")
+
+    def refresh(self):
+        first, last = reports.period_range(self.period.currentData())
+        with Session() as s:
+            rep = reports.cash_closing(s, self.profile.id, first, last, self.internal.isChecked())
+        rows = [{"cells": [first.strftime("%d/%m"), "", "Saldo anterior (todas as contas)", "", None, None, rep.opening],
+                 "bold": True, "tones": {6: "neg" if rep.opening < 0 else None}}]
+        for line in rep.lines:
+            rows.append({"cells": [line.day.strftime("%d/%m"), line.account, line.description, line.category,
+                                   line.inflow or None, -line.outflow if line.outflow else None,
+                                   None if line.internal else line.balance],
+                         "tones": {4: "pos", 6: "neg" if line.balance < 0 else None},
+                         "muted": line.internal, "target": ("entry", line.entry_id)})
+        self.fill(rows, "")
+        note = " · outra moeda convertida pela cotação do dia" if rep.other_currency else ""
+        self.footer.setText(f"Entradas <b>{self.fmt(rep.inflow)}</b> &nbsp;·&nbsp; Saídas <b>{self.fmt(-rep.outflow)}</b>"
+                            f" &nbsp;·&nbsp; Saldo final <b>{self.fmt(rep.closing)}</b>{note}")

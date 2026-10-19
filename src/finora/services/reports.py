@@ -431,6 +431,78 @@ def balances_at(s: Session, entity_id: int, day: date, include_inactive: bool = 
     return BalancesAt(day, rows, real_total.quantize(CENT), prev_total.quantize(CENT), other)
 
 
+# ---------- extrato de fechamento de caixa (Fase 3.4, do MCC) ----------
+@dataclass(frozen=True)
+class ClosingLine:
+    entry_id: int
+    day: date
+    account: str
+    description: str
+    category: str
+    inflow: Decimal
+    outflow: Decimal
+    balance: Decimal                    # acumulado de todas as contas depois deste movimento
+    internal: bool = False              # transferência entre duas contas do caixa (não muda o total)
+
+
+@dataclass(frozen=True)
+class CashClosing:
+    opening: Decimal
+    lines: list[ClosingLine]
+    accounts: list[str]
+    other_currency: bool
+
+    @property
+    def inflow(self) -> Decimal:
+        return sum((x.inflow for x in self.lines if not x.internal), ZERO)
+
+    @property
+    def outflow(self) -> Decimal:
+        return sum((x.outflow for x in self.lines if not x.internal), ZERO)
+
+    @property
+    def closing(self) -> Decimal:
+        return (self.opening + self.inflow - self.outflow).quantize(CENT)
+
+
+def cash_closing(s: Session, entity_id: int, first: date, last: date, internal: bool = False) -> CashClosing:
+    """Movimento realizado de todas as contas de dinheiro (sem cartões, inativas inclusive) no período, pela data do
+    pagamento, com o saldo acumulado. Transferência entre duas dessas contas não muda o total: só aparece com
+    `internal` (e não mexe no acumulado). Pagar a fatura do cartão sai do caixa e aparece."""
+    from sqlalchemy import or_
+    from finora.models import Account
+    from finora.services import fx
+    conv = fx.Converter(s, entity_id)
+    accs = [a for a in accounts.list_accounts(s, entity_id, include_inactive=True) if a.kind != "card"]
+    ids = {a.id: a for a in accs}
+    other = any(a.currency != conv.base for a in accs)
+    to_base = (lambda v, a, day: v if a.currency == conv.base else conv.convert(v, a.currency, day))
+    opening = sum((to_base(Decimal(s.get(Account, a.id).opening_balance), a, first) for a in accs), ZERO)
+    q = (select(Entry, Category.name).outerjoin(Category, Entry.category_id == Category.id)
+         .where(or_(Entry.account_id.in_(ids), Entry.dest_account_id.in_(ids)), Entry.status.in_(("paid", "card"))))
+    moves = []
+    for e, cat in s.execute(q):
+        both = e.kind == "transfer" and e.account_id in ids and e.dest_account_id in ids
+        for acc_id in {e.account_id, e.dest_account_id} & set(ids):
+            when, value = _move(e, acc_id)
+            if when is None or when > last:
+                continue
+            value = to_base(value, ids[acc_id], when)
+            if when < first:
+                opening += value
+            elif not both or internal:
+                label = entries.KINDS[e.kind] if e.kind in entries.NO_CATEGORY else (cat or "Sem categoria")
+                moves.append((when, e.id, value > 0, ids[acc_id].name, e.description or "", label, value, both))
+    moves.sort(key=lambda m: m[:3])
+    lines, bal = [], opening
+    for when, eid, _out, acc, desc, label, value, both in moves:
+        if not both:
+            bal += value
+        lines.append(ClosingLine(eid, when, acc, desc, label, value if value > 0 else ZERO,
+                                 -value if value < 0 else ZERO, bal.quantize(CENT), both))
+    return CashClosing(opening.quantize(CENT), lines, [a.name for a in accs], other)
+
+
 # ---------- comparativo de saldos entre duas datas (Fase 3.3, do MCC) ----------
 @dataclass(frozen=True)
 class BalanceChange:

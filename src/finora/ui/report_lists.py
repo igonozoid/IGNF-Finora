@@ -887,3 +887,51 @@ class PunctualityView(TableReport):
         self.footer.setText("" if not total else
                             f"{total.count} pago(s) · <b>{total.late_share}%</b> com atraso · maior atraso "
                             f"<b>{_days(total.max_late)}</b>")
+
+
+# ---------- saldos em uma data (Fase 3.2, do MCC) ----------
+class BalancesAtView(TableReport):
+    TITLE = "Saldos em uma data"
+    COLUMNS = [("CONTA", None, False), ("TIPO", 110, False), ("REALIZADO", 130, True), ("A RECEBER", 120, True),
+               ("A PAGAR", 120, True), ("PREVISTO", 130, True)]
+
+    def subtitle(self) -> str:
+        return f"Em {self.day.date().toString('dd/MM/yyyy')}"
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.day = QDateEdit(QDate.currentDate(), calendarPopup=True, displayFormat="dd/MM/yyyy")
+        self.day.dateChanged.connect(self.refresh)
+        self.inactive = QCheckBox("Contas inativas")
+        self.inactive.toggled.connect(self.refresh)
+        self.bar.addWidget(QLabel("Em"))
+        self.bar.addWidget(self.day)
+        self.bar.addWidget(self.inactive)
+        self.finish_bar("Realizado: o que estava em cada conta no fim do dia (pagos e recebidos até a data).\n"
+                        "Previsto: o realizado mais o que estava em aberto vencendo até a data (atrasados inclusive).\n"
+                        "Cartão aparece, mas fica fora do total: a dívida dele já é a fatura a pagar.")
+
+    def fmt_cur(self, v: Decimal, currency: str) -> Decimal | str:
+        return v if currency == self.profile.currency else money.fmt(v, currency)
+
+    def refresh(self):
+        q = self.day.date()
+        day = date(q.year(), q.month(), q.day())
+        with Session() as s:
+            rep = reports.balances_at(s, self.profile.id, day, self.inactive.isChecked())
+        rows = []
+        for r in rep.rows:
+            cur = r.currency
+            rows.append({"cells": [r.name, accounts.KINDS.get(r.kind, r.kind), self.fmt_cur(r.realized, cur),
+                                   self.fmt_cur(r.to_receive, cur) if r.to_receive else None,
+                                   self.fmt_cur(-r.to_pay, cur) if r.to_pay else None, self.fmt_cur(r.forecast, cur)],
+                         "tones": {2: "neg" if r.realized < 0 else None, 3: "pos", 4: "neg",
+                                   5: "neg" if r.forecast < 0 else None},
+                         "muted": r.kind == "card" or not r.is_active})
+        if rep.rows:
+            rows.append({"cells": ["Total (sem cartões)", "", rep.realized, None, None, rep.forecast], "bold": True,
+                         "tones": {2: "neg" if rep.realized < 0 else None, 5: "neg" if rep.forecast < 0 else None}})
+        self.fill(rows, "Nenhuma conta.")
+        note = " · contas em outra moeda convertidas pela cotação da data" if rep.other_currency else ""
+        self.footer.setText(f"Realizado <b>{self.fmt(rep.realized)}</b> &nbsp;·&nbsp; Previsto "
+                            f"<b>{self.fmt(rep.forecast)}</b>{note}")

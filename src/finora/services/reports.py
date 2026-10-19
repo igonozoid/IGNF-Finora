@@ -372,6 +372,65 @@ def by_contact(s: Session, entity_id: int, first: date, last: date) -> list[Cont
     return sorted(out, key=lambda x: -(x.received + x.paid))
 
 
+# ---------- saldos em uma data (Fase 3.2, do MCC) ----------
+@dataclass(frozen=True)
+class BalanceAt:
+    account_id: int
+    name: str
+    kind: str
+    currency: str
+    realized: Decimal                   # o que estava na conta no fim do dia (pagos/recebidos até a data)
+    to_receive: Decimal                 # em aberto com vencimento até a data (entra)
+    to_pay: Decimal                     # em aberto com vencimento até a data (sai)
+    is_active: bool = True
+
+    @property
+    def forecast(self) -> Decimal:
+        return self.realized + self.to_receive - self.to_pay
+
+
+@dataclass(frozen=True)
+class BalancesAt:
+    day: date
+    rows: list[BalanceAt]
+    realized: Decimal                   # total na moeda principal, sem cartões
+    forecast: Decimal
+    other_currency: bool                # alguma conta em outra moeda (convertida pela cotação da data)
+
+
+def balances_at(s: Session, entity_id: int, day: date, include_inactive: bool = False) -> BalancesAt:
+    """Realizado × previsto de cada conta numa data. Previsto = realizado + o que estava em aberto vencendo até a
+    data (atrasado inclusive). Cartão aparece, mas não entra no total (a dívida já está na fatura a pagar)."""
+    from sqlalchemy import or_
+    from finora.models import Account
+    from finora.services import fx
+    conv = fx.Converter(s, entity_id)
+    rows, real_total, prev_total, other = [], ZERO, ZERO, False
+    for a in accounts.list_accounts(s, entity_id, include_inactive):
+        acc = s.get(Account, a.id)
+        real, rec, pay = Decimal(acc.opening_balance), ZERO, ZERO
+        q = select(Entry).where(or_(Entry.account_id == a.id, Entry.dest_account_id == a.id),
+                                Entry.status.in_(("paid", "card", "pending")))
+        for e in s.scalars(q):
+            when, v = _move(e, a.id)
+            if e.status != "pending" and when is not None and when <= day:
+                real += v
+            elif e.status != "card" and e.due_date <= day:      # em aberto naquela data (pago só depois, inclusive)
+                rec, pay = (rec + v, pay) if v > 0 else (rec, pay - v)
+        row = BalanceAt(a.id, a.name, a.kind, a.currency, real.quantize(CENT), rec.quantize(CENT), pay.quantize(CENT),
+                        a.is_active)
+        rows.append(row)
+        if a.kind != "card":
+            if a.currency != conv.base:
+                other = True
+                real_total += conv.convert(row.realized, a.currency, day)
+                prev_total += conv.convert(row.forecast, a.currency, day)
+            else:
+                real_total += row.realized
+                prev_total += row.forecast
+    return BalancesAt(day, rows, real_total.quantize(CENT), prev_total.quantize(CENT), other)
+
+
 # ---------- pontualidade (Fase 3.1, do MCC) ----------
 PUNCTUALITY_KINDS = {"income": "Recebimentos (clientes)", "expense": "Pagamentos (fornecedores)"}
 NO_CONTACT = "(sem contato)"

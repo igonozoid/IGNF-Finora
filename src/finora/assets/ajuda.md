@@ -230,6 +230,10 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
   atraso, a maior antecipação e a média de dias (positiva = atrasa; negativa = antecipa), pela data do
   pagamento. Escolha **Recebimentos** (como os clientes te pagam) ou **Pagamentos** (como você paga os
   fornecedores).
+- **Saldos em uma data**: para cada conta, o **realizado** (o que estava nela no fim do dia escolhido) e o
+  **previsto** (o realizado mais o que estava em aberto vencendo até aquela data, atrasados inclusive, separado em
+  a receber e a pagar). Cartão aparece, mas fica fora do total: a dívida dele já é a fatura a pagar. Marque
+  **Contas inativas** para ver também as desativadas.
 
 ## Administração {#admin}
 

@@ -240,6 +240,9 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
 - **Fechamento de caixa**: tudo o que entrou e saiu de todas as contas de dinheiro (bancos e caixa, sem cartões)
   no período, na data do pagamento, com o saldo acumulado de todas juntas. Pagar a fatura do cartão sai do caixa
   e aparece; dinheiro que só trocou de conta fica escondido (marque **Transferências entre contas** para ver).
+- **Extrato por conta › Previsto**: inclui o que está em aberto, na data do vencimento (aparece em cinza, com
+  "(em aberto)"); o saldo anterior passa a contar o que venceu antes do período e continua em aberto. O extrato
+  normal (só o realizado) continua em todas as edições.
 
 ## Administração {#admin}
 

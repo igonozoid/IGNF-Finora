@@ -226,7 +226,8 @@ class AccountStatementView(TableReport):
     TITLE = "Extrato por conta"
 
     def subtitle(self) -> str:
-        return f"{self.account.currentText()} · {self.period.currentText()}"
+        return f"{self.account.currentText()} · {self.period.currentText()}" + \
+            (" · previsto" if self.forecast.isChecked() else "")
     COLUMNS = [("DATA", 70, False), ("DESCRIÇÃO", None, False), ("CATEGORIA", 170, False),
                ("ENTRADA", 120, True), ("SAÍDA", 120, True), ("SALDO", 130, True)]
 
@@ -236,11 +237,26 @@ class AccountStatementView(TableReport):
         self.account.setMinimumWidth(160)
         self.account.currentIndexChanged.connect(self.refresh)
         self.period = self.period_box()
+        self.forecast = QCheckBox("Previsto")
+        self.forecast.setToolTip("Inclui o que está em aberto, na data do vencimento (edições Plus e Pro)")
+        self.forecast.toggled.connect(self._forecast_toggled)
         self.bar.addWidget(self.account)
         self.bar.addWidget(self.period)
+        self.bar.addWidget(self.forecast)
         self.finish_bar("Tudo o que entrou e saiu da conta no período, na data em que aconteceu,\n"
                         "com o saldo depois de cada movimento. Só o que já foi pago/recebido.\n"
-                        "No cartão, as compras aparecem na data da compra.")
+                        "No cartão, as compras aparecem na data da compra.\n"
+                        "Previsto: inclui também o que está em aberto, na data do vencimento (em cinza);\n"
+                        "o saldo anterior passa a contar o que venceu antes e continua em aberto.")
+
+    def _forecast_toggled(self, on: bool):
+        from finora.core.licensing import allowed, current_edition
+        if on and not allowed(current_edition(), "mcc_reports"):
+            from finora.ui.widgets import show_upgrade
+            self.forecast.setChecked(False)
+            show_upgrade(self, "O extrato no modo previsto é um recurso das edições Plus e Pro.")
+            return
+        self.refresh()
 
     def _fill_accounts(self):
         keep = self.account.currentData()
@@ -263,17 +279,20 @@ class AccountStatementView(TableReport):
             return
         first, last = reports.period_range(self.period.currentData())
         with Session() as s:
-            st = reports.account_statement(s, acc_id, first, last)
+            st = reports.account_statement(s, acc_id, first, last, forecast=self.forecast.isChecked())
         rows = [{"cells": [first.strftime("%d/%m"), "Saldo anterior", "", None, None, st.opening],
                  "bold": True, "tones": {5: "neg" if st.opening < 0 else None}}]
         for line in st.lines:
-            rows.append({"cells": [line.day.strftime("%d/%m"), line.description, line.category,
-                                   line.inflow or None, -line.outflow if line.outflow else None, line.balance],
-                         "tones": {3: "pos", 1: None, 5: "neg" if line.balance < 0 else None},
-                         "target": ("entry", line.entry_id)})
+            rows.append({"cells": [line.day.strftime("%d/%m"), line.description + (" (em aberto)" if line.pending else ""),
+                                   line.category, line.inflow or None, -line.outflow if line.outflow else None,
+                                   line.balance],
+                         "tones": {3: None if line.pending else "pos", 1: None,
+                                   5: "neg" if line.balance < 0 else None},
+                         "muted": line.pending, "target": ("entry", line.entry_id)})
         self.fill(rows, "")
+        final = "Saldo final previsto" if self.forecast.isChecked() else "Saldo final"
         self.footer.setText(f"Entradas <b>{self.fmt(st.inflow)}</b> &nbsp;·&nbsp; Saídas <b>{self.fmt(-st.outflow)}</b>"
-                            f" &nbsp;·&nbsp; Saldo final <b>{self.fmt(st.closing)}</b>")
+                            f" &nbsp;·&nbsp; {final} <b>{self.fmt(st.closing)}</b>")
 
 
 # ---------- por categoria ----------

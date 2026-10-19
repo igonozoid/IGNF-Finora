@@ -258,6 +258,7 @@ class StatementLine:
     inflow: Decimal
     outflow: Decimal
     balance: Decimal
+    pending: bool = False            # modo previsto: ainda em aberto (na data do vencimento)
 
 
 @dataclass(frozen=True)
@@ -295,27 +296,38 @@ def _move(e: Entry, account_id: int) -> tuple[date, Decimal]:
     return when, amount if e.kind in entries.INFLOW else -amount
 
 
-def account_statement(s: Session, account_id: int, first: date, last: date) -> AccountStatement:
-    """Extrato: saldo anterior + cada movimento do período (pela data em que aconteceu) com o saldo corrido."""
+def account_statement(s: Session, account_id: int, first: date, last: date,
+                      forecast: bool = False) -> AccountStatement:
+    """Extrato: saldo anterior + cada movimento do período (pela data em que aconteceu) com o saldo corrido.
+    forecast (Fase 3.5, modo previsto do MCC): inclui também o que está em aberto, na data do vencimento; o saldo
+    anterior passa a contar o que venceu antes do período e continua em aberto."""
+    from sqlalchemy import or_
     from finora.models import Account
     acc = s.get(Account, account_id)
+    where = _realized(account_id)
+    if forecast:
+        where = or_(where, or_(Entry.account_id == account_id, Entry.dest_account_id == account_id)
+                    & (Entry.status == "pending"))
     rows = s.execute(select(Entry, Category.name).outerjoin(Category, Entry.category_id == Category.id)
-                     .where(_realized(account_id))).all()
+                     .where(where)).all()
     opening = Decimal(acc.opening_balance)
     moves = []
     for e, cat in rows:
         when, value = _move(e, account_id)
+        pending = e.status == "pending"
+        if pending:
+            when = e.due_date
         if when < first:
             opening += value
         elif when <= last:
             label = entries.KINDS[e.kind] if e.kind in entries.NO_CATEGORY else (cat or "Sem categoria")
-            moves.append((when, e.id, e.description or "", label, value))
-    moves.sort(key=lambda m: (m[0], m[1]))
+            moves.append((when, pending, e.id, e.description or "", label, value))
+    moves.sort(key=lambda m: (m[0], m[1], m[2]))                    # no mesmo dia, o realizado antes do previsto
     lines, bal = [], opening
-    for when, eid, desc, label, value in moves:
+    for when, pending, eid, desc, label, value in moves:
         bal += value
         lines.append(StatementLine(eid, when, desc, label, value if value > 0 else ZERO,
-                                   -value if value < 0 else ZERO, bal.quantize(CENT)))
+                                   -value if value < 0 else ZERO, bal.quantize(CENT), pending))
     return AccountStatement(opening.quantize(CENT), lines)
 
 

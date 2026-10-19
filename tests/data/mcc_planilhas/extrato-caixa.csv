@@ -1,0 +1,10 @@
+Extrato do caixa interno;
+Período de 01/01/2000 a 31/12/2030;
+ ;
+DATA;MOV;NOME;TIPO;OBS;CRÉDITO;DÉBITO;
+05/12/2025;DEPOSITADO EM CONTA BANCÁRIA;                    ;Desc;Antigo;;R$ 100,00;
+02/01/2026;PAGTO.: HONORÁRIOS;CONTÁBIL EXEMPLO LTDA;Desc;;;R$ 450,00;
+20/01/2026;RETIRADO DE CONTA BANCÁRIA;                    ;Cred;;R$ 200,00;;
+02/02/2026;PAGTO.: HONORÁRIOS;CONTÁBIL EXEMPLO LTDA;Desc;;;R$ 450,00;
+;;;;;R$ 200,00;R$ 1.000,00;
+Caixa Interno:     Saldo até 31/12/1999: R$ 0,00    Saldo final em 31/12/2030: R$- 700,00;

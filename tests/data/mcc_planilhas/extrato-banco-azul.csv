@@ -1,0 +1,9 @@
+Extrato de conta bancária;
+Período de 01/01/2000 a 31/12/2030;
+ ;
+DATA;MOV;NOME;TIPO;OBS;CRÉDITO;DÉBITO;
+10/01/2026;PAGTO.: ENERGIA ELÉTRICA ;ENERGIA SUL S.A.;Desc;;;R$ 300,00;
+15/01/2026;REC.: VENDA DE MEL;MARIA CLIENTE;Cred;;R$ 2.000,00;;
+20/01/2026;RETIRADA;                    ;Desc;Troco do caixa;;R$ 200,00;
+;;;;;R$ 2.000,00;R$ 500,00;
+Conta: Banco Azul  -  Saldo até 31/12/1999: R$ 1.000,00    Saldo final em 31/12/2030: R$ 2.500,00;

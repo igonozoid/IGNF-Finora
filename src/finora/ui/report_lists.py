@@ -688,13 +688,24 @@ class CategoryMonthsView(TableReport):
         self.finish_bar("Cada categoria mês a mês (pela data da compra/vencimento, pago ou não), com a média\n"
                         "mensal e o total. Bom para ver o que subiu ou caiu de um mês para o outro.")
 
+    # pontos de troca para o demonstrativo anual (AnnualView)
+    def _months(self) -> list[tuple[int, int]]:
+        return reports.period_months(self.period.currentData())
+
+    def _by(self) -> str:
+        return "category"
+
+    def _label(self, r) -> str:
+        return r.category if r.group == r.category else f"{r.group} › {r.category}"
+
     def refresh(self):
-        months = reports.period_months(self.period.currentData())
+        months = self._months()
         many = len({y for y, _m in months}) > 1
-        self.set_columns([("CATEGORIA", None, False)] + [(self.month_title(y, m, many), 84, True) for y, m in months]
+        title = reports.GROUP_BY[self._by()][0].upper()
+        self.set_columns([(title, None, False)] + [(self.month_title(y, m, many), 84, True) for y, m in months]
                          + [("MÉDIA", 90, True), ("TOTAL", 96, True)])
         with Session() as s:
-            data = reports.category_by_month(s, self.profile.id, months)
+            data = reports.by_month(s, self.profile.id, months, self._by())
         from finora.ui.report_charts import ChartData
         sums = {k: [sum((r.values[i] for r in data if r.kind == k), Decimal(0)) for i in range(len(months))]
                 for k in ("income", "expense")}
@@ -707,11 +718,10 @@ class CategoryMonthsView(TableReport):
                              "bold": True})
                 last_kind = r.kind
             sign = 1 if r.kind == "income" else -1
-            label = r.category if r.group == r.category else f"{r.group} › {r.category}"
-            rows.append({"cells": [label] + [sign * v if v else None for v in r.values]
+            rows.append({"cells": [self._label(r)] + [sign * v if v else None for v in r.values]
                          + [sign * r.average, sign * r.total],
                          "tones": {len(months) + 1: "mut"}})
-        self.fill(rows, "Nenhum lançamento com categoria nesse período.")
+        self.fill(rows, "Nenhum lançamento nesse período.")
         self.footer.setText("Valores na moeda principal. Média = total dividido pelo número de meses do período.")
 
 
@@ -1051,3 +1061,38 @@ class CashClosingView(TableReport):
         note = " · outra moeda convertida pela cotação do dia" if rep.other_currency else ""
         self.footer.setText(f"Entradas <b>{self.fmt(rep.inflow)}</b> &nbsp;·&nbsp; Saídas <b>{self.fmt(-rep.outflow)}</b>"
                             f" &nbsp;·&nbsp; Saldo final <b>{self.fmt(rep.closing)}</b>{note}")
+
+
+# ---------- demonstrativo anual (Fase 3.6, do MCC) ----------
+class AnnualView(CategoryMonthsView):
+    TITLE = "Demonstrativo anual"
+
+    def subtitle(self) -> str:
+        return f"{self.year.currentText()} · por {self.group_by.currentText().lower()}"
+
+    def __init__(self, profile: Profile, t: dict):
+        TableReport.__init__(self, profile, t)
+        this = date.today().year
+        self.year = QComboBox()
+        for y in range(this + 1, this - 7, -1):
+            self.year.addItem(str(y), y)
+        self.year.setCurrentIndex(self.year.findData(this))
+        self.group_by = QComboBox()
+        for k, (label, _missing) in reports.GROUP_BY.items():
+            self.group_by.addItem(label, k)
+        for w in (self.year, self.group_by):
+            w.currentIndexChanged.connect(self.refresh)
+            self.bar.addWidget(w)
+        self.finish_bar("Os 12 meses do ano escolhido, com a média mensal e o total, agrupados por categoria,\n"
+                        "contato, centro de custo ou conta (pela data da compra/vencimento, pago ou não).\n"
+                        "É o demonstrativo anual de despesas e receitas do MCC.")
+
+    def _months(self) -> list[tuple[int, int]]:
+        y = self.year.currentData()
+        return [(y, m) for m in range(1, 13)]
+
+    def _by(self) -> str:
+        return self.group_by.currentData()
+
+    def _label(self, r) -> str:
+        return super()._label(r) if self._by() == "category" else r.category

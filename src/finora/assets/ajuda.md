@@ -243,6 +243,9 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
 - **Extrato por conta › Previsto**: inclui o que está em aberto, na data do vencimento (aparece em cinza, com
   "(em aberto)"); o saldo anterior passa a contar o que venceu antes do período e continua em aberto. O extrato
   normal (só o realizado) continua em todas as edições.
+- **Demonstrativo anual**: os 12 meses do ano escolhido, com a média mensal e o total, agrupados por
+  **categoria, contato, centro de custo ou conta** (pela data da compra/vencimento, pago ou não). Receitas em
+  cima, despesas embaixo.
 
 ## Administração {#admin}
 

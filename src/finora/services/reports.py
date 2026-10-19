@@ -789,18 +789,39 @@ class CategoryMonths:
 
 def category_by_month(s: Session, entity_id: int, months: list[tuple[int, int]]) -> list[CategoryMonths]:
     """Quanto entrou/saiu em cada categoria, mês a mês (competência). Receitas primeiro; maiores no topo."""
+    return by_month(s, entity_id, months, "category")
+
+
+# demonstrativo anual (Fase 3.6, do MCC): agrupar por… -> (rótulo, texto quando falta)
+GROUP_BY = {"category": ("Categoria", "Sem categoria"), "contact": ("Contato", "Sem contato"),
+            "cost_center": ("Centro de custo", "Sem centro de custo"), "account": ("Conta", "Sem conta")}
+
+
+def by_month(s: Session, entity_id: int, months: list[tuple[int, int]], by: str = "category") -> list[CategoryMonths]:
+    """Receitas e despesas mês a mês (competência, pago ou não, sem cancelados), agrupadas por categoria (com o
+    grupo), contato, centro de custo ou conta. Receitas primeiro; maiores no topo. Valores na moeda principal."""
+    from finora.models import Account, Contact, CostCenter
+    if by not in GROUP_BY:
+        raise ValueError("Agrupamento inválido.")
     first, last = entries.month_range(*months[0])[0], entries.month_range(*months[-1])[1]
-    parent = aliased(Category)
-    q = (select(Entry.competence_date, Entry.kind, Entry.base_amount, Category.name, parent.name)
-         .select_from(Entry).outerjoin(Category, Entry.category_id == Category.id)
-         .outerjoin(parent, Category.parent_id == parent.id)
-         .where(Entry.entity_id == entity_id, Entry.kind.in_(entries.RESULT_KINDS), Entry.status != "canceled",
-                Entry.competence_date.between(first, last)))
+    missing = GROUP_BY[by][1]
+    q = select(Entry.competence_date, Entry.kind, Entry.base_amount).select_from(Entry)
+    if by == "category":
+        parent = aliased(Category)
+        q = (q.add_columns(Category.name, parent.name).outerjoin(Category, Entry.category_id == Category.id)
+             .outerjoin(parent, Category.parent_id == parent.id))
+    else:
+        model, col = {"contact": (Contact, Entry.contact_id), "cost_center": (CostCenter, Entry.cost_center_id),
+                      "account": (Account, Entry.account_id)}[by]
+        q = q.add_columns(model.name).outerjoin(model, col == model.id)
+    q = q.where(Entry.entity_id == entity_id, Entry.kind.in_(entries.RESULT_KINDS), Entry.status != "canceled",
+                Entry.competence_date.between(first, last))
     index = {ym: i for i, ym in enumerate(months)}
     acc: dict[tuple, list] = {}
-    for when, kind, amount, cat, group in s.execute(q):
-        key = (group or cat or "Sem categoria", cat or "Sem categoria", kind)
-        vals = acc.setdefault(key, [ZERO] * len(months))
+    for row in s.execute(q):
+        when, kind, amount, name = row[0], row[1], row[2], row[3] or missing
+        group = (row[4] or name) if by == "category" else name
+        vals = acc.setdefault((group, name, kind), [ZERO] * len(months))
         vals[index[(when.year, when.month)]] += Decimal(amount)
     out = [CategoryMonths(g, c, k, [v.quantize(CENT) for v in vals]) for (g, c, k), vals in acc.items()]
     return sorted(out, key=lambda x: (x.kind != "income", -x.total, x.category.lower()))

@@ -372,6 +372,59 @@ def by_contact(s: Session, entity_id: int, first: date, last: date) -> list[Cont
     return sorted(out, key=lambda x: -(x.received + x.paid))
 
 
+# ---------- pontualidade (Fase 3.1, do MCC) ----------
+PUNCTUALITY_KINDS = {"income": "Recebimentos (clientes)", "expense": "Pagamentos (fornecedores)"}
+NO_CONTACT = "(sem contato)"
+
+
+@dataclass(frozen=True)
+class PunctualityRow:
+    contact: str
+    count: int                          # pagos no período
+    on_time: int                        # pagos no vencimento ou antes
+    late: int
+    max_late: int                       # maior atraso, em dias (0 = nunca atrasou)
+    max_early: int                      # maior antecipação, em dias (0 = nunca antecipou)
+    average: Decimal                    # média de dias (positivo = atraso, negativo = antecipação)
+    amount: Decimal
+
+    @property
+    def late_share(self) -> int:
+        return round(100 * self.late / self.count) if self.count else 0
+
+
+def punctuality(s: Session, entity_id: int, first: date, last: date, kind: str = "income") -> list[PunctualityRow]:
+    """Por contato, quantos dias antes ou depois do vencimento foram pagos os lançamentos pagos no período (pela
+    data do pagamento). kind: income = clientes te pagando; expense = você pagando os fornecedores."""
+    from finora.models import Contact
+    q = (select(Contact.name, Entry.due_date, Entry.paid_date, Entry.base_amount)
+         .select_from(Entry).outerjoin(Contact, Entry.contact_id == Contact.id)
+         .where(Entry.entity_id == entity_id, Entry.kind == kind, Entry.status == "paid",
+                Entry.paid_date.is_not(None), Entry.paid_date.between(first, last)))
+    acc: dict[str, list] = {}
+    for name, due, paid, amount in s.execute(q):
+        acc.setdefault(name or NO_CONTACT, []).append(((paid - due).days, Decimal(amount or 0)))
+    out = []
+    for name, items in acc.items():
+        days = [d for d, _a in items]
+        out.append(PunctualityRow(
+            name, len(days), sum(d <= 0 for d in days), sum(d > 0 for d in days), max(max(days), 0),
+            max(-min(days), 0), (Decimal(sum(days)) / len(days)).quantize(Decimal("0.1")),
+            sum((a for _d, a in items), ZERO).quantize(CENT)))
+    return sorted(out, key=lambda r: (-r.late, -r.max_late, r.contact.lower()))
+
+
+def punctuality_total(rows: list[PunctualityRow]) -> PunctualityRow | None:
+    """Linha de total: as mesmas medidas sobre todos os lançamentos."""
+    if not rows:
+        return None
+    n = sum(r.count for r in rows)
+    return PunctualityRow("Total", n, sum(r.on_time for r in rows), sum(r.late for r in rows),
+                          max(r.max_late for r in rows), max(r.max_early for r in rows),
+                          (sum((r.average * r.count for r in rows), Decimal(0)) / n).quantize(Decimal("0.1")),
+                          sum((r.amount for r in rows), ZERO))
+
+
 # ---------- por centro de custo ----------
 @dataclass(frozen=True)
 class CostCenterTotal:

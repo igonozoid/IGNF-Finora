@@ -829,3 +829,61 @@ class OverdueView(TableReport):
         self.footer.setText(f"Você deve <b>{self.fmt(owe)}</b> &nbsp;·&nbsp; Te devem <b>{self.fmt(owed)}</b>"
                             " &nbsp;·&nbsp; Duplo clique numa linha abre o lançamento ou a fatura.")
         set_tone(self.footer, None)
+
+
+# ---------- pontualidade (Fase 3.1, do MCC) ----------
+def _days(n: int) -> str:
+    return "—" if not n else f"{n} dia" + ("s" if n != 1 else "")
+
+
+class PunctualityView(TableReport):
+    TITLE = "Pontualidade"
+    COLUMNS = [("CONTATO", None, False), ("QTD.", 55, True), ("EM DIA", 70, True), ("ATRASADOS", 90, True),
+               ("MAIOR ATRASO", 105, True), ("MAIOR ANTECIP.", 110, True), ("MÉDIA", 95, True), ("VALOR", 125, True)]
+
+    def subtitle(self) -> str:
+        return f"{self.kind.currentText()} · {self.period.currentText()}"
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.kind = QComboBox()
+        for k, label in reports.PUNCTUALITY_KINDS.items():
+            self.kind.addItem(label, k)
+        self.kind.currentIndexChanged.connect(self.refresh)
+        self.period = self.period_box()
+        self.period.setCurrentIndex(self.period.findData("12m"))
+        self.bar.addWidget(self.kind)
+        self.bar.addWidget(self.period)
+        self.finish_bar("Por contato, quantos dias antes ou depois do vencimento os lançamentos foram pagos\n"
+                        "(pela data do pagamento, no período). Média positiva = atrasa; negativa = antecipa.\n"
+                        "Recebimentos: como seus clientes te pagam. Pagamentos: como você paga os fornecedores.")
+
+    @staticmethod
+    def _average(v: Decimal) -> str:
+        if not v:
+            return "no dia"
+        text = f"{abs(v)}".replace(".", ",").removesuffix(",0")
+        return f"{text} d " + ("atraso" if v > 0 else "antes")
+
+    def refresh(self):
+        first, last = reports.period_range(self.period.currentData())
+        kind = self.kind.currentData()
+        with Session() as s:
+            data = reports.punctuality(s, self.profile.id, first, last, kind)
+        sign = -1 if kind == "expense" else 1
+
+        def row(r: reports.PunctualityRow, bold: bool = False) -> dict:
+            return {"cells": [r.contact, r.count, r.on_time, r.late, _days(r.max_late), _days(r.max_early),
+                              self._average(r.average), sign * r.amount],
+                    "tones": {3: "neg" if r.late else None, 4: "neg" if r.max_late > 30 else None,
+                              6: "neg" if r.average > 0 else "pos" if r.average < 0 else None},
+                    "bold": bold}
+
+        rows = [row(r) for r in data]
+        total = reports.punctuality_total(data)
+        if total:
+            rows.append(row(total, bold=True))
+        self.fill(rows, "Nenhum lançamento pago neste período.")
+        self.footer.setText("" if not total else
+                            f"{total.count} pago(s) · <b>{total.late_share}%</b> com atraso · maior atraso "
+                            f"<b>{_days(total.max_late)}</b>")

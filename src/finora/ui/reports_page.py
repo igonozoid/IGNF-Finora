@@ -33,6 +33,7 @@ REPORTS = [
     ("category", "Por categoria", "fa6s.tags", None),
     ("cost_center", "Por centro de custo", "fa6s.diagram-project", "cost_centers"),
     ("contact", "Por contato", "fa6s.address-book", None),
+    ("punctuality", "Pontualidade", "fa6s.stopwatch", "mcc_reports"),
     ("agenda", "A pagar e a receber", "fa6s.calendar-days", None),
     ("overdue", "Inadimplência", "fa6s.hourglass-half", None),
     ("category_months", "Comparativo por categoria", "fa6s.table-columns", None),
@@ -44,7 +45,8 @@ REPORTS = [
 ]
 LOCK_MSG = {"budget": "Orçado x realizado é um recurso da edição Plus.",
             "cost_centers": "Relatório por centro de custo é um recurso da edição Plus.",
-            "export": "Exportar para Excel e PDF é um recurso da edição Plus."}
+            "export": "Exportar para Excel e PDF é um recurso da edição Plus.",
+            "mcc_reports": "Os relatórios que vieram do MCC (pontualidade e outros) são das edições Plus e Pro."}
 
 
 def _feature(name: str) -> bool:
@@ -566,6 +568,7 @@ class ReportsPage(QWidget):
                       "statement": rl.AccountStatementView(profile, t), "category": rl.ByCategoryView(profile, t),
                       "cost_center": rl.ByCostCenterView(profile, t), "budget": rl.BudgetView(profile, t),
                       "contact": rl.ByContactView(profile, t), "overdue": rl.OverdueView(profile, t),
+                      "punctuality": rl.PunctualityView(profile, t),
                       "analytical": rl.AnalyticalView(profile, t), "agenda": rl.AgendaView(profile, t),
                       "category_months": rl.CategoryMonthsView(profile, t),
                       "balance_history": rl.BalanceHistoryView(profile, t),

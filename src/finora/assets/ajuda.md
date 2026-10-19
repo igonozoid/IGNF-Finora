@@ -225,6 +225,12 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
 - **Imposto de Renda**: rendimentos por fonte pagadora, pagamentos de saúde e educação com CPF/CNPJ e saldos em
   31/12. É um resumo para conferir: as regras de dedução são da Receita Federal.
 
+**Relatórios que vieram do MCC** (edições Plus e Pro):
+- **Pontualidade**: por contato, quantos lançamentos pagos no período, quantos em dia e atrasados, o maior
+  atraso, a maior antecipação e a média de dias (positiva = atrasa; negativa = antecipa), pela data do
+  pagamento. Escolha **Recebimentos** (como os clientes te pagam) ou **Pagamentos** (como você paga os
+  fornecedores).
+
 ## Administração {#admin}
 
 Edições pagas: **entidades** (cada pessoa ou empresa com dados separados), **usuários** com senha,

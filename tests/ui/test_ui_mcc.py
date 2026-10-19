@@ -77,3 +77,41 @@ def test_arquivo_que_nao_e_do_mcc(plus, window, tmp_path):
 
 def test_bloqueado_na_free(window):
     assert window.page("settings").mcc_btn is None
+
+
+PLANILHAS = sorted((DATA / "mcc_planilhas").glob("*.csv"))
+
+
+def test_planilhas_do_mcc_original(plus, window, dialogs):
+    page = window.page("settings")
+    dlg = MccImportDialog(page, page.t)
+    dlg.load_sheets([str(p) for p in PLANILHAS])
+    assert dlg.mode == "sheets" and not dlg.sheets_box.isHidden() and not dlg.checks
+    assert "Relatório Analítico (2)" in dlg.file_lbl.text() and "anotacoes.csv" in dlg.info.text()
+    assert not dlg.next_btn.isEnabled()                              # falta o nome da empresa
+    dlg.company.setText("Sítio Exemplo")
+    assert dlg.next_btn.isEnabled()
+
+    dlg.next_btn.click()                                             # prévia: monta o banco e confere
+    assert dlg.report.ok and dlg.next_btn.text() == "Importar", dlg.report.problems
+    assert "Saldo de Banco Azul: MCC R$ 2.500,00 · montado R$ 2.500,00" in dlg.notes.text()
+    assert _entities() == 1
+
+    dlg.next_btn.click()                                             # importa
+    assert dlg.done and _entities() == 2
+    with db.Session() as s:
+        assert s.scalar(select(Entity.name).where(Entity.name == "Sítio Exemplo")) == "Sítio Exemplo"
+
+    again = MccImportDialog(page, page.t)                            # de novo, mesma empresa: atualiza
+    again.load_sheets([str(p) for p in PLANILHAS])
+    again.company.setText("Sítio Exemplo")
+    again.next_btn.click()
+    assert "já foi importada das planilhas" in again.notes.text()
+    assert again.result.reimport and again.result.created == 0
+
+
+def test_planilhas_sem_o_analitico(plus, window):
+    page = window.page("settings")
+    dlg = MccImportDialog(page, page.t)
+    dlg.load_sheets([str(DATA / "mcc_planilhas" / "contas.csv")])
+    assert "Analítico" in dlg.error.text() and dlg.mode == "db"

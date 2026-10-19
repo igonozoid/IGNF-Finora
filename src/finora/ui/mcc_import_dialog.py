@@ -1,25 +1,30 @@
-"""Trazer dados do MCC (Fase 2.11): escolher o mcc.db e as empresas, ver a prévia com a conferência, importar.
+"""Trazer dados do MCC (Fase 2.11): escolher o mcc.db (clone) ou as planilhas CSV do MCC original, ver a prévia com
+a conferência, importar.
 
 A prévia importa e confere de verdade, mas desfaz tudo no fim (mapper.preview): o botão Importar só libera quando
 os saldos e totais batem com o MCC. A importação faz backup antes e é tudo-ou-nada (mapper.import_safely).
-Planilhas exportadas do MCC entram depois, com os perfis de coluna (Fase 2.10).
+Planilhas: sheets.build_db monta um banco no formato do clone numa pasta temporária e o caminho é o mesmo; a
+conferência dos saldos com o rodapé dos extratos aparece nas notas.
 """
+import shutil
+import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths, Qt, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QDialog, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QStackedWidget,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView, QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
+    QLineEdit, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from finora.core import money
 from finora.core.db import Session
 from finora.core.logs import log
-from finora.services.mcc_import import conference, mapper, reader
+from finora.services.mcc_import import conference, mapper, reader, sheets
 from finora.ui import theme
-from finora.ui.widgets import WrapLabel, button, help_icon, set_tone
+from finora.ui.widgets import WrapLabel, button, field_label, help_icon, set_tone
 
 FILTER = "Banco do MCC (*.db);;Todos os arquivos (*)"
+CSV_FILTER = "Planilhas do MCC (*.csv);;Todos os arquivos (*)"
 
 
 def _day(iso: str | None) -> str:
@@ -43,6 +48,12 @@ class MccImportDialog(QDialog):
         super().__init__(parent)
         self.t = t
         self.path: str = ""
+        self.mode = "db"                      # db (mcc.db do clone) | sheets (planilhas do MCC original)
+        self.sheet_paths: list[str] = []
+        self.bundle: sheets.Bundle | None = None
+        self.extra_notes: list[str] = []
+        self._tmp = tempfile.mkdtemp(prefix="finora-mcc-")
+        self.finished.connect(lambda _r: shutil.rmtree(self._tmp, ignore_errors=True))
         self.summary: reader.Summary | None = None
         self.result: mapper.ImportResult | None = None
         self.report: conference.Conference | None = None
@@ -88,20 +99,49 @@ class MccImportDialog(QDialog):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(theme.SP_M)
         head = QHBoxLayout()
-        head.addWidget(QLabel("1. Banco do MCC", objectName="sectionTitle"))
-        head.addWidget(help_icon("O arquivo mcc.db do MCC (fica na pasta de dados do MCC).\n"
+        head.addWidget(QLabel("1. De onde vêm os dados", objectName="sectionTitle"))
+        head.addWidget(help_icon("Banco do MCC: o arquivo mcc.db do clone do MCC (fica na pasta de dados dele).\n"
+                                 "Planilhas: os CSV exportados do MCC original — Relatório Analítico de despesas\n"
+                                 "e de receitas, saldo de contas, extrato de cada conta, clientes e fornecedores.\n"
                                  "O Finora lê uma cópia: o MCC não é alterado.\n"
                                  "Pode importar de novo depois: o que já veio é atualizado, sem duplicar.", self.t))
         head.addStretch(1)
         lay.addLayout(head)
         row = QHBoxLayout()
-        self.file_lbl = QLabel("Nenhum arquivo escolhido")
-        self.file_lbl.setProperty("role", "muted")
-        self.pick_btn = button("Escolher arquivo…", "secondary", self.t, "fa6s.folder-open", "fg")
+        self.pick_btn = button("Banco do MCC (mcc.db)…", "secondary", self.t, "fa6s.database", "fg")
         self.pick_btn.clicked.connect(self._pick)
+        self.sheets_btn = button("Planilhas do MCC (CSV)…", "secondary", self.t, "fa6s.file-csv", "fg")
+        self.sheets_btn.clicked.connect(self._pick_sheets)
         row.addWidget(self.pick_btn)
-        row.addWidget(self.file_lbl, 1)
+        row.addWidget(self.sheets_btn)
+        row.addStretch(1)
         lay.addLayout(row)
+        self.file_lbl = WrapLabel("Nenhum arquivo escolhido")
+        self.file_lbl.setProperty("role", "muted")
+        lay.addWidget(self.file_lbl)
+
+        # planilhas: a empresa não vem nelas
+        self.sheets_box = QWidget()
+        grid = QGridLayout(self.sheets_box)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(theme.SP_M)
+        grid.setVerticalSpacing(3)
+        self.company = QLineEdit(placeholderText="Nome da empresa (conta controle)")
+        self.ptype = QComboBox()
+        self.ptype.addItem("Pessoa jurídica", "PJ")
+        self.ptype.addItem("Pessoa física", "PF")
+        self.doc = QLineEdit(placeholderText="Opcional")
+        grid.addWidget(field_label("Empresa", self.t), 0, 0)
+        grid.addWidget(field_label("Tipo", self.t), 0, 1)
+        grid.addWidget(field_label("CNPJ / CPF", self.t), 0, 2)
+        grid.addWidget(self.company, 1, 0)
+        grid.addWidget(self.ptype, 1, 1)
+        grid.addWidget(self.doc, 1, 2)
+        grid.setColumnStretch(0, 2)
+        grid.setColumnStretch(2, 1)
+        self.company.textChanged.connect(self._update)
+        self.sheets_box.hide()
+        lay.addWidget(self.sheets_box)
         self.companies_title = QLabel("Empresas para trazer", objectName="sectionTitle")
         lay.addWidget(self.companies_title)
         self.companies_box = QVBoxLayout()
@@ -121,6 +161,38 @@ class MccImportDialog(QDialog):
         if path:
             self.load(path)
 
+    def _pick_sheets(self):
+        start = str(Path(self.sheet_paths[0]).parent) if self.sheet_paths else \
+            QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
+        paths, _ = QFileDialog.getOpenFileNames(self, "Planilhas do MCC original", start, CSV_FILTER)
+        if paths:
+            self.load_sheets(paths)
+
+    def load_sheets(self, paths: list[str]):
+        """Reconhece os relatórios pelas colunas; a empresa (nome, tipo, documento) é digitada aqui."""
+        self.error.clear()
+        try:
+            bundle = sheets.load(paths)
+        except (ValueError, OSError) as e:
+            self.error.setText(str(e))
+            return
+        self.mode, self.sheet_paths, self.bundle, self.path = "sheets", list(paths), bundle, ""
+        self._clear_companies()
+        kinds = {}
+        for s in bundle.sheets:
+            kinds.setdefault(s.label, []).append(s.path.name)
+        self.file_lbl.setText(f"{len(paths)} planilha(s): " + " · ".join(
+            f"{label} ({len(names)})" for label, names in kinds.items()))
+        self.info.setText(" ".join(bundle.warnings))
+        self.sheets_box.show()
+        self.company.setFocus()
+        self._update()
+
+    def _clear_companies(self):
+        for chk in self.checks.values():
+            chk.setParent(None)
+        self.checks = {}
+
     def load(self, path: str):
         """Lê o resumo do banco do MCC e lista as empresas (todas marcadas)."""
         self.error.clear()
@@ -129,13 +201,13 @@ class MccImportDialog(QDialog):
         except (reader.NotMccError, OSError) as e:
             self.error.setText(str(e) or "Não foi possível abrir esse arquivo.")
             return
+        self.mode, self.bundle = "db", None
+        self.sheets_box.hide()
         self.path, self.summary = path, summary
         self.file_lbl.setText(path)
-        for chk in self.checks.values():
-            chk.setParent(None)
+        self._clear_companies()
         with Session() as s:
             before = mapper.already_imported(s)
-        self.checks = {}
         for c in summary.companies:
             text = (f"{c.name} · {c.person_type} · {c.entries} lançamentos · "
                     f"{_day(c.first_day)} a {_day(c.last_day)}")
@@ -154,8 +226,28 @@ class MccImportDialog(QDialog):
         self.info.setText(" ".join(extra))
         self._update()
 
-    def chosen(self) -> list[int]:
+    def chosen(self) -> list[int] | None:
+        if self.mode == "sheets":
+            return None                       # a única empresa das planilhas
         return [cid for cid, chk in self.checks.items() if chk.isChecked()]
+
+    def _build_from_sheets(self) -> bool:
+        """Monta o banco das planilhas com a empresa digitada. Refaz a cada prévia (o nome pode ter mudado)."""
+        name = self.company.text().strip()
+        bundle = sheets.load(self.sheet_paths)
+        self.path = str(sheets.build_db(bundle, Path(self._tmp) / "mcc-planilhas.db", company=name,
+                                        person_type=self.ptype.currentData(), document=self.doc.text()))
+        self.bundle = bundle
+        notes = [f"Planilhas: {bundle.entries} lançamento(s); {bundle.paid_dates_found} data(s) de pagamento "
+                 f"achada(s) nos extratos; {bundle.transfers} transferência(s)."]
+        for c in bundle.balances:
+            notes.append(f"Saldo de {c.account}: MCC {money.fmt(c.expected)} · montado {money.fmt(c.rebuilt)}"
+                         + ("" if c.ok else " — NÃO BATE"))
+        with Session() as s:
+            if sheets.company_id(name) in mapper.already_imported(s):
+                notes.append(f"\"{name}\" já foi importada das planilhas: o que já veio será atualizado.")
+        self.extra_notes = notes + bundle.warnings
+        return True
 
     # ---------- passo 2: prévia e conferência ----------
     def _check_page(self) -> QWidget:
@@ -201,7 +293,7 @@ class MccImportDialog(QDialog):
         self.counts.setText(text)
         self.problems.setText("\n".join(rep.problems))
         self.problems.setVisible(bool(rep.problems))
-        self.notes.setText("\n".join(rep.notes + r.warnings))
+        self.notes.setText("\n".join(self.extra_notes + rep.notes + r.warnings))
         sheet = conference.to_sheet(rep)
         self.table.setColumnCount(len(sheet.headers))
         self.table.setHorizontalHeaderLabels([h.upper() for h in sheet.headers])
@@ -224,7 +316,10 @@ class MccImportDialog(QDialog):
 
     def run_preview(self) -> None:
         self.error.clear()
+        self.extra_notes = []
         try:
+            if self.mode == "sheets":
+                self._build_from_sheets()
             with reader.open_copy(self.path) as con, Session() as s:
                 days = conference.default_days(con)
                 r, rep = mapper.preview(s, con, self.chosen(), days)
@@ -282,7 +377,8 @@ class MccImportDialog(QDialog):
         self.close_btn.setVisible(not self.done)
         if first:
             self.next_btn.setText("Ver prévia")
-            self.next_btn.setEnabled(bool(self.path and self.chosen()))
+            ready = bool(self.company.text().strip()) if self.mode == "sheets" else bool(self.path and self.chosen())
+            self.next_btn.setEnabled(ready)
             self.next_btn.setToolTip("")
         elif self.done:
             self.next_btn.setText("Concluir")

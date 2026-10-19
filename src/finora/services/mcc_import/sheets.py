@@ -10,7 +10,13 @@ antes das colunas e uma linha de totais no fim. O que cada relatório traz (docs
 A data de pagamento sai do extrato; transferência só entra quando os dois lados aparecem (saída numa conta e
 entrada na outra, mesma data e valor) — o que tem um lado só fica de fora, como no saldo do próprio MCC.
 Parcelas (série) não vêm na planilha: ficam soltas (agrupar é a Fase 2.12).
+
+Os ids do banco montado saem do conteúdo (nome da empresa, da conta, da pessoa; data, item, pessoa, valor,
+vencimento e conta do lançamento), não da ordem das linhas: importar de novo uma exportação mais nova da mesma
+empresa atualiza o que já veio (a situação e a data de pagamento podem mudar) em vez de duplicar, e empresas
+diferentes não se confundem entre si nem com as do mcc.db do clone.
 """
+import hashlib
 import re
 import sqlite3
 import unicodedata
@@ -192,6 +198,25 @@ CREATE TABLE usuarios (id INTEGER PRIMARY KEY, nome TEXT NOT NULL, email TEXT NO
 """
 
 
+class _Ids:
+    """Id estável pelo conteúdo (o vínculo da reimportação usa esses ids). Linhas iguais ganham 1, 2, 3…"""
+
+    def __init__(self, company: str):
+        self.company = _key(company)
+        self.seen: dict[tuple, int] = {}
+
+    def of(self, *parts) -> int:
+        key = (self.company,) + tuple(_key(str(x)) for x in parts)
+        n = self.seen[key] = self.seen.get(key, 0) + 1
+        digest = hashlib.sha1("|".join(key + (str(n),)).encode("utf-8")).hexdigest()
+        return int(digest[:15], 16)                     # cabe no INTEGER do SQLite
+
+
+def company_id(company: str) -> int:
+    """O id da empresa montada a partir das planilhas (o mesmo a cada vez, pelo nome)."""
+    return _Ids(company).of("empresa")
+
+
 def _iso(text: str) -> str | None:
     d = parse_date(text)
     return d.isoformat() if d else None
@@ -243,8 +268,9 @@ def build_db(b: Bundle, dest: str | Path, *, company: str, person_type: str = "P
     con = sqlite3.connect(dest)
     try:
         con.executescript(SCHEMA)
-        con.execute("INSERT INTO empresas (id, nome, pessoa, documento) VALUES (1, ?, ?, ?)",
-                    (company.strip(), "J" if person_type == "PJ" else "F", re.sub(r"\D", "", document) or None))
+        ids, eid = _Ids(company), company_id(company)
+        con.execute("INSERT INTO empresas (id, nome, pessoa, documento) VALUES (?, ?, ?, ?)",
+                    (eid, company.strip(), "J" if person_type == "PJ" else "F", re.sub(r"\D", "", document) or None))
         entries = [r for s in b.of("analitico") for r in s.rows]
         b.entries = len(entries)
 
@@ -260,13 +286,14 @@ def build_db(b: Bundle, dest: str | Path, *, company: str, person_type: str = "P
         if not b.of("contas"):
             b.warnings.append("Sem o relatório de saldo de contas: os saldos iniciais ficaram zerados.")
         acc_id = {}
-        for i, name in enumerate(names, start=1):
+        for name in names:
+            i = ids.of("conta", name)
             is_cash = name in cash or "CAIXA" in _key(name)
             ext = next((s for s in b.of("extrato") if _key(s.account) in (_key(name), "CAIXA INTERNO" if is_cash else "")),
                        None)
             start = opening.get(name, ext.opening if ext and ext.opening is not None else ZERO)
-            con.execute("INSERT INTO contas (id, empresa_id, descricao, tipo, saldo_inicial) VALUES (?, 1, ?, ?, ?)",
-                        (i, name, "C" if is_cash else "B", float(start)))
+            con.execute("INSERT INTO contas (id, empresa_id, descricao, tipo, saldo_inicial) VALUES (?, ?, ?, ?, ?)",
+                        (i, eid, name, "C" if is_cash else "B", float(start)))
             acc_id[name] = i
 
         # centros: os usados nos lançamentos; vale para despesa/receita conforme o uso
@@ -275,15 +302,16 @@ def build_db(b: Bundle, dest: str | Path, *, company: str, person_type: str = "P
             if r.get("CENTRO DE CUSTO"):
                 used.setdefault(r["CENTRO DE CUSTO"], set()).add("R" if _key(r["TIPO"]).startswith("REC") else "D")
         cc_id = {}
-        for i, (name, kinds) in enumerate(sorted(used.items()), start=1):
-            con.execute("INSERT INTO centros (id, empresa_id, nome, aplica_despesa, aplica_receita) VALUES (?, 1, ?, ?, ?)",
-                        (i, name, int("D" in kinds), int("R" in kinds)))
+        for name, kinds in sorted(used.items()):
+            i = ids.of("centro", name)
+            con.execute("INSERT INTO centros (id, empresa_id, nome, aplica_despesa, aplica_receita) VALUES (?, ?, ?, ?, ?)",
+                        (i, eid, name, int("D" in kinds), int("R" in kinds)))
             cc_id[name] = i
 
-        for i, p in enumerate(_people(b), start=1):
+        for p in _people(b):
             con.execute("""INSERT INTO pessoas (id, empresa_id, tipo, pessoa, nome, documento, endereco, bairro, cidade,
-                           uf, cep, telefone, email) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (i, p["_tipo"], _person(p.get("DOCUMENTO")), p["NOME"].strip(),
+                           uf, cep, telefone, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (ids.of("pessoa", p["_tipo"], p["NOME"]), eid, p["_tipo"], _person(p.get("DOCUMENTO")), p["NOME"].strip(),
                          re.sub(r"\D", "", p.get("DOCUMENTO") or "") or None, p.get("ENDERECO") or None,
                          p.get("BAIRRO") or None, p.get("CIDADE") or None, p.get("ESTADO") or None,
                          p.get("CEP") or None, p.get("TELEFONE") or None, p.get("E-MAIL") or None))
@@ -307,7 +335,7 @@ def build_db(b: Bundle, dest: str | Path, *, company: str, person_type: str = "P
                     moves.append((acc, parse_date(r["DATA"]), _money(r.get("CREDITO")), _money(r.get("DEBITO")),
                                   r.get("MOV", ""), r.get("OBS", "")))
         items = set()
-        for i, r in enumerate(entries, start=1):
+        for r in entries:
             tipo = "R" if _key(r["TIPO"]).startswith("REC") else "D"
             value = _money(r["VALOR"])
             paid = _key(r["MOVSIT"]) == "V"
@@ -324,13 +352,14 @@ def build_db(b: Bundle, dest: str | Path, *, company: str, person_type: str = "P
             items.add((tipo, r["DESCRICAO"].strip()))
             con.execute("""INSERT INTO lancamentos (id, empresa_id, tipo, data_mov, documento, descricao, pessoa, valor,
                            situacao, vencimento, data_pagamento, observacao, conta_id, centro_id, criado_em)
-                           VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (i, tipo, _iso(r["DATA"]), r.get("DOCUMENTO") or None, r["DESCRICAO"].strip(),
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (ids.of("lanc", tipo, r["DATA"], r["DESCRICAO"], r.get("NOME"), value, r["VENCIMENTO"],
+                                r.get("CONTA")), eid, tipo, _iso(r["DATA"]), r.get("DOCUMENTO") or None, r["DESCRICAO"].strip(),
                          r.get("NOME") or None, float(value), "V" if paid else "P", due.isoformat(),
                          pay.isoformat() if pay else None, r.get("OBSERVACAO") or None, acc_id.get(r.get("CONTA")),
                          cc_id.get(r.get("CENTRO DE CUSTO")), f"{_iso(r['DATA'])} 00:00:00"))
         for i, (tipo, desc) in enumerate(sorted(items), start=1):
-            con.execute("INSERT INTO itens (id, empresa_id, tipo, descricao) VALUES (?, 1, ?, ?)", (i, tipo, desc))
+            con.execute("INSERT INTO itens (id, empresa_id, tipo, descricao) VALUES (?, ?, ?, ?)", (i, eid, tipo, desc))
         if b.paid_dates_missing:
             b.warnings.append(f"{b.paid_dates_missing} pago(s) sem a linha no extrato da conta: entram com o "
                               "vencimento como data de pagamento (falta o extrato dessa conta?).")
@@ -347,8 +376,8 @@ def build_db(b: Bundle, dest: str | Path, *, company: str, person_type: str = "P
             ins.remove(pair)
             n += 1
             con.execute("""INSERT INTO movbancarias (id, empresa_id, tipo, situacao, data, origem_id, destino_id, valor,
-                           observacao) VALUES (?, 1, 'T', 'V', ?, ?, ?, ?, ?)""",
-                        (n, o[1].isoformat(), acc_id[o[0]], acc_id[pair[0]], float(o[3]), o[5] or pair[5] or None))
+                           observacao) VALUES (?, ?, 'T', 'V', ?, ?, ?, ?, ?)""",
+                        (ids.of("mov", o[1], o[0], pair[0], o[3]), eid, o[1].isoformat(), acc_id[o[0]], acc_id[pair[0]], float(o[3]), o[5] or pair[5] or None))
         for x in ins:
             b.left_out.append(f"{x[1]:%d/%m/%Y} {x[4]} ({x[0]}) R$ {x[2]}")
         b.transfers = n

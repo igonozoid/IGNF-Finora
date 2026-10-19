@@ -6,6 +6,7 @@ from decimal import Decimal as D
 from pathlib import Path
 
 import pytest
+from sqlalchemy import func, select
 
 from finora.models import Contact, Entry
 from finora.services.mcc_import import conference, mapper, reader, sheets
@@ -75,17 +76,50 @@ def test_saldo_que_nao_bate_vira_aviso(tmp_path):
         sheets.load([DATA / "contas.csv"])
 
 
-def test_mesmo_caminho_da_importacao(session, plus, tmp_path):
-    b = sheets.load(_all())
-    path = sheets.build_db(b, tmp_path / "mcc.db", company="Sítio Exemplo")
+def _entry(s, description, due):
+    return s.scalar(select(Entry).where(Entry.description == description, Entry.due_date == due))
+
+
+def _import(session, tmp_path, files, name="mcc.db"):
+    b = sheets.load(files)
+    path = sheets.build_db(b, tmp_path / name, company="Sítio Exemplo")
     with reader.open_copy(path) as con:
         r = mapper.import_companies(session, con)
         rep = conference.build(session, con, r, [date(2026, 1, 31), date(2026, 3, 31)])
+    return r, rep
+
+
+def test_mesmo_caminho_da_importacao(session, plus, tmp_path):
+    r, rep = _import(session, tmp_path, _all())
     assert rep.ok, rep.problems
     assert len(r.entries) == 7 and len(r.movements) == 1
-    honor = session.get(Entry, r.entries[2])
-    assert (honor.paid_date, honor.due_date, honor.notes) == (date(2026, 1, 2), date(2026, 1, 2),
-                                                              "Honorários R$400\nFuncionários R$50")
-    assert session.get(Entry, r.entries[4]).paid_date == date(2026, 1, 25)   # D6: sem extrato, o vencimento
-    maria = session.get(Contact, r.contacts[1])
-    assert (maria.name, maria.document, maria.is_customer) == ("MARIA CLIENTE", "52998224725", True)
+    assert list(r.entities) == [sheets.company_id("Sítio Exemplo")]
+    honor = _entry(session, "HONORÁRIOS", date(2026, 1, 2))
+    assert (honor.paid_date, honor.notes) == (date(2026, 1, 2), "Honorários R$400\nFuncionários R$50")
+    assert _entry(session, "TARIFA", date(2026, 1, 25)).paid_date == date(2026, 1, 25)   # D6: sem extrato
+    maria = session.scalar(select(Contact).where(Contact.name == "MARIA CLIENTE"))
+    assert (maria.document, maria.is_customer) == ("52998224725", True)
+
+
+def test_reimportar_planilhas_atualiza_sem_duplicar(session, plus, tmp_path):
+    r1, _ = _import(session, tmp_path, _all())
+    r2, _ = _import(session, tmp_path, list(reversed(_all())), "de-novo.db")   # outra ordem: mesmos ids
+    assert r2.reimport and (r2.created, r2.updated, r2.trashed) == (0, 0, 0)
+    assert r2.entries == r1.entries
+
+    newer = tmp_path / "nova"                                            # exportação mais nova: o adubo foi pago
+    newer.mkdir()
+    for f in _all():
+        text = f.read_bytes().decode("cp1252")
+        if f.name == "analitico-despesas.csv":
+            text = text.replace("R$ 1.000,00;P;15/03/2026", "R$ 1.000,00;V;15/03/2026")
+        if f.name == "extrato-banco-azul.csv":
+            text = text.replace(";;;;;R$ 2.000,00;R$ 500,00;",
+                                "15/03/2026;PAGTO.: ADUBO;Agro Insumos;Desc;;;R$ 1.000,00;\r\n;;;;;R$ 2.000,00;R$ 1.500,00;")
+            text = text.replace("R$ 2.500,00;", "R$ 1.500,00;")
+        (newer / f.name).write_bytes(text.encode("cp1252"))
+    r3, rep = _import(session, tmp_path, sorted(newer.glob("*.csv")), "nova.db")
+    assert (r3.created, r3.updated, r3.trashed) == (0, 1, 0) and rep.ok, rep.problems
+    adubo = _entry(session, "ADUBO", date(2026, 3, 15))
+    assert (adubo.status, adubo.paid_date) == ("paid", date(2026, 3, 15))
+    assert session.scalar(select(func.count(Entry.id)).where(Entry.description == "ADUBO")) == 1

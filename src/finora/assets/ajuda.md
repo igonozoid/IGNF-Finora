@@ -264,8 +264,15 @@ Nas edições Plus e Pro, **Configurações › Trazer dados do MCC** traz as em
 empresa vira uma entidade, com contas, centros de custo, clientes e fornecedores, lançamentos, transferências,
 depósitos e retiradas, e os usuários.
 
-1. **Escolher arquivo**: aponte o `mcc.db` do MCC. O Finora lê uma cópia; o MCC não muda. Desmarque as empresas
-   que não quer trazer.
+1. **De onde vêm os dados** — escolha uma das duas:
+   - **Banco do MCC (mcc.db)**: o arquivo do clone do MCC. Desmarque as empresas que não quer trazer.
+   - **Planilhas do MCC (CSV)**: os relatórios exportados do MCC original em CSV, de uma conta controle por vez:
+     **Relatório Analítico** de despesas e de receitas (período inteiro, situação "Todas", descritivo),
+     **saldo de contas**, o **extrato de cada conta** (banco e caixa interno), **clientes** e **fornecedores**.
+     Digite o nome da empresa, o tipo e, se quiser, o CNPJ/CPF. A data de pagamento sai do extrato; a
+     transferência entra quando aparece nas duas contas. As parcelas vêm soltas (sem a série).
+
+   O Finora lê uma cópia; o MCC não muda.
 2. **Ver prévia**: o Finora importa e **confere** os saldos de cada conta e os totais (a pagar, a receber, pago,
    recebido) com o MCC, e depois desfaz tudo. Nada é gravado na prévia.
 3. **Importar**: só libera quando a conferência bate. Antes de gravar, o Finora faz um backup

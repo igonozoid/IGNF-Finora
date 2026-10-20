@@ -94,6 +94,98 @@ def build(s: Session, entry_id: int, *, when: date | None = None, party: str | N
         signer=name if expense else head.name, signer_doc=p_doc if expense else my_doc, head=head)
 
 
+# ---------- duplicata (Fase 3.13, do MCC) ----------
+DUPLICATA_KINDS = {"mercantil": "Duplicata de venda mercantil", "servico": "Duplicata de prestação de serviços"}
+
+
+@dataclass(frozen=True)
+class Duplicata:
+    """Duplicata (Lei 5.474/68): a entidade vende (emitente) e o contato compra (sacado)."""
+    kind: str                     # mercantil | servico
+    number: str                   # nº de ordem da duplicata (ex.: "NF-77-2/3")
+    invoice: str                  # nº da fatura / nota
+    amount: Decimal
+    invoice_amount: Decimal       # valor da fatura (a soma das parcelas, se for uma série)
+    currency: str
+    issued: date
+    due: date
+    place: str                    # praça de pagamento (cidade/UF da entidade)
+    sacado: str
+    sacado_doc: str
+    sacado_ie: str
+    sacado_address: str           # rua, bairro
+    sacado_city: str              # cidade/UF e CEP
+    reference: str
+    head: Letterhead
+
+    @property
+    def title(self) -> str:
+        return DUPLICATA_KINDS[self.kind]
+
+    @property
+    def amount_text(self) -> str:
+        return money.fmt(self.amount, self.currency)
+
+    @property
+    def invoice_amount_text(self) -> str:
+        return money.fmt(self.invoice_amount, self.currency)
+
+    @property
+    def amount_words(self) -> str:
+        return extenso.money(self.amount, self.currency)
+
+    @property
+    def acceptance(self) -> str:
+        what = "VENDA MERCANTIL" if self.kind == "mercantil" else "PRESTAÇÃO DE SERVIÇOS"
+        return (f"Reconhecemos a exatidão desta DUPLICATA DE {what}, na importância acima, que pagaremos a "
+                f"{self.head.name} ou à sua ordem, na praça e no vencimento indicados.")
+
+
+def can_issue_duplicata(e: Entry) -> str | None:
+    if e.kind != "income":
+        return "Duplicata é de venda: só para receitas (você vende, o contato compra)."
+    if e.status == "card":
+        return "Compras no cartão não têm duplicata."
+    if not e.contact_id:
+        return "Escolha o contato (o comprador) no lançamento antes de emitir a duplicata."
+    return None
+
+
+def build_duplicata(s: Session, entry_id: int, kind: str = "mercantil", *, issued: date | None = None,
+                    invoice: str | None = None, place: str | None = None) -> Duplicata:
+    """Monta a duplicata da receita. Numa série de parcelas, o nº de ordem leva a parcela (n/N) e o valor da fatura
+    é a soma da série."""
+    from sqlalchemy import func, select
+    from finora.services import entity_admin
+    if kind not in DUPLICATA_KINDS:
+        raise ValueError("Tipo de duplicata inválido.")
+    e = s.get(Entry, entry_id)
+    reason = can_issue_duplicata(e)
+    if reason:
+        raise ValueError(reason)
+    c = s.get(Contact, e.contact_id)
+    head = letterhead(s, e.entity_id)
+    invoice = (invoice if invoice is not None else (e.document_no or f"{e.id:06d}")).strip()
+    if e.installment and invoice.endswith(e.installment):            # parcela: o documento já vem "NF 77 2/3"
+        invoice = invoice[:-len(e.installment)].rstrip(" -/") or invoice
+    total = Decimal(e.amount)
+    if e.series_id:
+        total = Decimal(s.scalar(select(func.sum(Entry.amount)).where(Entry.series_id == e.series_id,
+                                                                     Entry.status != "canceled")) or e.amount)
+    number = f"{invoice}-{e.installment}" if e.installment else invoice
+    me = entity_admin.details(s, e.entity_id)
+    town = "/".join(x for x in (me.get("city"), me.get("state")) if x)
+    return Duplicata(
+        kind=kind, number=number, invoice=invoice, amount=Decimal(e.amount), invoice_amount=total,
+        currency=s.get(Account, e.account_id).currency, issued=issued or e.competence_date or date.today(),
+        due=e.due_date, place=(place if place is not None else town).strip(), sacado=c.name,
+        sacado_doc=documents.fmt(c.document) if c.document else "", sacado_ie=c.document2 or "",
+        sacado_address=", ".join(x for x in (c.address, c.district) if x),
+        sacado_city=" — ".join(x for x in ("/".join(y for y in (c.city, c.state) if y),
+                                           f"CEP {c.zip_code}" if c.zip_code else "") if x),
+        reference=(e.description or "").strip(), head=head)
+
+
 @dataclass(frozen=True)
 class Parties:
     is_expense: bool

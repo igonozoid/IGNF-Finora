@@ -233,6 +233,19 @@ def set_receipt_defaults(city: str, my_doc: str) -> None:
     s.setValue("receipt/my_doc", my_doc)
 
 
+RECEIPT_MARGIN = (5, 30)        # mm: menor e maior margem aceita no recibo e na duplicata
+
+
+def get_receipt_margin() -> int:
+    """Margem (mm) da folha do recibo e da duplicata, nos quatro lados."""
+    v = _s().value("receipt/margin", 10, type=int)
+    return min(max(v, RECEIPT_MARGIN[0]), RECEIPT_MARGIN[1])
+
+
+def set_receipt_margin(mm: int) -> None:
+    _s().setValue("receipt/margin", int(mm))
+
+
 # ---------- onde ficam os dados (este PC ou servidor na rede) ----------
 DB_MODES = {"local": "Neste computador", "client": "Num servidor da rede", "server": "Este computador é o servidor"}
 

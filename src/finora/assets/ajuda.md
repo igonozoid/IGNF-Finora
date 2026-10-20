@@ -47,7 +47,12 @@ Receitas, despesas, transferências entre suas contas e ajustes de saldo.
 - **Pagar/Receber** (botão direito no lançamento): informe a data e, se for o caso, o **valor que de fato
   saiu ou entrou** (com juros, multa ou desconto), a conta usada e uma observação. O valor previsto fica
   guardado. Para vários de uma vez, selecione e use **Marcar como pagos** (só a data, hoje).
-- **Recibo**: abra um lançamento e clique em **Recibo** para imprimir ou salvar em PDF (2 vias).
+- **Recibo**: abra um lançamento e clique em **Recibo** para imprimir ou salvar em PDF (2 vias). A **Margem**
+  da folha (mm) fica guardada para os próximos.
+- **Duplicata** (edições Plus e Pro): numa **receita** com contato, escolha o **Modelo** "Duplicata de venda
+  mercantil" ou "de prestação de serviços". O comprador é o sacado (nome, CPF/CNPJ, inscrição e endereço do
+  cadastro); o nº da fatura vem do documento do lançamento e, numa venda parcelada, a duplicata leva a parcela
+  (ex.: NF 77-2/3) e o valor da fatura é a soma das parcelas. Confira a **praça de pagamento** antes de imprimir.
 - **Comprovantes** (edições pagas): anexe a foto ou o PDF do boleto ou da nota.
 - **Regras automáticas**: ao digitar a descrição de um lançamento novo, a categoria e o contato podem vir
   preenchidos (veja **Categorias › Regras automáticas**).

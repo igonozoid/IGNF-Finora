@@ -54,3 +54,34 @@ def test_botao_recibo_no_formulario(window, monkeypatch):
     assert opened == ["Aluguel"]
     page.new_entry()
     assert page.form.receipt_btn.isHidden()                 # lançamento novo ainda não tem recibo
+
+
+def test_duplicata_na_janela_e_margem(plus, window, qtbot, tmp_path):
+    from finora.core import settings
+    salario = _entry(window, "Salário")                                  # receita com contato (Empresa X)
+    dlg = ReceiptDialog(window, salario.id, window.page("entries").t)
+    qtbot.addWidget(dlg)
+    assert dlg.model.isVisibleTo(dlg) and dlg.place.isHidden()           # receita: dá para escolher duplicata
+    dlg.model.setCurrentIndex(dlg.model.findData("mercantil"))
+    assert dlg.is_duplicata() and not dlg.place.isHidden() and dlg.windowTitle() == "Duplicata de venda mercantil"
+    html = dlg.preview.toHtml()
+    for text in ("DUPLICATA DE VENDA MERCANTIL", "Empresa X", "Sacado", "cinco mil reais", "Reconhecemos a exatidão"):
+        assert text in html, text
+    dlg.margin.setValue(15)
+    pdf = tmp_path / "duplicata.pdf"
+    dlg.save_pdf(str(pdf))
+    assert pdf.read_bytes()[:5] == b"%PDF-" and settings.get_receipt_margin() == 15   # margem guardada
+    dlg.model.setCurrentIndex(dlg.model.findData("receipt"))
+    assert "RECIBO" in dlg.preview.toHtml() and dlg.place.isHidden()
+
+
+def test_duplicata_nao_aparece_na_despesa_e_e_paga(window, qtbot, dialogs):
+    aluguel = _entry(window, "Aluguel")
+    dlg = ReceiptDialog(window, aluguel.id, window.page("entries").t)
+    qtbot.addWidget(dlg)
+    assert dlg.model.count() == 1 and not dlg.model.isVisibleTo(dlg)     # despesa: só recibo
+    salario = _entry(window, "Salário")
+    free = ReceiptDialog(window, salario.id, window.page("entries").t)  # Free: duplicata mostra o convite
+    qtbot.addWidget(free)
+    free.model.setCurrentIndex(free.model.findData("mercantil"))
+    assert not free.is_duplicata() and any("Plus e Pro" in x for x in dialogs.shown)

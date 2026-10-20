@@ -1,4 +1,4 @@
-"""Janela do recibo: completar os dados, ver a prévia, imprimir ou salvar em PDF."""
+"""Janela do recibo (e da duplicata, nas receitas): completar os dados, ver a prévia, imprimir ou salvar em PDF."""
 from html import escape
 from pathlib import Path
 
@@ -6,8 +6,8 @@ from PySide6.QtCore import QDate, QMarginsF, QStandardPaths, QUrl
 from PySide6.QtGui import QImage, QPageLayout, QPageSize, QTextDocument
 from PySide6.QtPrintSupport import QPrintDialog, QPrinter
 from PySide6.QtWidgets import (
-    QCheckBox, QDateEdit, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QTextBrowser,
-    QVBoxLayout,
+    QCheckBox, QComboBox, QDateEdit, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QSpinBox,
+    QTextBrowser, QVBoxLayout,
 )
 
 from finora.core import settings
@@ -16,7 +16,7 @@ from finora.core.logs import log
 from finora.services import receipts
 from finora.services.entity_admin import letterhead
 from finora.services.export import LOGO_URL, letterhead_html
-from finora.services.receipts import Receipt
+from finora.services.receipts import Duplicata, Receipt
 from finora.ui import theme
 from finora.ui.widgets import button, field_label
 
@@ -64,6 +64,52 @@ def receipt_html(r: Receipt, copies: int = 2) -> str:
             f'{body}</body></html>')
 
 
+def duplicata_html(d: Duplicata, copies: int = 1) -> str:
+    """HTML da duplicata (preto no branco). Cada via ocupa meia folha A4, como o recibo."""
+    def cell(label: str, value: str, width: str = "", bold: bool = False) -> str:
+        w = f' width="{width}"' if width else ""
+        weight = "font-weight:bold; " if bold else ""
+        return (f'<td{w} style="border:1px solid #9ca3af; padding:4px"><span style="font-size:7pt; color:#374151">'
+                f'{escape(label)}</span><br><span style="{weight}font-size:10pt">{escape(value or "-")}</span></td>')
+
+    def one(via: int) -> str:
+        tag = (f'<p align="right" style="font-size:7pt; color:#6b7280; margin:0">{via}ª via</p>' if copies > 1 else "")
+        return f"""
+        <table width="100%" cellspacing="0" cellpadding="10" style="border:1px solid #9ca3af"><tr><td>
+          {tag}
+          {letterhead_html(d.head)}
+          <p align="center" style="font-size:13pt; font-weight:bold; letter-spacing:1px; margin:4px 0 8px 0">
+            {escape(d.title.upper())}</p>
+          <table width="100%" cellspacing="0" cellpadding="0"><tr>
+            {cell("Data de emissão", d.issued.strftime("%d/%m/%Y"))}{cell("Fatura nº", d.invoice)}
+            {cell("Valor da fatura", d.invoice_amount_text)}{cell("Duplicata nº", d.number, bold=True)}
+            {cell("Valor da duplicata", d.amount_text, bold=True)}{cell("Vencimento", d.due.strftime("%d/%m/%Y"), bold=True)}
+          </tr></table>
+          <table width="100%" cellspacing="0" cellpadding="0" style="margin-top:6px"><tr>
+            {cell("Sacado (comprador)", d.sacado, "60%", bold=True)}{cell("CPF/CNPJ", d.sacado_doc)}
+            {cell("Inscrição", d.sacado_ie)}</tr><tr>
+            {cell("Endereço", d.sacado_address, "60%")}{cell("Cidade/UF e CEP", d.sacado_city)}
+            {cell("Praça de pagamento", d.place)}</tr></table>
+          <p style="font-size:9pt; font-style:italic; margin:6px 0 0 0"><span style="color:#374151">Valor por extenso:</span>
+            {escape(d.amount_words)}</p>
+          <p style="font-size:9pt; margin:4px 0 0 0"><span style="color:#374151">Referente a:</span> {escape(d.reference or "-")}</p>
+          <p style="font-size:8.5pt; margin:8px 0 0 0">{escape(d.acceptance)}</p>
+          <table width="100%" cellspacing="0" cellpadding="0" style="margin-top:20px"><tr>
+            <td align="center" style="font-size:8.5pt">Data do aceite: ____/____/________</td>
+            <td align="center" style="font-size:8.5pt">________________________________<br>Assinatura do sacado</td>
+            <td align="center" style="font-size:8.5pt">________________________________<br>{escape(d.head.name)}</td>
+          </tr></table>
+        </td></tr></table>"""
+
+    cut = ('<p align="center" style="color:#9ca3af; font-size:8pt; margin:8px 0">'
+           '✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -</p>')
+    return ('<html><body style="font-family:Arial,IBM Plex Sans,Helvetica,sans-serif; color:#111827">'
+            f'{cut.join(one(i) for i in range(1, copies + 1))}</body></html>')
+
+
+MODELS = {"receipt": "Recibo", **receipts.DUPLICATA_KINDS}
+
+
 def add_logo(doc: QTextDocument, r: Receipt) -> None:
     if r.head.logo:
         img = QImage.fromData(r.head.logo)
@@ -95,12 +141,26 @@ class ReceiptDialog(QDialog):
         self.two = QCheckBox("2 vias na mesma folha", checked=True)
         for w in (self.my_doc, self.other_doc, self.document):
             w.setFont(theme.mono_font())
+        # modelo: recibo ou, nas receitas, duplicata (Plus/Pro, D3); margem da folha (mm)
+        self.model = QComboBox()
+        for k, label in MODELS.items():
+            if k == "receipt" or not info.is_expense:
+                self.model.addItem(label, k)
+        self.model.setVisible(self.model.count() > 1)
+        self.place = QLineEdit(placeholderText="Cidade/UF onde será paga")
+        self.margin = QSpinBox(minimum=settings.RECEIPT_MARGIN[0], maximum=settings.RECEIPT_MARGIN[1],
+                               value=settings.get_receipt_margin(), suffix=" mm")
+        self.margin.setToolTip("Margem da folha nos quatro lados (fica guardada para os próximos)")
+        self.duplicata: Duplicata | None = None
 
         who = "recebeu o pagamento" if info.is_expense else "pagou"
-        rows = [(field_label("Data", t), self.when), (field_label("Documento", t), self.document),
+        self.place_label = field_label("Praça de pagamento", t)
+        rows = [(field_label("Modelo", t), self.model)] if self.model.count() > 1 else []
+        rows += [(field_label("Data", t), self.when), (field_label("Documento", t), self.document),
                 (field_label(f"Quem {who}", t), self.other_name),
                 (field_label(f"CPF/CNPJ de quem {who}", t), self.other_doc),
-                (field_label("Referente a", t), self.reference), (field_label("Observação", t), self.notes)]
+                (field_label("Referente a", t), self.reference), (field_label("Observação", t), self.notes),
+                (self.place_label, self.place)]
         if not head.document:          # entidade sem CPF/CNPJ cadastrado: dá para informar aqui
             rows.append((field_label("CPF/CNPJ da entidade", t, "Cadastre em Administração › Entidades para não "
                                      "precisar digitar.\nFica guardado para os próximos recibos."), self.my_doc))
@@ -113,10 +173,15 @@ class ReceiptDialog(QDialog):
             form.addWidget(lbl, 2 * i, 0)
             form.addWidget(w, 2 * i + 1, 0)
         form.addWidget(self.two, 2 * len(rows), 0)
-        form.setRowStretch(2 * len(rows) + 1, 1)
+        margin_row = QHBoxLayout()
+        margin_row.addWidget(QLabel("Margem"))
+        margin_row.addWidget(self.margin)
+        margin_row.addStretch(1)
+        form.addLayout(margin_row, 2 * len(rows) + 1, 0)
+        form.setRowStretch(2 * len(rows) + 2, 1)
         self.signer = QLabel(wordWrap=True)
         self.signer.setProperty("role", "field")
-        form.addWidget(self.signer, 2 * len(rows) + 2, 0)
+        form.addWidget(self.signer, 2 * len(rows) + 3, 0)
 
         self.preview = QTextBrowser()
         # A prévia imita o papel (branco), independentemente do tema claro/escuro da tela.
@@ -153,9 +218,38 @@ class ReceiptDialog(QDialog):
             w.textChanged.connect(self._update)
         self.when.dateChanged.connect(self._update)
         self.two.toggled.connect(self._update)
+        self.place.textChanged.connect(self._update)
+        self.model.currentIndexChanged.connect(self._model_changed)
         close.clicked.connect(self.accept)
         self.print_btn.clicked.connect(self._print)
         self.pdf_btn.clicked.connect(self._pdf)
+        self._sync_model()
+        self._update()
+
+    def is_duplicata(self) -> bool:
+        return self.model.currentData() in receipts.DUPLICATA_KINDS
+
+    def _sync_model(self):
+        dup = self.is_duplicata()
+        self.place_label.setVisible(dup)
+        self.place.setVisible(dup)
+        self.setWindowTitle(self.model.currentText() if dup else "Recibo")
+        if dup and not self.place.text():
+            with Session() as s:
+                try:
+                    self.place.setText(receipts.build_duplicata(s, self.entry_id, self.model.currentData()).place)
+                except ValueError:
+                    pass
+
+    def _model_changed(self):
+        from finora.core.licensing import allowed, current_edition
+        if self.is_duplicata() and not allowed(current_edition(), "mcc_reports"):
+            from finora.ui.widgets import show_upgrade
+            self.model.blockSignals(True)
+            self.model.setCurrentIndex(0)
+            self.model.blockSignals(False)
+            show_upgrade(self, "A duplicata é um recurso das edições Plus e Pro.")
+        self._sync_model()
         self._update()
 
     @staticmethod
@@ -164,6 +258,8 @@ class ReceiptDialog(QDialog):
         return s.get(Entry, entry_id).entity_id
 
     def _update(self):
+        if self.is_duplicata():
+            return self._update_duplicata()
         try:
             with Session() as s:
                 self.receipt = receipts.build(
@@ -183,31 +279,58 @@ class ReceiptDialog(QDialog):
         self.pdf_btn.setEnabled(True)
         self.signer.setText(f"Quem assina: {self.receipt.signer}.")
         add_logo(self.preview.document(), self.receipt)
-        self.preview.setHtml(receipt_html(self.receipt, 2 if self.two.isChecked() else 1))
+        self.preview.setHtml(self.html())
+
+    def _update_duplicata(self):
+        try:
+            with Session() as s:
+                self.duplicata = receipts.build_duplicata(
+                    s, self.entry_id, self.model.currentData(), issued=self.when.date().toPython(),
+                    invoice=self.document.text(), place=self.place.text())
+        except ValueError as e:
+            self.duplicata = None
+            self.error.setText(str(e))
+            self.error.show()
+            self.preview.clear()
+            self.print_btn.setEnabled(False)
+            self.pdf_btn.setEnabled(False)
+            return
+        self.error.hide()
+        self.print_btn.setEnabled(True)
+        self.pdf_btn.setEnabled(True)
+        self.signer.setText(f"Sacado: {self.duplicata.sacado}. Duplicata nº {self.duplicata.number}.")
+        add_logo(self.preview.document(), self.duplicata)
+        self.preview.setHtml(self.html())
+
+    def html(self) -> str:
+        copies = 2 if self.two.isChecked() else 1
+        return duplicata_html(self.duplicata, copies) if self.is_duplicata() else receipt_html(self.receipt, copies)
 
     def _document(self, printer: QPrinter | None = None) -> QTextDocument:
         doc = QTextDocument()
         if printer is not None:      # tamanho da página definido = o Qt não imprime o número da página
             doc.setPageSize(printer.pageRect(QPrinter.Point).size())
-        add_logo(doc, self.receipt)
-        doc.setHtml(receipt_html(self.receipt, 2 if self.two.isChecked() else 1))
+        add_logo(doc, self.duplicata if self.is_duplicata() else self.receipt)
+        doc.setHtml(self.html())
         return doc
 
     def _printer(self) -> QPrinter:
+        m = float(self.margin.value())
         p = QPrinter(QPrinter.HighResolution)
-        p.setPageLayout(QPageLayout(QPageSize(QPageSize.A4), QPageLayout.Portrait, QMarginsF(10, 10, 10, 10),
+        p.setPageLayout(QPageLayout(QPageSize(QPageSize.A4), QPageLayout.Portrait, QMarginsF(m, m, m, m),
                                     QPageLayout.Millimeter))
         return p
 
     def _remember(self):
         settings.set_receipt_defaults("", self.my_doc.text().strip())
+        settings.set_receipt_margin(self.margin.value())
 
     def _print(self):
         printer = self._printer()
         if QPrintDialog(printer, self).exec() == QDialog.Accepted:
             self._document(printer).print_(printer)
             self._remember()
-            log.info("Recibo %s impresso", self.receipt.number)
+            log.info("%s %s impresso", self.model.currentText(), self._number())
 
     def save_pdf(self, path: str) -> None:
         printer = self._printer()
@@ -215,12 +338,17 @@ class ReceiptDialog(QDialog):
         printer.setOutputFileName(path)
         self._document(printer).print_(printer)
         self._remember()
-        log.info("Recibo %s salvo em PDF", self.receipt.number)
+        log.info("%s %s salvo em PDF", self.model.currentText(), self._number())
+
+    def _number(self) -> str:
+        return self.duplicata.number if self.is_duplicata() else self.receipt.number
 
     def _pdf(self):
         start = Path(settings.get_backup_folder() or
-                     QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)) / f"recibo-{self.receipt.number}.pdf"
-        path, _ = QFileDialog.getSaveFileName(self, "Salvar recibo em PDF", str(start), "PDF (*.pdf)")
+                     QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)) / \
+            (f"duplicata-{self._number()}.pdf" if self.is_duplicata() else f"recibo-{self._number()}.pdf")
+        path, _ = QFileDialog.getSaveFileName(self, f"Salvar {self.model.currentText().lower()} em PDF", str(start),
+                                              "PDF (*.pdf)")
         if path:
             self.save_pdf(path)
             self.error.hide()

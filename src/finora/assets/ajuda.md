@@ -264,6 +264,10 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
   previsto — a mais é juros e multa, a menos é desconto —, com os dias de atraso. No rodapé, os totais de juros e
   multas pagos, descontos obtidos, juros recebidos e descontos dados. O previsto fica guardado quando você faz a
   baixa com outro valor (botão **Pagar/Receber** do lançamento).
+- **Dashboard › Caixa × competência**: para hoje, a semana, o mês ou um período escolhido, o que de fato entrou e
+  saiu (**caixa**) ao lado do que vence no período, pago ou não (**competência**). **Considerar vencidos** soma na
+  competência o que venceu antes e continua em aberto. A **análise linear** mostra receitas, despesas, resultado e
+  o acumulado por dia, semana ou mês, no regime de caixa ou de competência.
 
 ## Administração {#admin}
 

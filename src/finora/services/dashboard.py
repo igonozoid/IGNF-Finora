@@ -116,3 +116,116 @@ def top_expenses(s: Session, entity_id: int, year: int, month: int, n: int = 5) 
                 Entry.competence_date.between(first, last), _not_investment())
          .group_by(name).order_by(func.sum(Entry.base_amount).desc()).limit(n))
     return [(label, _d(v)) for label, v in s.execute(q)]
+
+
+# ---------- caixa × competência e análise linear (Fase 3.12, do MCC) ----------
+CA_PERIODS = {"today": "Hoje", "week": "Esta semana", "month": "Este mês", "custom": "Personalizado"}
+LINEAR_STEPS = {"day": "Diária", "week": "Semanal", "month": "Mensal"}
+REGIMES = {"cash": "Caixa", "accrual": "Competência"}
+
+
+def ca_range(key: str, today: date | None = None) -> tuple[date, date]:
+    """Hoje, a semana (segunda a domingo) ou o mês de hoje."""
+    today = today or date.today()
+    if key == "today":
+        return today, today
+    if key == "week":
+        start = today - timedelta(days=today.weekday())
+        return start, start + timedelta(days=6)
+    first = today.replace(day=1)
+    nxt = (first + timedelta(days=32)).replace(day=1)
+    return first, nxt - timedelta(days=1)
+
+
+@dataclass(frozen=True)
+class RegimeTotals:
+    income: Decimal
+    expense: Decimal
+    count: int
+
+    @property
+    def result(self) -> Decimal:
+        return self.income - self.expense
+
+
+@dataclass(frozen=True)
+class CashAccrual:
+    first: date
+    last: date
+    cash: RegimeTotals          # pago e recebido no período (pela data do pagamento)
+    accrual: RegimeTotals       # vence (competência) no período, pago ou não — com os vencidos, se pedido
+    overdue: RegimeTotals       # em aberto que venceram antes do período (já somados em accrual se pedido)
+
+
+def _totals(s: Session, where) -> RegimeTotals:
+    rows = s.execute(select(Entry.kind, func.sum(Entry.base_amount), func.count(Entry.id))
+                     .where(where, Entry.kind.in_(entries.RESULT_KINDS)).group_by(Entry.kind)).all()
+    by = {k: (_d(v), n) for k, v, n in rows}
+    inc, n_inc = by.get("income", (ZERO, 0))
+    exp, n_exp = by.get("expense", (ZERO, 0))
+    return RegimeTotals(inc, exp, n_inc + n_exp)
+
+
+def cash_vs_accrual(s: Session, entity_id: int, first: date, last: date, overdue: bool = False) -> CashAccrual:
+    """Caixa: o que de fato entrou e saiu no período. Competência: o que vence no período, pago ou não (sem
+    cancelados). overdue ("considerar vencidos", como no MCC): soma na competência o que venceu antes e continua em
+    aberto. Valores na moeda principal; transferências e ajustes de saldo não entram."""
+    mine = Entry.entity_id == entity_id
+    cash = _totals(s, mine & (Entry.status == "paid") & Entry.paid_date.between(first, last))
+    accrual = _totals(s, mine & (Entry.status != "canceled") & Entry.competence_date.between(first, last))
+    late = _totals(s, mine & (Entry.status == "pending") & (Entry.due_date < first))
+    if overdue:
+        accrual = RegimeTotals(accrual.income + late.income, accrual.expense + late.expense,
+                               accrual.count + late.count)
+    return CashAccrual(first, last, cash, accrual, late)
+
+
+@dataclass(frozen=True)
+class LinearRow:
+    start: date
+    label: str
+    income: Decimal
+    expense: Decimal
+    cumulative: Decimal         # resultado acumulado desde o início do período
+
+    @property
+    def result(self) -> Decimal:
+        return self.income - self.expense
+
+
+def _bucket(d: date, step: str) -> date:
+    if step == "week":
+        return d - timedelta(days=d.weekday())
+    if step == "month":
+        return d.replace(day=1)
+    return d
+
+
+def linear(s: Session, entity_id: int, first: date, last: date, step: str = "day",
+           regime: str = "cash") -> list[LinearRow]:
+    """Análise linear (MCC): receitas, despesas, resultado e acumulado por dia, semana (segunda a domingo) ou mês do
+    período, no regime de caixa (data do pagamento) ou de competência (vencimento). Inclui os intervalos vazios."""
+    if step not in LINEAR_STEPS or regime not in REGIMES:
+        raise ValueError("Opção inválida.")
+    when = Entry.paid_date if regime == "cash" else Entry.competence_date
+    cond = (Entry.status == "paid") if regime == "cash" else (Entry.status != "canceled")
+    q = (select(when, Entry.kind, Entry.base_amount)
+         .where(Entry.entity_id == entity_id, Entry.kind.in_(entries.RESULT_KINDS), cond, when.between(first, last)))
+    acc: dict[date, list] = {}
+    for d, kind, amount in s.execute(q):
+        acc.setdefault(_bucket(d, step), [ZERO, ZERO])[0 if kind == "income" else 1] += _d(amount)
+    out, cur, total = [], _bucket(first, step), ZERO
+    months = ("jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez")
+    while cur <= last:
+        inc, exp = acc.get(cur, [ZERO, ZERO])
+        total += inc - exp
+        if step == "month":
+            label = f"{months[cur.month - 1]}/{cur.year}"
+        elif step == "week":
+            label = f"{max(cur, first):%d/%m} a {min(cur + timedelta(days=6), last):%d/%m}"
+        else:
+            label = f"{cur:%d/%m}"
+        out.append(LinearRow(cur, label, inc, exp, total))
+        cur = (cur + timedelta(days=32)).replace(day=1) if step == "month" else \
+            cur + timedelta(days=7 if step == "week" else 1)
+    return out

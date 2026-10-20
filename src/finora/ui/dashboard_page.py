@@ -263,6 +263,9 @@ class DashboardPage(QWidget):
         bl.addLayout(self.row2)
         bl.addLayout(self.row3)
         bl.addWidget(goals_box)
+        from finora.ui.cash_accrual_panel import CashAccrualPanel
+        self.ca_panel = CashAccrualPanel(profile, t)          # caixa × competência (Fase 3.12, Plus/Pro)
+        bl.addWidget(self.ca_panel)
         bl.addStretch(1)
         scroll = QScrollArea(objectName="pageScroll", widgetResizable=True, frameShape=QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -301,6 +304,7 @@ class DashboardPage(QWidget):
                 self.refresh()
 
     def refresh(self):
+        self.ca_panel.refresh()
         today = date.today()
         year, month = self.period
         ref = date(year, month, 1)

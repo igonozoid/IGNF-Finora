@@ -23,6 +23,11 @@ def _server_engine():
     eng = create_engine(TEST_DB_URL)
     Base.metadata.drop_all(eng)
     Base.metadata.create_all(eng)
+    # Marca a versão das migrações, como o app faz num servidor de verdade. Sem isso, quem chama db.init_db
+    # (ex.: o backup antes de importar o MCC) acharia que é um banco de antes do Alembic e repetiria as migrações.
+    from alembic import command
+    with eng.begin() as conn:
+        command.stamp(db._alembic(conn), "head", purge=True)
     yield eng
     eng.dispose()
 

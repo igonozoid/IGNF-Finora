@@ -47,10 +47,17 @@ def test_faz_backup_e_importa(plus, mcc, tmp_path):
     assert [b.path for b in backup.list_local(tmp_path / "bk")] == [r.backup]   # aparece para restaurar
 
 
-def test_banco_so_de_memoria_nao_tem_backup(session, plus, mcc):
+def test_backup_conforme_o_banco(session, plus, mcc, tmp_path):
+    """Banco só de memória (testes): sem backup. Banco de verdade — arquivo ou servidor MariaDB: a cópia de antes
+    da importação sai num .db que abre em qualquer Finora (no servidor, pelo dbcopy)."""
     with reader.open_copy(mcc) as con:
-        r = mapper.import_safely(session, con)
-    assert r.backup is None and r.entities
+        r = mapper.import_safely(session, con, backup_dir=tmp_path / "bk")
+    assert r.entities
+    url = session.get_bind().url
+    if url.get_backend_name() == "sqlite" and url.database in (None, "", ":memory:"):
+        assert r.backup is None
+    else:
+        assert r.backup.name.startswith(backup.IMPORT_PREFIX) and backup.inspect_backup(r.backup)
 
 
 def test_erro_no_meio_nao_grava_nada(session, plus, mcc, monkeypatch):

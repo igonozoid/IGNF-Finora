@@ -25,6 +25,7 @@ class TableReport(QWidget):
     """Base: barra (filtros + exportar), tabela e rodapé. Duplo clique numa linha com lançamento abre-o."""
     message = Signal(str)
     open_entry = Signal(int)
+    open_contact = Signal(int)
     open_statement = Signal(int, object)
     COLUMNS: list[tuple[str, int | None, bool]] = []      # (título, largura ou None = estica, é valor?)
     TITLE = ""
@@ -182,6 +183,8 @@ class TableReport(QWidget):
             self.open_entry.emit(target[1])
         elif target[0] == "statement":
             self.open_statement.emit(target[1], target[2])
+        elif target[0] == "contact":
+            self.open_contact.emit(target[1])
 
     def fmt(self, v: Decimal) -> str:
         return money.fmt(v, self.profile.currency)
@@ -1250,3 +1253,39 @@ class CenterFlowView(TableReport):
         self.fill(rows, "Nenhum lançamento neste período.")
         self.footer.setText("Cadastre os centros em Centros de custo e escolha-os nos lançamentos."
                             if all(r.name == reports.NO_CENTER for r in data) else "")
+
+
+# ---------- cadastros: clientes / fornecedores (Fase 3.10, do MCC) ----------
+class RegisterView(TableReport):
+    TITLE = "Cadastros"
+    COLUMNS = [("NOME", None, False), ("CPF / CNPJ", 135, False), ("PAPEL", 120, False), ("TELEFONE", 115, False),
+               ("E-MAIL", 170, False), ("ENDEREÇO", 190, False), ("CIDADE/UF", 120, False), ("CEP", 80, False)]
+
+    def subtitle(self) -> str:
+        return self.role.currentText()
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        from finora.services import contacts
+        self.role = QComboBox()
+        self.role.addItem("Todos os contatos", None)
+        for k, (_col, label, _help) in contacts.ROLES.items():
+            self.role.addItem(label, k)
+        self.role.addItem("A revisar", "review")
+        self.role.currentIndexChanged.connect(self.refresh)
+        self.bar.addWidget(self.role)
+        self.finish_bar("Os contatos com CPF/CNPJ, papéis, telefone, e-mail e endereço — como os relatórios de\n"
+                        "clientes e de fornecedores do MCC. Escolha o papel (Me paga = clientes; Eu pago =\n"
+                        "fornecedores). Dois cliques abrem o cadastro.")
+
+    def refresh(self):
+        with Session() as s:
+            data = reports.contact_register(s, self.profile.id, self.role.currentData())
+        rows = [{"cells": [r.name + (f" ({r.contact_person})" if r.contact_person else ""), r.document, r.roles,
+                           r.phone, r.email, r.address, r.city, r.zip_code],
+                 "tones": {0: "acc" if r.needs_review else None},
+                 "target": ("contact", r.contact_id)} for r in data]
+        self.fill(rows, "Nenhum contato com esse papel.")
+        missing = sum(not r.document for r in data)
+        self.footer.setText(f"{len(data)} contato(s)" + (f" &nbsp;·&nbsp; {missing} sem CPF/CNPJ" if missing else "")
+                            + " &nbsp;·&nbsp; Dois cliques abrem o cadastro.")

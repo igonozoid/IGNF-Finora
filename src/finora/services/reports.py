@@ -739,6 +739,36 @@ def center_targets(s: Session, entity_id: int, first: date, last: date, kind: st
     return sorted(out, key=lambda r: (r.monthly is None, -(r.pct or 0), r.name.lower()))
 
 
+# ---------- relatório de cadastros: clientes / fornecedores (Fase 3.10, do MCC) ----------
+@dataclass(frozen=True)
+class RegisterRow:
+    contact_id: int
+    name: str
+    document: str                       # CPF/CNPJ formatado
+    roles: str                          # "Me paga, Eu pago"
+    phone: str
+    email: str
+    address: str                        # rua e número, bairro
+    city: str                           # cidade/UF
+    zip_code: str
+    contact_person: str
+    needs_review: bool
+
+
+def contact_register(s: Session, entity_id: int, role: str | None = None) -> list[RegisterRow]:
+    """Os contatos (da entidade e os compartilhados) com documento, papéis, telefone, e-mail e endereço, em ordem
+    de nome. role: customer | supplier | employee | review | None (todos)."""
+    from finora.services import contacts
+    out = []
+    for c in contacts.list_contacts(s, entity_id, role=role):
+        roles = ", ".join(label for k, (_col, label, _h) in contacts.ROLES.items() if k in c.roles)
+        address = ", ".join(x for x in (c.get("address"), c.get("district")) if x)
+        city = "/".join(x for x in (c.get("city"), c.get("state")) if x)
+        out.append(RegisterRow(c.id, c.name, c.document_fmt, roles, c.get("phone"), c.get("email"), address, city,
+                               c.get("zip_code"), c.get("contact_person"), c.needs_review))
+    return out
+
+
 # ---------- fluxo de caixa por centro (Fase 3.8, do MCC) ----------
 NO_CENTER = "Sem centro de custo"
 

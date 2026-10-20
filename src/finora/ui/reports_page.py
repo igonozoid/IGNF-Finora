@@ -40,6 +40,7 @@ REPORTS = [
     ("annual", "Demonstrativo anual", "fa6s.calendar", "mcc_reports"),
     ("center_targets", "Metas por centro", "fa6s.flag-checkered", "mcc_reports"),
     ("center_flow", "Fluxo por centro", "fa6s.diagram-predecessor", "mcc_reports"),
+    ("register", "Cadastros (clientes e fornecedores)", "fa6s.id-card", "mcc_reports"),
     ("agenda", "A pagar e a receber", "fa6s.calendar-days", None),
     ("overdue", "Inadimplência", "fa6s.hourglass-half", None),
     ("category_months", "Comparativo por categoria", "fa6s.table-columns", None),
@@ -564,6 +565,7 @@ class ReportsPage(QWidget):
     message = Signal(str)
     open_entry = Signal(int)
     open_statement = Signal(int, object)
+    open_contact = Signal(int)
 
     def __init__(self, profile: Profile, t: dict, parent=None):
         super().__init__(parent)
@@ -578,6 +580,7 @@ class ReportsPage(QWidget):
                       "balance_compare": rl.BalanceCompareView(profile, t),
                       "cash_closing": rl.CashClosingView(profile, t), "annual": rl.AnnualView(profile, t),
                       "center_targets": rl.CenterTargetsView(profile, t), "center_flow": rl.CenterFlowView(profile, t),
+                      "register": rl.RegisterView(profile, t),
                       "analytical": rl.AnalyticalView(profile, t), "agenda": rl.AgendaView(profile, t),
                       "category_months": rl.CategoryMonthsView(profile, t),
                       "balance_history": rl.BalanceHistoryView(profile, t),
@@ -589,6 +592,7 @@ class ReportsPage(QWidget):
             if hasattr(v, "open_entry"):
                 v.open_entry.connect(self.open_entry.emit)
                 v.open_statement.connect(self.open_statement.emit)
+                v.open_contact.connect(self.open_contact.emit)
 
         self.nav = QWidget()
         nl = QVBoxLayout(self.nav)

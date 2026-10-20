@@ -432,6 +432,7 @@ class MainWindow(QMainWindow):
         self.page("entries").period_changed.connect(self.set_period)
         self.page("entries").period_locked.connect(self.header.period.set_locked)
         self.page("reports").open_statement.connect(self.open_statement)
+        self.page("reports").open_contact.connect(self.open_contact)
         self.header.search.entity_id = profile.id
 
     def reload(self, profile: Profile, user: UserView | None):
@@ -637,6 +638,10 @@ class MainWindow(QMainWindow):
         self.page("cost_centers").set_period(year, month)
         if self.current_key() == "dashboard":
             self.go_to("dashboard")
+
+    def open_contact(self, contact_id: int):
+        self.go_to("contacts")
+        self.page("contacts").select_contact(contact_id)
 
     def open_hit(self, hit):
         """Resultado escolhido na busca global."""

@@ -257,6 +257,9 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
   contato, conta, centro de custo, mês, situação e tipo (ex.: por mês e depois por contato). Cada grupo mostra a
   quantidade e o resultado (receitas − despesas). **Detalhado** mostra os lançamentos dentro dos grupos;
   **Totalizado**, só os totais. Sem agrupar, o analítico continua em todas as edições.
+- **Cadastros (clientes e fornecedores)**: os contatos com CPF/CNPJ, papéis, telefone, e-mail e endereço, como os
+  relatórios de clientes e de fornecedores do MCC. Escolha o papel (**Me paga** = clientes; **Eu pago** =
+  fornecedores; **A revisar**). Dois cliques abrem o cadastro em Contatos.
 
 ## Administração {#admin}
 

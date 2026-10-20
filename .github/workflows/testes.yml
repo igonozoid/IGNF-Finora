@@ -2,7 +2,7 @@ name: Testes
 
 on:
   push:
-    branches: [main]
+    branches: [main, mcc-paridade]     # mcc-paridade: o trabalho do MCC sai em release direto dela, sem PR
   pull_request:
   workflow_dispatch:
 

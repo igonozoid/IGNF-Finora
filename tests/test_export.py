@@ -36,3 +36,19 @@ def test_nome_de_arquivo_seguro():
     assert export.safe_name("Extrato por conta — Nubank · Este mês") == "Extrato por conta - Nubank - Este mês"
     assert export.safe_name("a/b:c?") == "a-b-c"
     assert export.safe_name("///") == "Finora"
+
+
+def test_csv_para_outras_planilhas(tmp_path):
+    """CSV (Fase 3.14): ";", UTF-8 com BOM, número sem símbolo nem milhar, data dd/mm/aaaa, sem título."""
+    import csv
+    sheet = export.Sheet("Relatório", "Este mês", ["Data", "Descrição", "Valor"])
+    sheet.add([date(2026, 10, 5), "Conta de luz; atrasada", D("-1234.50")])
+    sheet.add([None, "      Subtotal\ncom quebra", D("98765.4")], "indent")
+    path = tmp_path / "rel.csv"
+    export.to_csv(sheet, str(path))
+    raw = path.read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbf")
+    rows = list(csv.reader(path.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
+    assert rows == [["Data", "Descrição", "Valor"],
+                    ["05/10/2026", "Conta de luz; atrasada", "-1234,50"],      # ";" no texto vai entre aspas
+                    ["", "Subtotal com quebra", "98765,40"]]

@@ -123,6 +123,30 @@ def to_xlsx(sheet: Sheet, path: str) -> None:
     wb.save(path)
 
 
+# ---------- CSV (Fase 3.14) ----------
+def _csv_cell(v) -> str:
+    """Número sem símbolo e sem milhar ("1234,56", "-50,00"), data dd/mm/aaaa: o Excel em português e as outras
+    planilhas leem como número e data."""
+    if v is None:
+        return ""
+    if isinstance(v, Decimal):
+        return f"{v:.2f}".replace(".", ",")
+    if isinstance(v, (date, datetime)):
+        return v.strftime("%d/%m/%Y")
+    return " ".join(str(v).split())            # sem quebras de linha nem o recuo da tela
+
+
+def to_csv(sheet: Sheet, path: str) -> None:
+    """A tabela em CSV: separado por ";", UTF-8 com BOM (o Excel abre com os acentos certos), a linha de colunas e
+    os dados — sem título nem rodapé, para ir direto para outra planilha ou sistema."""
+    import csv
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+        w.writerow(sheet.headers)
+        for row in sheet.rows:
+            w.writerow([_csv_cell(v) for v in row])
+
+
 # ---------- HTML (para PDF) ----------
 def _text(v, currency: str) -> str:
     if v is None:

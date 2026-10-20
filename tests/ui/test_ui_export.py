@@ -22,11 +22,21 @@ def test_exportar_lancamentos_e_relatorios(plus, window, dialogs, tmp_path, qtbo
         if sheet is None or not sheet.rows:
             continue
         dialogs.save_path = str(tmp_path / f"{key}.pdf")
-        assert [b.property("fullText") for b in view.export_btns] == ["Imprimir", "Excel", "PDF"], key
+        assert [b.property("fullText") for b in view.export_btns] == ["Imprimir", "Excel", "PDF", "CSV"], key
         view.export_btns[2].click()                              # botão "PDF"
         assert (tmp_path / f"{key}.pdf").read_bytes()[:4] == b"%PDF", key
+        dialogs.save_path = str(tmp_path / f"{key}.csv")
+        view.export_btns[3].click()                              # botão "CSV"
+        lines = (tmp_path / f"{key}.csv").read_text(encoding="utf-8-sig").splitlines()
+        assert lines[0] == ";".join(sheet.headers) and len(lines) == len(sheet.rows) + 1, key
         exported += 1
     assert exported >= 5
+
+    window.go_to("entries")                                       # a lista de lançamentos também sai em CSV
+    dialogs.save_path = str(tmp_path / "lanc")
+    page._export("csv")
+    text = (tmp_path / "lanc.csv").read_bytes()
+    assert text[:3] == b"\xef\xbb\xbf" and "Salário".encode() in text   # UTF-8 com BOM (o Excel lê os acentos)
 
 
 def test_exportar_bloqueado_na_free(window, dialogs):

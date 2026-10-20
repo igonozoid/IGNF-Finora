@@ -53,7 +53,7 @@ REPORTS = [
 ]
 LOCK_MSG = {"budget": "Orçado x realizado é um recurso da edição Plus.",
             "cost_centers": "Relatório por centro de custo é um recurso da edição Plus.",
-            "export": "Exportar para Excel e PDF é um recurso da edição Plus.",
+            "export": "Exportar para Excel, PDF e CSV é um recurso das edições Plus e Pro.",
             "mcc_reports": "Os relatórios que vieram do MCC (pontualidade e outros) são das edições Plus e Pro."}
 
 
@@ -90,7 +90,8 @@ def export_buttons(parent: QWidget, t: dict) -> QHBoxLayout:
     row.addWidget(pr)
     parent.print_btn = pr
     parent.export_btns = [pr]
-    for label, icon, kind in (("Excel", "fa6s.file-excel", "xlsx"), ("PDF", "fa6s.file-pdf", "pdf")):
+    for label, icon, kind in (("Excel", "fa6s.file-excel", "xlsx"), ("PDF", "fa6s.file-pdf", "pdf"),
+                              ("CSV", "fa6s.file-csv", "csv")):
         b = button(label, "secondary", t, icon, "fg")
         b.setProperty("fullText", label)
         parent.export_btns.append(b)

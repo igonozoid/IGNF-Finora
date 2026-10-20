@@ -73,6 +73,7 @@ class RuralPage(QWidget):
         menu.addSeparator()
         menu.addAction("Imprimir…", self._print)
         menu.addAction("Excel…", lambda: self._export("xlsx"))
+        menu.addAction("CSV…", lambda: self._export("csv"))
         more.setMenu(menu)
         self.new_btn = button("Nova atividade", "primary", t, "fa6s.plus", "on_acc")
         bar.addWidget(more)
@@ -310,7 +311,7 @@ class RuralPage(QWidget):
         from finora.ui import exporting
         from finora.ui.widgets import show_upgrade
         if not allowed(current_edition(), "export"):
-            show_upgrade(self, "Exportar para Excel e PDF é um recurso da edição Plus.")
+            show_upgrade(self, "Exportar para Excel, PDF e CSV é um recurso das edições Plus e Pro.")
             return
         path = exporting.run(self, self.export_sheet(), kind)
         if path:

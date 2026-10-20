@@ -15,7 +15,8 @@ from finora.core.logs import log
 from finora.services import export
 from finora.services.export import Sheet
 
-KINDS = {"xlsx": ("Excel", "Planilha do Excel (*.xlsx)"), "pdf": ("PDF", "PDF (*.pdf)")}
+KINDS = {"xlsx": ("Excel", "Planilha do Excel (*.xlsx)"), "pdf": ("PDF", "PDF (*.pdf)"),
+         "csv": ("CSV", "CSV separado por ponto e vírgula (*.csv)")}
 MARGIN_MM = 12
 _last_dir: Path | None = None       # lembra a última pasta durante o uso do app
 
@@ -63,6 +64,8 @@ def save_pdf(sheet: Sheet, path: str, land: bool | None = None) -> None:
 def save(sheet: Sheet, kind: str, path: str, land: bool | None = None) -> None:
     if kind == "xlsx":
         export.to_xlsx(sheet, path)
+    elif kind == "csv":
+        export.to_csv(sheet, path)
     else:
         save_pdf(sheet, path, land)
 

@@ -224,7 +224,9 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
 
 - **Imprimir** (todas as edições): prévia, retrato ou paisagem, com o cabeçalho da entidade (nome, endereço e
   logotipo, cadastrados em Administração › Entidades).
-- **Excel e PDF**: edições pagas.
+- **Excel, PDF e CSV**: edições pagas. O **CSV** (separado por ";") é para levar os dados a outra planilha ou
+  sistema: só as colunas e as linhas, valores sem "R$" (ex.: 1234,56) e datas dd/mm/aaaa; abre direto no Excel
+  com os acentos certos. Também na lista de lançamentos e nas telas de estoque, vendas, produção e agro.
 - **Gráfico**: alguns relatórios mostram um gráfico, que também sai na impressão. Desmarque **Gráfico** para
   esconder.
 - **Imposto de Renda**: rendimentos por fonte pagadora, pagamentos de saúde e educação com CPF/CNPJ e saldos em

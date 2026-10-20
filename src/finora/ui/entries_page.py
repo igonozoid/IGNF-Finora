@@ -50,7 +50,7 @@ def _repolish(w):
 
 
 # ---------- tabela ----------
-EXPORT_LOCK = "Exportar para Excel e PDF é um recurso da edição Plus."
+EXPORT_LOCK = "Exportar para Excel, PDF e CSV é um recurso das edições Plus e Pro."
 
 
 class EntriesModel(QAbstractTableModel):
@@ -887,12 +887,12 @@ class EntriesPage(QWidget):
         row1.addWidget(self.ofx_lock)
         self.ofx_lock.setVisible(not allowed(current_edition(), "ofx"))
         self.export_btn = button("Imprimir/Exportar", "secondary", t, "fa6s.print", "fg")
-        self.export_btn.setToolTip("Imprimir a lista que está na tela ou salvar em Excel ou PDF")
+        self.export_btn.setToolTip("Imprimir a lista que está na tela ou salvar em Excel, PDF ou CSV")
         row1.addWidget(self.export_btn)
         menu = QMenu(self.export_btn)
         menu.addAction("Imprimir…", self._print)
         can_export = allowed(current_edition(), "export")
-        for label, kind in (("Excel (.xlsx)", "xlsx"), ("PDF", "pdf")):
+        for label, kind in (("Excel (.xlsx)", "xlsx"), ("PDF", "pdf"), ("CSV", "csv")):
             menu.addAction(label if can_export else f"{label} — edição Plus",
                            (lambda k=kind: self._export(k)) if can_export else
                            (lambda: show_upgrade(self, EXPORT_LOCK)))

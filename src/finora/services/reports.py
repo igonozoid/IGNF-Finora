@@ -797,6 +797,72 @@ def analytical(s: Session, entity_id: int, first: date, last: date, kind: str = 
     return [entries.to_view(r) for r in s.execute(q.order_by(Entry.competence_date, Entry.id))]
 
 
+# analítico com agrupamentos livres (Fase 3.9, do MCC): por o quê -> rótulo
+ANALYTICAL_GROUPS = {"category": "Categoria", "contact": "Contato", "account": "Conta", "cost_center": "Centro de custo",
+                     "month": "Mês", "status": "Situação", "kind": "Tipo"}
+_STATUS = {"paid": "Pago ou recebido", "pending": "Em aberto", "card": "No cartão"}
+_MONTHS = ("jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez")
+
+
+def _group_key(e, by: str) -> tuple:
+    """(chave de ordem, rótulo) do lançamento nesse agrupamento. "Sem …" vai para o fim; mês em ordem de data;
+    receitas antes das despesas; situação na ordem pago, em aberto, cartão."""
+    if by == "month":
+        d = e.competence_date or e.due_date
+        return (0, d.year, d.month), f"{_MONTHS[d.month - 1]}/{d.year}"
+    if by == "kind":
+        return (0 if e.kind == "income" else 1,), "Receitas" if e.kind == "income" else "Despesas"
+    if by == "status":
+        return (list(_STATUS).index(e.status) if e.status in _STATUS else 9,), _STATUS.get(e.status, e.status)
+    value, missing = {"category": (e.category, "Sem categoria"), "contact": (e.contact, "Sem contato"),
+                      "account": (e.account, "Sem conta"), "cost_center": (e.cost_center, "Sem centro de custo")}[by]
+    return ((1, "") if not value else (0, value.lower())), value or missing
+
+
+@dataclass
+class AnalyticalGroup:
+    label: str
+    level: int                          # 1 ou 2
+    entries: list = field(default_factory=list)          # EntryView (só no último nível)
+    children: list["AnalyticalGroup"] = field(default_factory=list)
+    income: Decimal = ZERO
+    expense: Decimal = ZERO
+    count: int = 0
+
+    @property
+    def result(self) -> Decimal:
+        return self.income - self.expense
+
+
+def analytical_grouped(data: list, first_by: str, second_by: str | None = None) -> list[AnalyticalGroup]:
+    """Agrupa o analítico em até 2 níveis, na ordem escolhida, com subtotais (receitas, despesas, resultado e
+    quantidade) em cada grupo. Dentro do grupo, os lançamentos ficam na ordem das datas."""
+    levels = [b for b in (first_by, second_by) if b]
+    if not levels or any(b not in ANALYTICAL_GROUPS for b in levels) or len(set(levels)) != len(levels):
+        raise ValueError("Escolha um ou dois agrupamentos diferentes.")
+
+    def build(items: list, depth: int) -> list[AnalyticalGroup]:
+        buckets: dict[tuple, tuple[str, list]] = {}
+        for e in items:
+            order, label = _group_key(e, levels[depth])
+            buckets.setdefault(order, (label, []))[1].append(e)
+        out = []
+        for order in sorted(buckets):
+            label, group_items = buckets[order]
+            g = AnalyticalGroup(label, depth + 1)
+            if depth + 1 < len(levels):
+                g.children = build(group_items, depth + 1)
+            else:
+                g.entries = group_items
+            g.income = sum((e.base_amount for e in group_items if e.kind == "income"), ZERO)
+            g.expense = sum((e.base_amount for e in group_items if e.kind == "expense"), ZERO)
+            g.count = len(group_items)
+            out.append(g)
+        return out
+
+    return build(data, 0)
+
+
 # ---------- inadimplência (atrasados) ----------
 AGING = [(30, "Até 30 dias"), (60, "31 a 60 dias"), (90, "61 a 90 dias"), (None, "Mais de 90 dias")]
 

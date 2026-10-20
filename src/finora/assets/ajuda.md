@@ -253,6 +253,10 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
 - **Fluxo por centro**: por centro de custo, o que foi **pago** e **recebido** no período (pela data do pagamento)
   e o que está **a pagar** e **a receber** vencendo no período. Saldo realizado = recebido − pago; saldo previsto
   = a receber − a pagar (só o que está em aberto, como no MCC). Lançamentos sem centro ficam numa linha própria.
+- **Analítico › Agrupar**: agrupe o analítico em até **dois níveis**, na ordem que escolher, entre categoria,
+  contato, conta, centro de custo, mês, situação e tipo (ex.: por mês e depois por contato). Cada grupo mostra a
+  quantidade e o resultado (receitas − despesas). **Detalhado** mostra os lançamentos dentro dos grupos;
+  **Totalizado**, só os totais. Sem agrupar, o analítico continua em todas as edições.
 
 ## Administração {#admin}
 

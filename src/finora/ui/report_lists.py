@@ -480,25 +480,91 @@ class AnalyticalView(TableReport):
             self.kind.addItem(label, k)
         self.kind.currentIndexChanged.connect(self.refresh)
         self.bar.addWidget(self.kind)
+        # agrupamentos livres (Fase 3.9, do MCC): Plus/Pro
+        self.group1, self.group2 = QComboBox(), QComboBox()
+        for box, none in ((self.group1, "Sem agrupar"), (self.group2, "— só um nível —")):
+            box.addItem(none, None)
+            for k, label in reports.ANALYTICAL_GROUPS.items():
+                box.addItem(label, k)
+            box.currentIndexChanged.connect(self._grouping_changed)
+        self.group1.setToolTip("Agrupar por… (edições Plus e Pro)")
+        self.group2.setToolTip("…e depois por (2º nível)")
+        self.mode = QComboBox()
+        self.mode.addItem("Detalhado", "detail")
+        self.mode.addItem("Totalizado", "total")
+        self.mode.setToolTip("Detalhado: os lançamentos dentro de cada grupo. Totalizado: só os totais dos grupos.")
+        self.mode.currentIndexChanged.connect(self.refresh)
+        for w in (self.group1, self.group2, self.mode):
+            self.bar.addWidget(w)
+        self._sync_grouping()
         self.finish_bar("Cada receita e despesa do período (pela data da compra/vencimento), pagas ou não,\n"
                         "com categoria, centro de custo, contato, conta e observações. Valores na moeda principal.\n"
+                        "Agrupar (Plus/Pro): até dois níveis entre categoria, contato, conta, centro, mês, situação\n"
+                        "e tipo, na ordem escolhida, com o total de cada grupo; Totalizado mostra só os totais.\n"
                         "Dois cliques abrem o lançamento.")
 
+    def _sync_grouping(self):
+        on = self.group1.currentData() is not None
+        self.group2.setEnabled(on)
+        self.mode.setEnabled(on)
+
+    def _grouping_changed(self):
+        from finora.core.licensing import allowed, current_edition
+        if self.group1.currentData() is not None and not allowed(current_edition(), "mcc_reports"):
+            from finora.ui.widgets import show_upgrade
+            for box in (self.group1, self.group2):
+                box.blockSignals(True)
+                box.setCurrentIndex(0)
+                box.blockSignals(False)
+            show_upgrade(self, "Agrupar o analítico é um recurso das edições Plus e Pro.")
+        if self.group2.currentData() is not None and self.group2.currentData() == self.group1.currentData():
+            self.group2.blockSignals(True)
+            self.group2.setCurrentIndex(0)                 # o mesmo nos dois níveis não faz sentido
+            self.group2.blockSignals(False)
+        self._sync_grouping()
+        self.refresh()
+
     def subtitle(self) -> str:
-        return f"{self.period.currentText()} · {self.kind.currentText()}"
+        text = f"{self.period.currentText()} · {self.kind.currentText()}"
+        if self.group1.currentData():
+            text += " · por " + self.group1.currentText().lower()
+            if self.group2.currentData():
+                text += " e " + self.group2.currentText().lower()
+            if self.mode.currentData() == "total":
+                text += " (totalizado)"
+        return text
+
+    def _entry_row(self, e, many_years: bool) -> dict:
+        return {"cells": [e.competence_date.strftime("%d/%m/%y" if many_years else "%d/%m"),
+                          e.description + (f" ({e.installment})" if e.installment else ""),
+                          e.category or "Sem categoria", e.cost_center or "", e.contact or "", e.account,
+                          " ".join((e.notes or "").split()),
+                          e.base_amount if e.kind == "income" else -e.base_amount],
+                "tones": {7: "pos" if e.kind == "income" else None, 2: None if e.category else "mut", 6: "mut"},
+                "target": ("entry", e.id)}
+
+    def _group_rows(self, groups, many_years: bool, detail: bool) -> list[dict]:
+        rows = []
+        for g in groups:
+            label = ("      " if g.level == 2 else "") + f"{g.label} ({g.count})"
+            rows.append({"cells": ["", label, "", "", "", "", "", g.result], "bold": g.level == 1,
+                         "indent": g.level == 2,
+                         "tones": {7: "pos" if g.result > 0 else "neg" if g.result < 0 else None}})
+            rows += self._group_rows(g.children, many_years, detail)
+            if detail:
+                rows += [self._entry_row(e, many_years) for e in g.entries]
+        return rows
 
     def refresh(self):
         first, last = reports.period_range(self.period.currentData())
         with Session() as s:
             data = reports.analytical(s, self.profile.id, first, last, self.kind.currentData())
         many_years = first.year != last.year
-        rows = [{"cells": [e.competence_date.strftime("%d/%m/%y" if many_years else "%d/%m"),
-                           e.description + (f" ({e.installment})" if e.installment else ""),
-                           e.category or "Sem categoria", e.cost_center or "", e.contact or "", e.account,
-                           " ".join((e.notes or "").split()),
-                           e.base_amount if e.kind == "income" else -e.base_amount],
-                 "tones": {7: "pos" if e.kind == "income" else None, 2: None if e.category else "mut", 6: "mut"},
-                 "target": ("entry", e.id)} for e in data]
+        if self.group1.currentData() and data:
+            groups = reports.analytical_grouped(data, self.group1.currentData(), self.group2.currentData())
+            rows = self._group_rows(groups, many_years, self.mode.currentData() == "detail")
+        else:
+            rows = [self._entry_row(e, many_years) for e in data]
         self.fill(rows, "Nenhuma receita ou despesa neste período.")
         inc = sum((e.base_amount for e in data if e.kind == "income"), Decimal(0))
         exp = sum((e.base_amount for e in data if e.kind == "expense"), Decimal(0))

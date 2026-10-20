@@ -96,3 +96,22 @@ def test_recursos_por_edicao():
     assert (pro["users_max"], pro["entities_max"]) == (None, None)
     same = lambda f: {k: v for k, v in f.items() if k not in ("users_max", "entities_max")}
     assert same(plus) == same(pro)                                   # Plus e Pro: mesmos recursos
+
+
+def test_licenca_do_par_de_chaves_anterior_continua_valendo(keys, monkeypatch):
+    """Trocar o par de chaves não derruba quem já tinha licença: as públicas antigas continuam aceitas."""
+    old = Ed25519PrivateKey.generate()
+    old_pub = old.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw).hex()
+    monkeypatch.setattr(licensing, "OLD_PUBLIC_KEYS_HEX", (old_pub,))
+    lic = licensing.activate(_key(old, "pro", "Cliente Antigo"))
+    assert (lic.edition, lic.name) == ("pro", "Cliente Antigo") and licensing.current_edition() is Edition.PRO
+    assert licensing.activate(_key(keys, "plus")).edition == "plus"            # a atual também
+    stranger = Ed25519PrivateKey.generate()                                   # de outro par: recusada
+    with pytest.raises(LicenseError):
+        licensing.activate(_key(stranger, "pro"))
+    licensing.deactivate()
+
+
+def test_a_chave_antiga_de_verdade_esta_na_lista():
+    assert "8ec33495f00e6a483ed629a16160ecc42334e98fafb505563df41fe2d716dd47" in licensing.OLD_PUBLIC_KEYS_HEX
+    assert licensing.PUBLIC_KEY_HEX not in licensing.OLD_PUBLIC_KEYS_HEX

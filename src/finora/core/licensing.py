@@ -29,6 +29,9 @@ FEATURES = {
 
 # Chave pública que confere as licenças. Gerada por tools/license_tool.py init (a privada fica fora do Git).
 PUBLIC_KEY_HEX = "f962fcffa74014c01aaf9cf7fb7d449b1b51d42ba181c117a4eb540eaf153674"
+# Chaves públicas de pares anteriores: as licenças emitidas com elas continuam valendo depois de atualizar o app
+# (a privada do 1º par se perdeu em out/2026; novas licenças saem só do par atual).
+OLD_PUBLIC_KEYS_HEX = ("8ec33495f00e6a483ed629a16160ecc42334e98fafb505563df41fe2d716dd47",)
 
 _cache: tuple[str, license_key.License | None] | None = None   # (chave guardada, licença lida)
 
@@ -37,6 +40,19 @@ def _public_key():
     if not PUBLIC_KEY_HEX:
         raise license_key.LicenseError("Este app ainda não aceita licenças (chave pública ausente).")
     return license_key.public_key_from_hex(PUBLIC_KEY_HEX)
+
+
+def _decode(key: str) -> license_key.License:
+    """Confere com a chave pública atual e, se não servir, com as anteriores. O erro é o da atual."""
+    try:
+        return license_key.decode(key, _public_key())
+    except license_key.LicenseError as first:
+        for old in OLD_PUBLIC_KEYS_HEX:
+            try:
+                return license_key.decode(key, license_key.public_key_from_hex(old))
+            except license_key.LicenseError:
+                continue
+        raise first
 
 
 def _stored_key() -> str:
@@ -50,7 +66,7 @@ def current_license(today: date | None = None) -> license_key.License | None:
     key = _stored_key()
     if _cache is None or _cache[0] != key:
         try:
-            lic = license_key.decode(key, _public_key()) if key else None
+            lic = _decode(key) if key else None
         except license_key.LicenseError:
             lic = None
         _cache = (key, lic)
@@ -71,7 +87,7 @@ def current_edition() -> Edition:
 
 def activate(key: str, today: date | None = None) -> license_key.License:
     """Confere e guarda a chave. Levanta LicenseError com uma mensagem pronta para o usuário."""
-    lic = license_key.decode(key, _public_key())
+    lic = _decode(key)
     if lic.expired(today):
         raise license_key.LicenseError(f"Essa licença venceu em {lic.expires:%d/%m/%Y}.")
     from finora.core import settings

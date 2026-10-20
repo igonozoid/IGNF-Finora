@@ -260,6 +260,10 @@ saídas por mês, analítico, orçado x realizado e **Imposto de Renda**.
 - **Cadastros (clientes e fornecedores)**: os contatos com CPF/CNPJ, papéis, telefone, e-mail e endereço, como os
   relatórios de clientes e de fornecedores do MCC. Escolha o papel (**Me paga** = clientes; **Eu pago** =
   fornecedores; **A revisar**). Dois cliques abrem o cadastro em Contatos.
+- **Juros e descontos**: as contas pagas ou recebidas no período (pela data do pagamento) com valor diferente do
+  previsto — a mais é juros e multa, a menos é desconto —, com os dias de atraso. No rodapé, os totais de juros e
+  multas pagos, descontos obtidos, juros recebidos e descontos dados. O previsto fica guardado quando você faz a
+  baixa com outro valor (botão **Pagar/Receber** do lançamento).
 
 ## Administração {#admin}
 

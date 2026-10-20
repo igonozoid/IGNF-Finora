@@ -1289,3 +1289,47 @@ class RegisterView(TableReport):
         missing = sum(not r.document for r in data)
         self.footer.setText(f"{len(data)} contato(s)" + (f" &nbsp;·&nbsp; {missing} sem CPF/CNPJ" if missing else "")
                             + " &nbsp;·&nbsp; Dois cliques abrem o cadastro.")
+
+
+# ---------- juros e descontos na baixa (Fase 3.11, do MCC) ----------
+class InterestView(TableReport):
+    TITLE = "Juros e descontos"
+    COLUMNS = [("PAGO EM", 75, False), ("VENC.", 75, False), ("DESCRIÇÃO", None, False), ("CONTATO", 150, False),
+               ("PREVISTO", 115, True), ("PAGO", 115, True), ("DIFERENÇA", 115, True), ("ATRASO", 80, True)]
+    KINDS = {"": "Pagamentos e recebimentos", "expense": "Só o que paguei", "income": "Só o que recebi"}
+
+    def subtitle(self) -> str:
+        return f"{self.kind.currentText()} · {self.period.currentText()}"
+
+    def __init__(self, profile: Profile, t: dict):
+        super().__init__(profile, t)
+        self.kind = QComboBox()
+        for k, label in self.KINDS.items():
+            self.kind.addItem(label, k)
+        self.kind.currentIndexChanged.connect(self.refresh)
+        self.period = self.period_box()
+        self.period.setCurrentIndex(self.period.findData("ytd"))
+        self.bar.addWidget(self.kind)
+        self.bar.addWidget(self.period)
+        self.finish_bar("Contas pagas ou recebidas no período (pela data do pagamento) com valor diferente do\n"
+                        "previsto: a mais = juros e multa; a menos = desconto. O previsto fica guardado na baixa\n"
+                        "(botão Pagar/Receber do lançamento). Dois cliques abrem o lançamento.")
+
+    def refresh(self):
+        first, last = reports.period_range(self.period.currentData())
+        with Session() as s:
+            rep = reports.interest_discounts(s, self.profile.id, first, last, self.kind.currentData())
+        rows = []
+        for r in rep.rows:
+            sign = 1 if r.kind == "income" else -1
+            late = "" if not r.days_late else (f"{r.days_late} d" if r.days_late > 0 else f"{-r.days_late} d antes")
+            rows.append({"cells": [r.paid.strftime("%d/%m/%y"), r.due.strftime("%d/%m/%y"), r.description, r.contact,
+                                   sign * r.original, sign * r.amount, r.difference, late],
+                         "tones": {6: ("neg" if r.difference > 0 else "pos") if r.kind == "expense"
+                                   else ("pos" if r.difference > 0 else "neg"), 7: "neg" if r.days_late > 0 else None},
+                         "target": ("entry", r.entry_id)})
+        self.fill(rows, "Nenhuma conta paga com valor diferente do previsto neste período.")
+        parts = [("Juros e multas pagos", rep.interest_paid), ("Descontos obtidos", rep.discounts_obtained),
+                 ("Juros recebidos", rep.interest_received), ("Descontos dados", rep.discounts_given)]
+        self.footer.setText(" &nbsp;·&nbsp; ".join(f"{label} <b>{self.fmt(v)}</b>" for label, v in parts if v)
+                            or "Sem juros nem descontos no período.")

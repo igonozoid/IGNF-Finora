@@ -739,6 +739,72 @@ def center_targets(s: Session, entity_id: int, first: date, last: date, kind: st
     return sorted(out, key=lambda r: (r.monthly is None, -(r.pct or 0), r.name.lower()))
 
 
+# ---------- juros e descontos na baixa (Fase 3.11, do MCC) ----------
+@dataclass(frozen=True)
+class PaymentDifference:
+    entry_id: int
+    kind: str                           # income | expense
+    description: str
+    contact: str
+    due: date
+    paid: date
+    original: Decimal                   # o previsto (moeda principal)
+    amount: Decimal                     # o pago/recebido
+    days_late: int                      # negativo = antecipado
+
+    @property
+    def difference(self) -> Decimal:
+        """Pago − previsto: positivo = juros/multa; negativo = desconto."""
+        return self.amount - self.original
+
+
+@dataclass(frozen=True)
+class InterestReport:
+    rows: list[PaymentDifference]
+
+    def _sum(self, kind: str, positive: bool) -> Decimal:
+        return sum((abs(r.difference) for r in self.rows
+                    if r.kind == kind and (r.difference > 0) == positive), ZERO)
+
+    @property
+    def interest_paid(self) -> Decimal:          # juros/multa que você pagou
+        return self._sum("expense", True)
+
+    @property
+    def discounts_obtained(self) -> Decimal:     # desconto que você ganhou ao pagar
+        return self._sum("expense", False)
+
+    @property
+    def interest_received(self) -> Decimal:      # juros/multa que te pagaram
+        return self._sum("income", True)
+
+    @property
+    def discounts_given(self) -> Decimal:        # desconto que você deu ao receber
+        return self._sum("income", False)
+
+
+def interest_discounts(s: Session, entity_id: int, first: date, last: date, kind: str = "") -> InterestReport:
+    """Pagos/recebidos no período (pela data do pagamento) com valor diferente do previsto: juros e multas (pagou a
+    mais) e descontos (a menos). Usa o valor previsto guardado na baixa (original_amount). kind: income | expense |
+    "" (os dois). Valores na moeda principal."""
+    from finora.models import Contact
+    q = (select(Entry, Contact.name).outerjoin(Contact, Entry.contact_id == Contact.id)
+         .where(Entry.entity_id == entity_id, Entry.kind.in_(entries.RESULT_KINDS), Entry.status == "paid",
+                Entry.original_amount.is_not(None), Entry.original_amount != Entry.amount,
+                Entry.paid_date.between(first, last)))
+    if kind in entries.RESULT_KINDS:
+        q = q.where(Entry.kind == kind)
+    rows = []
+    for e, contact in s.execute(q.order_by(Entry.paid_date, Entry.id)):
+        amount = Decimal(e.amount)
+        base = Decimal(e.base_amount if e.base_amount is not None else e.amount)
+        rate = base / amount if amount else Decimal(1)              # outra moeda: leva para a principal
+        rows.append(PaymentDifference(e.id, e.kind, e.description or "", contact or "", e.due_date, e.paid_date,
+                                      (Decimal(e.original_amount) * rate).quantize(CENT), base.quantize(CENT),
+                                      (e.paid_date - e.due_date).days))
+    return InterestReport(rows)
+
+
 # ---------- relatório de cadastros: clientes / fornecedores (Fase 3.10, do MCC) ----------
 @dataclass(frozen=True)
 class RegisterRow:

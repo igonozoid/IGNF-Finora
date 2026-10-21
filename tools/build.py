@@ -1,12 +1,14 @@
-"""Gera o pacote portátil do IGNF Finora para o sistema atual (Windows ou Linux).
+"""Gera o pacote portátil do IGNF Finora para o sistema atual (Windows, Linux ou Mac).
 
     python tools/build.py
 
 Resultado em dist/: a pasta IGNF-Finora (programa) e IGNF-Finora-<versão>-<sistema>.zip (Windows) ou .tar.gz
-(Linux). Antes de compactar, roda o executável com --teste numa pasta de dados vazia: se algo faltar no pacote
+(Linux). No Mac, o IGNF-Finora.app num IGNF-Finora-<versão>-macos-arm64.zip (Apple Silicon) ou -macos-intel.zip.
+Antes de compactar, roda o executável com --teste numa pasta de dados vazia: se algo faltar no pacote
 (fontes, tradução, migrações, telas), o build falha.
 """
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -22,6 +24,9 @@ from finora import __version__  # noqa: E402
 DIST = ROOT / "dist"
 PKG = DIST / "IGNF-Finora"
 SYSTEM = {"win32": "windows", "linux": "linux", "darwin": "macos"}.get(sys.platform, sys.platform)
+if sys.platform == "darwin":                       # dois pacotes: Apple Silicon e Intel
+    SYSTEM += "-arm64" if platform.machine() == "arm64" else "-intel"
+APP = DIST / "IGNF-Finora.app"                     # só no Mac
 
 
 def make_icon() -> None:
@@ -48,7 +53,10 @@ def pyinstaller() -> None:
 
 
 def smoke_test() -> None:
-    exe = PKG / ("IGNF-Finora.exe" if sys.platform == "win32" else "IGNF-Finora")
+    if sys.platform == "darwin":
+        exe = APP / "Contents" / "MacOS" / "IGNF-Finora"
+    else:
+        exe = PKG / ("IGNF-Finora.exe" if sys.platform == "win32" else "IGNF-Finora")
     with tempfile.TemporaryDirectory() as data:
         env = dict(os.environ, FINORA_DATA_DIR=data, QT_QPA_PLATFORM="offscreen")
         r = subprocess.run([str(exe), "--teste"], env=env, timeout=180)
@@ -61,6 +69,18 @@ def smoke_test() -> None:
 
 def archive() -> Path:
     name = f"IGNF-Finora-{__version__}-{SYSTEM}"
+    if sys.platform == "darwin":
+        # ditto guarda o que o .app precisa (links, permissões e a assinatura "ad hoc"); o zip leva o LEIA-ME junto
+        out = DIST / f"{name}.zip"
+        stage = DIST / "mac"
+        shutil.rmtree(stage, ignore_errors=True)
+        (stage / "IGNF-Finora").mkdir(parents=True)
+        subprocess.run(["ditto", str(APP), str(stage / "IGNF-Finora" / "IGNF-Finora.app")], check=True)
+        shutil.copy(ROOT / "packaging" / "LEIA-ME.txt", stage / "IGNF-Finora" / "LEIA-ME.txt")
+        out.unlink(missing_ok=True)
+        subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(stage / "IGNF-Finora"), str(out)],
+                       check=True)
+        return out
     if sys.platform == "win32":
         out = DIST / f"{name}.zip"
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
@@ -103,4 +123,5 @@ if __name__ == "__main__":
     sign()
     smoke_test()
     out = archive()
-    print(f"Pasta: {PKG} ({size(PKG)})\nPacote: {out} ({size(out)})")
+    print(f"Pasta: {APP if sys.platform == 'darwin' else PKG} ({size(APP if sys.platform == 'darwin' else PKG)})"
+          f"\nPacote: {out} ({size(out)})")

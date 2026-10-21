@@ -1,7 +1,8 @@
 name: Pacotes
 
-# Gera o pacote portátil (Windows .zip e Linux .tar.gz). Rode à mão em Actions › Pacotes › Run workflow,
-# ou crie uma tag de versão (ex.: git tag v0.2.0 && git push origin v0.2.0) para publicar uma versão.
+# Gera o pacote portátil (Windows .zip, Linux .tar.gz e Mac .zip com o .app, Apple Silicon e Intel). Rode à mão em
+# Actions › Pacotes › Run workflow, ou crie uma tag de versão (ex.: git tag v0.2.0 && git push origin v0.2.0) para
+# publicar uma versão.
 on:
   workflow_dispatch:
   push:
@@ -14,7 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-22.04]     # Linux mais antigo = pacote roda em mais distribuições
+        # Linux mais antigo = pacote roda em mais distribuições; Mac: macos-15 é Apple Silicon (arm64) e
+        # macos-15-intel é Intel (x86_64) — cada um gera o seu pacote
+        os: [windows-latest, ubuntu-22.04, macos-15, macos-15-intel]
     env:
       PYTHONUTF8: "1"
     steps:
@@ -38,7 +41,7 @@ jobs:
         run: python tools/build.py
       - uses: actions/upload-artifact@v4
         with:
-          name: IGNF-Finora-${{ runner.os }}
+          name: IGNF-Finora-${{ matrix.os }}         # um por máquina (os dois Mac teriam o mesmo runner.os)
           path: |
             dist/*.zip
             dist/*.tar.gz

@@ -64,7 +64,12 @@ class UpdateDialog(QDialog):
         page.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(release.url)))
         later.clicked.connect(self.reject)
         self.go.clicked.connect(self.start)
-        if app_dir() is None or not release.can_install:
+        if sys.platform == "darwin":
+            self.go.setEnabled(False)
+            self.status.setText("No Mac: baixe o pacote pelo site, feche o Finora e troque o IGNF-Finora.app pelo "
+                                "novo (na pasta Aplicativos). Seus dados ficam em IGNF-Finora/data, na sua pasta "
+                                "pessoal, e não mudam.")
+        elif app_dir() is None or not release.can_install:
             self.go.setEnabled(False)
             self.status.setText("Atualização automática indisponível aqui: baixe pelo site, descompacte numa pasta "
                                 "nova e copie para ela a pasta data desta versão (veja o LEIA-ME)."

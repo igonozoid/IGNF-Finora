@@ -13,6 +13,15 @@ ATUALIZAR PARA UMA VERSÃO NOVA
 - Copie a pasta "data" da versão antiga para dentro da pasta nova.
 - Abra o Finora novo. Ele atualiza o banco sozinho (e guarda uma cópia antes, em data/backups).
 
+MAC (Apple Silicon ou Intel)
+- Baixe o pacote do seu Mac: "macos-arm64" (M1, M2, M3, M4…) ou "macos-intel".
+- Arraste o IGNF-Finora.app para a pasta Aplicativos.
+- No Mac, os dados ficam em IGNF-Finora/data, na sua pasta pessoal (o .app não guarda dados).
+- O programa ainda não tem assinatura da Apple. Na 1ª vez o Mac avisa que não pode verificar o
+  desenvolvedor: abra Ajustes do Sistema > Privacidade e Segurança e clique em "Abrir Mesmo Assim".
+  Depois disso abre normalmente.
+- Para atualizar: feche o Finora e troque o IGNF-Finora.app pelo novo. Os dados não mudam.
+
 AVISO DO WINDOWS (SmartScreen) / LINUX
 - O programa ainda não tem assinatura digital, então o Windows pode mostrar
   "O Windows protegeu o computador". Clique em "Mais informações" > "Executar assim mesmo".

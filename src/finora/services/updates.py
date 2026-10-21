@@ -26,11 +26,19 @@ class Release:
 
     @property
     def can_install(self) -> bool:
-        return bool(self.asset_url and (self.sha256 or self.sums_url))
+        """Atualizar com um clique troca a pasta do programa: vale no Windows e no Linux. No Mac o programa é um
+        .app (e os dados ficam fora dele): o aviso leva para baixar."""
+        return bool(self.asset_url and (self.sha256 or self.sums_url)) and not self.asset_name.endswith(MAC_SUFFIXES)
 
 
-def platform_suffix(platform: str | None = None) -> str:
+MAC_SUFFIXES = ("-macos-arm64.zip", "-macos-intel.zip")
+
+
+def platform_suffix(platform: str | None = None, machine: str | None = None) -> str:
     platform = platform or sys.platform
+    if platform == "darwin":                       # Apple Silicon (arm64) ou Intel (x86_64)
+        import platform as _p
+        return MAC_SUFFIXES[0] if (machine or _p.machine()) == "arm64" else MAC_SUFFIXES[1]
     return "-windows.zip" if platform == "win32" else "-linux.tar.gz" if platform.startswith("linux") else ""
 
 

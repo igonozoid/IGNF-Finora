@@ -35,3 +35,20 @@ def test_pacote_do_sistema_e_conferencia():
     sums = f"{'b' * 64}  IGNF-Finora-0.3.0-linux.tar.gz\n{'c' * 64}  outro.zip\n"
     assert updates.sha_from_sums(sums, "IGNF-Finora-0.3.0-linux.tar.gz") == "b" * 64
     assert updates.sha_from_sums(sums, "nada.zip") == ""
+
+
+def test_pacotes_do_mac(monkeypatch):
+    """Mac: um pacote para Apple Silicon e outro para Intel; o aviso acha o certo, mas não instala sozinho (.app)."""
+    import platform
+    assert updates.platform_suffix("darwin", "arm64") == "-macos-arm64.zip"
+    assert updates.platform_suffix("darwin", "x86_64") == "-macos-intel.zip"
+    data = {"tag_name": "v0.6.1", "assets": [
+        {"name": "IGNF-Finora-0.6.1-macos-arm64.zip", "browser_download_url": "https://x/a.zip", "digest": "sha256:" + "d" * 64},
+        {"name": "IGNF-Finora-0.6.1-macos-intel.zip", "browser_download_url": "https://x/i.zip", "digest": "sha256:" + "e" * 64},
+        {"name": "IGNF-Finora-0.6.1-windows.zip", "browser_download_url": "https://x/w.zip", "digest": "sha256:" + "f" * 64}]}
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    arm = updates.parse_release(data, "darwin")
+    assert (arm.asset_name, arm.can_install) == ("IGNF-Finora-0.6.1-macos-arm64.zip", False)
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    assert updates.parse_release(data, "darwin").asset_url == "https://x/i.zip"
+    assert updates.parse_release(data, "win32").can_install                # Windows continua com um clique

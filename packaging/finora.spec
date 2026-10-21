@@ -38,3 +38,16 @@ pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="IGNF-Finora", console=False,
           icon=str(ICON) if ICON.exists() else None, upx=False)
 coll = COLLECT(exe, a.binaries, a.datas, name="IGNF-Finora", upx=False)
+
+if sys.platform == "darwin":
+    # Mac: o programa vira IGNF-Finora.app (os dados ficam em ~/IGNF-Finora/data, ver core/paths.py).
+    # Sem assinatura da Apple por enquanto: o PyInstaller assina "ad hoc" (o Apple Silicon exige) e o Gatekeeper
+    # pede para liberar na 1ª vez (ver LEIA-ME).
+    import re
+    VERSION = re.search(r'__version__ = "([^"]+)"', (SRC / "__init__.py").read_text(encoding="utf-8")).group(1)
+    app = BUNDLE(coll, name="IGNF-Finora.app", icon=str(ICON) if ICON.exists() else None,
+                 bundle_identifier="br.com.ignf.finora",
+                 info_plist={"CFBundleName": "IGNF Finora", "CFBundleDisplayName": "IGNF Finora",
+                             "CFBundleShortVersionString": VERSION, "CFBundleVersion": VERSION,
+                             "NSHighResolutionCapable": True, "LSMinimumSystemVersion": "11.0",
+                             "NSHumanReadableCopyright": "IGNF"})

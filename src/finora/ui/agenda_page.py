@@ -250,15 +250,15 @@ class AgendaPage(QWidget):
         cl.setContentsMargins(0, 0, 0, 0)
         cl.addWidget(self.calendar, 1)
         cl.addWidget(self.day_list)
-        self.views = QStackedWidget()
-        self.views.addWidget(list_box)
-        self.views.addWidget(cal_box)
+        self.view_stack = QStackedWidget()
+        self.view_stack.addWidget(list_box)
+        self.view_stack.addWidget(cal_box)
 
         self.form = TaskForm(profile, t)
         left = QVBoxLayout()
         left.setSpacing(10)
         left.addLayout(bar)
-        left.addWidget(self.views, 1)
+        left.addWidget(self.view_stack, 1)
         root = QHBoxLayout(self)
         root.setContentsMargins(14, theme.SP_L, 14, theme.SP_L)
         root.setSpacing(theme.SP_L)
@@ -269,7 +269,7 @@ class AgendaPage(QWidget):
         self.search.textChanged.connect(lambda _t: self.refresh())
         self.table.currentCellChanged.connect(lambda r, *_a: self._selected(r))
         self.table.cellClicked.connect(self._clicked)
-        self.new_btn.clicked.connect(lambda: self.form.open_new(self._day() if self.views.currentIndex() else None))
+        self.new_btn.clicked.connect(lambda: self.form.open_new(self._day() if self.view_stack.currentIndex() else None))
         self.view_btn.toggled.connect(self._toggle_view)
         self.calendar.currentPageChanged.connect(lambda *_a: self._paint_month())
         self.calendar.selectionChanged.connect(self._fill_day)
@@ -325,7 +325,7 @@ class AgendaPage(QWidget):
             self.form.open_task(self.items[row_sel])
         elif self.form.current is None or select_id == 0:
             self.form.open_new()
-        if self.views.currentIndex():
+        if self.view_stack.currentIndex():
             self._paint_month()
 
     def _selected(self, row: int):
@@ -349,7 +349,7 @@ class AgendaPage(QWidget):
 
     # ----- calendário -----
     def _toggle_view(self, on: bool):
-        self.views.setCurrentIndex(1 if on else 0)
+        self.view_stack.setCurrentIndex(1 if on else 0)
         self.view_btn.setText("Lista" if on else "Calendário")
         if on:
             self._paint_month()

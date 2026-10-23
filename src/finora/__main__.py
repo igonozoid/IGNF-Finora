@@ -84,6 +84,15 @@ def main():
     app.setOrganizationName(settings.ORG)
     app.setApplicationName(settings.APP)
     app.setStyle("Fusion")
+    if sys.platform.startswith("linux"):
+        from finora.core import shortcuts
+        app.setDesktopFileName(shortcuts.DESKTOP_ID)          # a janela usa o ícone do atalho na barra/dock
+        try:
+            fixed = shortcuts.refresh()                       # atalhos antigos (sem ícone) ganham o ícone
+            if fixed:
+                log.info("Atalhos refeitos com o ícone: %s", ", ".join(fixed))
+        except OSError as e:
+            log.warning("Não deu para refazer os atalhos: %s", e)
     loaded = fonts.load()
     if not {"IBM Plex Sans", "IBM Plex Mono"} <= loaded:
         log.warning("Fontes IBM Plex não carregadas (%s); usando as do sistema", ", ".join(sorted(loaded)) or "nenhuma")

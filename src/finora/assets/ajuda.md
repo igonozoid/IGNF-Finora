@@ -211,6 +211,20 @@ entidade**. O rebanho é controlado **por lote**, não por animal.
 - As **cabeças** nunca são digitadas: saem dos registros. Para corrigir, abra o registro (dois cliques) e altere.
 - **Custo por lote**: nascimentos, mortes, compras, vendas e o custo de sanidade e trato no período, por cabeça.
 
+## Agenda {#agenda}
+
+Módulo opcional: ligue em **Configurações › Módulos desta entidade**. Para anotar o que precisa ser feito e quando.
+
+- **Nova tarefa**: o que fazer, a data (ou sem data), se **repete** (todo dia, semana, 15 dias, mês, 2, 3 ou 6
+  meses, ano; do mensal em diante dá para fixar o **dia do mês**), o **contato** e o **lançamento** de que ela
+  trata (ex.: "confirmar o pagamento da luz").
+- **Concluir** (o botão, ou um clique na 1ª coluna da lista): a tarefa vai para **Feitas**. Se ela repete, a
+  próxima entra na agenda sozinha. **Reabrir** volta para A fazer.
+- Filtros **A fazer**, **Atrasadas** (em vermelho), **Feitas** e **Todas**, e busca pelo título ou pelo contato.
+- **Calendário**: o mês com os dias marcados; clique num dia para ver as tarefas, os **aniversários** e as
+  **datas importantes** dos contatos. Abaixo da lista aparecem os dos próximos 30 dias.
+- Os **lembretes** (Configurações › Lembretes) avisam as tarefas atrasadas e as que vencem nos próximos dias.
+
 ## Vendas {#sales}
 
 Módulo opcional (precisa do Estoque): ligue em **Configurações › Módulos desta entidade**.

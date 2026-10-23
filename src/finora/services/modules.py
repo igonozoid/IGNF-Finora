@@ -37,6 +37,9 @@ CATALOG = {m.key: m for m in (
     Module("livestock", "Rural: pecuária", "fa6s.cow",
            "Rebanho por lote: nascimentos, compras, vendas, mortes, troca de piquete, vacinas e pesagens.",
            ("rural",), ready=True),
+    Module("agenda", "Agenda", "fa6s.calendar-days",
+           "Tarefas com data e recorrência (ex.: pagar o IPVA todo ano, ligar para um cliente), ligadas a um contato "
+           "ou lançamento, com os aniversários e datas importantes dos contatos. Avisa nos lembretes.", ready=True),
 )}
 
 

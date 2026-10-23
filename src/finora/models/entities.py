@@ -162,6 +162,23 @@ class ContactPerson(Base):
     email: Mapped[str | None] = mapped_column(String(120))
     phone: Mapped[str | None] = mapped_column(String(30))
 
+class Task(Base):
+    """Tarefa da Agenda (módulo "agenda"): o que fazer e quando, ligada ou não a um contato ou lançamento.
+    Recorrente: concluir cria a próxima ocorrência (como no IgnControl)."""
+    __tablename__ = "tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    notes: Mapped[str | None] = mapped_column(Text)
+    due_date: Mapped[date | None] = mapped_column(index=True)
+    status: Mapped[str] = mapped_column(String(10), default="pending")      # pending | done
+    done_at: Mapped[datetime | None]
+    recurrence: Mapped[str] = mapped_column(String(12), default="none")     # ver services/agenda.RECURRENCES
+    recurrence_day: Mapped[int | None] = mapped_column(Integer)             # dia do mês fixo (mensal em diante)
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"))
+    entry_id: Mapped[int | None] = mapped_column(ForeignKey("entries.id", ondelete="SET NULL"))
+    created_by: Mapped[str | None] = mapped_column(String(80))
+
 class Entry(Base):
     __tablename__ = "entries"
     id: Mapped[int] = mapped_column(primary_key=True)

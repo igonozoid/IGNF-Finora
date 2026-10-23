@@ -418,7 +418,7 @@ def merge(s: Session, keep_id: int, drop_id: int) -> MergeResult:
     """Junta `drop` em `keep`: lançamentos (até os da lixeira), regras, estoque, vendas e pecuária passam para o
     mantido, que ganha os papéis e os dados que estavam vazios; `drop` some. Fica registrado no histórico."""
     from sqlalchemy import update as sql_update
-    from finora.models import CategoryRule, HerdEvent, ImportMap, Sale, StockMove
+    from finora.models import CategoryRule, HerdEvent, ImportMap, Sale, StockMove, Task
     from finora.services import audit
     if keep_id == drop_id:
         raise ValueError("Escolha dois contatos diferentes.")
@@ -432,7 +432,7 @@ def merge(s: Session, keep_id: int, drop_id: int) -> MergeResult:
     n_entries = s.execute(sql_update(Entry).where(Entry.contact_id == drop_id).values(contact_id=keep_id)
                           .execution_options(synchronize_session=False)).rowcount
     others = 0
-    for model in (CategoryRule, StockMove, Sale, HerdEvent):
+    for model in (CategoryRule, StockMove, Sale, HerdEvent, Task):
         others += s.execute(sql_update(model).where(model.contact_id == drop_id).values(contact_id=keep_id)
                             .execution_options(synchronize_session=False)).rowcount
     for model in [m for m, _f in LISTS.values()] + [Attachment]:     # contas, referências, pessoas e anexos

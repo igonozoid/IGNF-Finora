@@ -65,7 +65,11 @@ def check(s: Session, entity_id: int, days: int = 1, today: date | None = None) 
             soon_t += Decimal(amount)
         if len(first) < 3:
             first.append(desc or "Sem descrição")
-    return Reminder(over_n, over_t, soon_n, soon_t, days, first, contact_dates(s, entity_id, days, today))
+    dates = contact_dates(s, entity_id, days, today)
+    from finora.services import agenda, modules
+    if modules.is_on(s, entity_id, "agenda"):
+        dates += agenda.due_soon(s, entity_id, days, today)
+    return Reminder(over_n, over_t, soon_n, soon_t, days, first, dates)
 
 
 def next_date(d: date, today: date) -> date:

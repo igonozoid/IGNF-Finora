@@ -1,6 +1,7 @@
-# Piloto: do MCC para o Finora (versão 0.6.0)
+# Piloto: do MCC para o Finora (versão 0.7.0)
 
-Roteiro das issues #62 (instalar), #63 (importação inicial e conferência assinada) e #64 (um mês em paralelo).
+Roteiro das issues #62 (instalar), #63 (importação inicial e conferência assinada), #64 (um mês em paralelo),
+#66 (ajustes do piloto) e #67 (desligar o MCC).
 O banco fica no **Finora Servidor** (MariaDB em `10.0.0.99:3306`); o Finora vai instalado em cada PC.
 
 ## 1. Antes de começar (responsável)
@@ -9,10 +10,14 @@ O banco fica no **Finora Servidor** (MariaDB em `10.0.0.99:3306`); o Finora vai 
       `.db` com tudo o que está no servidor). Guarde fora do computador.
 - [ ] Combine com a equipe o dia: no dia da importação ninguém lança nada no MCC depois da exportação.
 
-## 2. Instalar o Finora 0.6.0 em cada PC (#62)
+## 2. Instalar o Finora 0.7.0 em cada PC (#62)
+
+**Atualize todos os PCs no mesmo dia, depois do backup do passo 1.** O primeiro Finora 0.7.0 que abrir o servidor
+atualiza o banco do servidor (no servidor não há cópia automática antes, por isso o backup manual). Um PC que ficar
+na versão antiga não abre mais o banco atualizado: atualize-o também.
 
 1. Feche o Finora, se estiver aberto (inclusive o ícone ao lado do relógio: botão direito › Sair).
-2. Baixe `IGNF-Finora-0.6.0-windows.zip` em <https://github.com/igonozoid/IGNF-Finora/releases/tag/v0.6.0>.
+2. Baixe `IGNF-Finora-0.7.0-windows.zip` em <https://github.com/igonozoid/IGNF-Finora/releases/tag/v0.7.0>.
 3. Descompacte em `C:\IGNF-Finora` (não use "Arquivos de Programas"). Se já houver um Finora ali, descompacte
    **por cima**: a pasta `data` fica intacta. Quem já tem a 0.5.x pode também usar o aviso de versão nova do app.
 4. Abra o `IGNF-Finora.exe`. Na primeira vez em cada PC: aceite os termos.
@@ -52,8 +57,13 @@ Anote na tela do MCC o **saldo de cada conta** e os totais **a pagar** e **a rec
    importa tudo ou nada. Depois **Concluir**.
 7. Arrumação depois da importação (pode ser nos dias seguintes):
    - **Contatos › A revisar**: confira os criados a partir do nome solto; junte os repetidos com **Mesclar…**.
+   - **Configurações › Trazer dados do MCC › Aplicações, resgates e saques…** (decisão D2): o que o MCC lançou
+     como despesa numa conta e receita na outra (aplicação, resgate, saque, depósito) vira **transferência**; o
+     que tem um lado só vira retirada ou depósito. As transferências vêm marcadas; os avulsos vêm desmarcados:
+     marque só os que são mesmo dinheiro entre as contas de vocês (um "DEPÓSITO" pode ser receita de cliente).
+     Os saldos não mudam; a DRE deixa de contar esse dinheiro.
    - **Categorias › Reclassificar…**: tire os itens de "Despesas do MCC" / "Receitas do MCC" e ponha nos grupos
-     certos da DRE (o Finora sugere).
+     certos da DRE (o Finora sugere). Categorias e centros trazidos do MCC aparecem em **Só a revisar**.
    - Confira os relatórios que vocês usam no MCC: **Relatórios** (Fluxo por centro, Saldos em uma data, Analítico
      agrupado…) e o **Dashboard › Caixa × competência**.
 
@@ -63,15 +73,18 @@ Anote na tela do MCC o **saldo de cada conta** e os totais **a pagar** e **a rec
 - **Toda semana**: exporte de novo os mesmos CSV e importe de novo na mesma empresa (passos 3 e 4). A reimportação
   **atualiza** o que já veio (o que foi pago, valores, datas), cria o que é novo e manda para a lixeira o que foi
   excluído no MCC — sem duplicar. Confira de novo a prévia (saldos iguais) e guarde a conferência.
+- Depois de cada reimportação, rode de novo **Aplicações, resgates e saques…**: as conversões já feitas ficam (a
+  reimportação não desfaz e a conferência explica a diferença), e as novas da semana aparecem para converter.
 - Digite o **nome da empresa exatamente igual** ao da primeira importação: é por ele que o Finora reconhece que é
   a mesma empresa (a prévia avisa "já foi importada das planilhas: o que já veio será atualizado"). Se esse aviso
   não aparecer, pare: o nome está diferente e a importação criaria outra entidade.
 - **Não lance** na entidade importada durante o paralelo: o que for digitado direto no Finora não vem do MCC e
   ficaria em dobro quando o mesmo lançamento chegar pela reimportação. Para treinar, use outra entidade
-  (Administração › Entidades › nova, ex.: "Treino").
-- Anote o que faltar ou estranhar (tela, relatório, número) para virar ajuste (#65).
+  (Administração › Entidades › nova, ex.: "Treino"). Agenda e RH (módulos novos da 0.7.0) podem ser ligados na
+  entidade em Configurações › Módulos: eles não vêm do MCC e não atrapalham a reimportação.
+- Anote o que faltar ou estranhar (tela, relatório, número) para virar ajuste (#66).
 
-## 6. Virada (#66)
+## 6. Virada (#67)
 
 No fechamento do mês: última exportação e importação, conferência assinada, e a partir daí os lançamentos passam a
 ser feitos **só no Finora**. O MCC fica só para consulta (exporte tudo e guarde).

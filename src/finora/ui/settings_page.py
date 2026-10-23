@@ -507,9 +507,21 @@ class SettingsPage(QWidget):
         self.mcc_btn = button("Abrir o assistente…", "secondary", self.t, "fa6s.wand-magic-sparkles", "fg")
         self.mcc_btn.clicked.connect(self.open_mcc_import)
         row.addWidget(self.mcc_btn)
+        self.moves_btn = button("Aplicações, resgates e saques…", "secondary", self.t, "fa6s.right-left", "fg")
+        self.moves_btn.setToolTip("Converter em transferência (ou depósito/retirada) o que o MCC lançou como receita "
+                                  "e despesa, nesta entidade")
+        self.moves_btn.clicked.connect(self.open_moves)
+        row.addWidget(self.moves_btn)
         row.addStretch(1)
         lay.addLayout(row)
         return box
+
+    def open_moves(self):
+        from finora.ui.moves_dialog import MovesDialog
+        dlg = MovesDialog(self, self.profile.id, self.profile.currency, self.t)
+        self.moves_dialog = dlg                  # os testes de tela pegam o diálogo aberto
+        if dlg.exec() and dlg.outcome:
+            self.message.emit(dlg.outcome)
 
     def open_mcc_import(self):
         from finora.ui.mcc_import_dialog import MccImportDialog

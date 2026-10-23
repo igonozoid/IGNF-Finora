@@ -83,6 +83,7 @@ class ImportResult:
     contacts_created_from_text: list[str] = field(default_factory=list)   # marcados "a revisar"
     paid_without_date: list[int] = field(default_factory=list)   # D6: lançamentos do MCC (ids)
     rounding: list[Rounding] = field(default_factory=list)        # valores com mais de 2 casas no MCC
+    converted: list[int] = field(default_factory=list)           # lançamentos do MCC que viraram movimentação (D2)
     reimport: bool = False                                        # já tinha vindo antes (alguma empresa)
     created: int = 0                                              # lançamentos/movimentações novos
     updated: int = 0                                              # já existiam e mudaram
@@ -455,7 +456,11 @@ class _Importer:
             self.link(kind, src, e.id)
             self.r.created += 1
             return e.id
-        if self.assign(trash.get(self.s, eid), **values):
+        e = trash.get(self.s, eid)
+        if kind == "lancamentos" and e.kind not in ("income", "expense"):
+            self.r.converted.append(src)                   # virou transferência/ajuste no Finora (D2): fica
+            return eid
+        if self.assign(e, **values):
             self.r.updated += 1
         return eid
 

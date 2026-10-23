@@ -196,8 +196,12 @@ def build(s: Session, con: sqlite3.Connection, r: ImportResult, days: list[date]
                                "AND excluido_em IS NULL", (mcc_id,)).fetchall()
         fin = [e for e in s.scalars(select(Entry).where(Entry.entity_id == eid, Entry.kind.in_(("income", "expense"))))
                if e.id in by_mcc]
-        rep.totals.append(TotalCheck(company, "Lançamentos", Decimal(len(mcc_rows)), Decimal(len(fin))))
+        converted = [x for x in mcc_rows if x["id"] in set(r.converted)]     # viraram movimentação (D2)
+        rep.totals.append(TotalCheck(company, "Lançamentos", Decimal(len(mcc_rows)), Decimal(len(fin)),
+                                     -Decimal(len(converted))))
         rounding = {rd.mcc_id: rd.difference for rd in r.rounding if rd.table == "lancamentos"}
+        for x in converted:                                # o valor delas está fora dos totais do Finora
+            rounding[x["id"]] = rounding.get(x["id"], ZERO) - _r2(x["valor"])
         for label, tipo, sit, kind, status in (("A pagar", "D", "P", "expense", "pending"),
                                                ("A receber", "R", "P", "income", "pending"),
                                                ("Pago", "D", "V", "expense", "paid"),
@@ -210,6 +214,10 @@ def build(s: Session, con: sqlite3.Connection, r: ImportResult, days: list[date]
     if r.paid_without_date:
         rep.notes.append(f"{len(r.paid_without_date)} lançamento(s) pago(s) sem data de pagamento no MCC entraram com "
                          "a data do vencimento (no MCC eles não contavam no saldo): diferença explicada.")
+    if r.converted:
+        rep.notes.append(f"{len(r.converted)} lançamento(s) do MCC já tinham virado transferência, depósito ou "
+                         "retirada no Finora (aplicação, resgate, saque…): ficaram assim e não contam nos totais de "
+                         "receita e despesa.")
     if r.rounding:
         rep.notes.append(f"{len(r.rounding)} valor(es) com mais de 2 casas no MCC foram arredondados: diferença "
                          "explicada.")

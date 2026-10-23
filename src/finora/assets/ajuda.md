@@ -360,6 +360,14 @@ Pode **importar de novo** depois: o que já veio é atualizado, o que é novo en
 lixeira. Contatos e usuários que já vieram ficam como você deixou, e o que você criou no Finora não é mexido.
 Contatos criados a partir do nome solto no lançamento aparecem em **Contatos › A revisar**.
 
+**Aplicações, resgates e saques**: no MCC, dinheiro que só mudou de conta era lançado como despesa numa conta e
+receita na outra. No Finora isso é **movimentação** (fora da DRE). Em Configurações › Trazer dados do MCC, clique
+em **Aplicações, resgates e saques…**: o Finora procura receitas e despesas pagas cuja categoria tem essas palavras
+(dá para mudar). Despesa numa conta + receita de mesmo valor em outra, com até 3 dias de diferença, vira
+**transferência** (vem marcada). Só um dos lados vira **retirada** (despesa) ou **depósito** (receita): vem
+desmarcado, porque pode ser receita de verdade; confira antes. O saldo das contas não muda. Importar o MCC de novo
+não desfaz a conversão, e a conferência explica a diferença nos totais de receita e despesa.
+
 ## Rede local {#rede}
 
 Nas edições Plus e Pro, vários computadores podem usar os mesmos dados: um deles (ou um servidor Linux) guarda

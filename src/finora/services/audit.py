@@ -30,7 +30,8 @@ LABELS = {
     Permission: ("permissão", lambda o: f"{o.module} do usuário nº {o.user_id}"),
     CategoryRule: ("regra", lambda o: f"\"{o.text}\""),
     Goal: ("meta", lambda o: f"\"{o.name}\" — {money.fmt(o.target or 0)}"),
-    Attachment: ("comprovante", lambda o: f"\"{o.filename}\" do lançamento nº {o.entry_id}"),
+    Attachment: ("anexo", lambda o: f"\"{o.filename}\" do " + (f"lançamento nº {o.entry_id}" if o.entry_id
+                                                         else f"contato nº {o.contact_id}")),
 }
 FIELDS = {"description": "descrição", "amount": "valor", "due_date": "vencimento", "competence_date": "data",
           "paid_date": "pagamento", "status": "situação", "account_id": "conta", "dest_account_id": "conta destino",

@@ -72,3 +72,28 @@ def test_listas_do_contato(plus, window):
 def test_listas_na_free_ficam_travadas(window):
     form = window.page("contacts").form
     assert not form.banks.isEnabled() and form._lists_data() is None
+
+
+def test_anexos_e_foto_do_contato(plus, window, tmp_path, dialogs):
+    from PySide6.QtGui import QImage
+    eid = window.profile.id
+    window.go_to("contacts")
+    page = window.page("contacts")
+    page.select_contact(_contact(eid, "Empresa X").id)
+    form = page.form
+    f = tmp_path / "ficha.pdf"
+    f.write_bytes(b"%PDF")
+    form.files.add_file(str(f))
+    assert form.files.list.count() == 1
+    img = tmp_path / "foto.png"
+    QImage(600, 400, QImage.Format_RGB32).save(str(img))
+    dialogs.open_path = str(img)
+    form.photo_pick.click()
+    assert form.photo_view.pixmap() is not None and not form.photo_clear.isHidden()
+    with db.Session() as s:
+        assert contacts.get_photo(s, _contact(eid, "Empresa X").id)
+
+
+def test_anexos_do_contato_na_free(window):
+    form = window.page("contacts").form
+    assert form.files.locked

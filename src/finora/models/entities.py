@@ -121,6 +121,7 @@ class Contact(Base):
     mother_name: Mapped[str | None] = mapped_column(String(150))            # só pessoa física
     rating: Mapped[str | None] = mapped_column(String(10))                  # otimo | bom | regular | ruim
     purchase_frequency: Mapped[str | None] = mapped_column(String(10))      # semanal | quinzenal | mensal…
+    photo: Mapped[bytes | None] = mapped_column(LargeBinary(length=500_000), deferred=True)   # PNG, até 256 px
 
 class ContactBank(Base):
     """Outras contas bancárias do contato (a principal fica no próprio contato)."""
@@ -416,12 +417,13 @@ class Budget(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))
 
 class Attachment(Base):
-    """Comprovante anexado a um lançamento (foto, PDF…). O arquivo fica dentro do banco: vai junto no backup
-    e, no futuro, no modo rede/nuvem."""
+    """Arquivo anexado a um lançamento (comprovante) ou a um contato (contrato, documentos…). O arquivo fica
+    dentro do banco: vai junto no backup e no modo rede. Tem `entry_id` ou `contact_id`."""
     __tablename__ = "attachments"
     id: Mapped[int] = mapped_column(primary_key=True)
     entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"))
-    entry_id: Mapped[int] = mapped_column(ForeignKey("entries.id", ondelete="CASCADE"), index=True)
+    entry_id: Mapped[int | None] = mapped_column(ForeignKey("entries.id", ondelete="CASCADE"), index=True)
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"), index=True)
     filename: Mapped[str] = mapped_column(String(200))
     size: Mapped[int] = mapped_column(Integer)
     added: Mapped[date]

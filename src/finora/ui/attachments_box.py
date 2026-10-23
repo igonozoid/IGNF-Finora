@@ -17,6 +17,7 @@ from finora.ui import theme
 from finora.ui.widgets import button, field_label, lock_icon, show_upgrade
 
 LOCK_MSG = "Anexar comprovantes (foto do recibo, boleto, nota fiscal) é um recurso das edições Plus e Pro."
+CONTACT_LOCK_MSG = "Anexar documentos ao contato (contrato, ficha, cópia do RG) é um recurso das edições Plus e Pro."
 FILTER = ("Comprovantes (*.pdf *.jpg *.jpeg *.png *.webp *.gif *.heic *.txt *.xml *.csv *.xlsx *.xls *.doc "
           "*.docx *.odt *.ods *.zip);;Todos os arquivos (*)")
 OPEN_DIR = Path(tempfile.gettempdir()) / "finora-anexos"
@@ -25,18 +26,24 @@ OPEN_DIR = Path(tempfile.gettempdir()) / "finora-anexos"
 class AttachmentsBox(QWidget):
     changed = Signal(str)          # mensagem para a barra de status
 
-    def __init__(self, t: dict):
+    def __init__(self, t: dict, for_contact: bool = False):
         super().__init__()
         self.t = t
-        self.entry_id: int | None = None
-        self.locked = not allowed(current_edition(), "attachments")
+        self.for_contact = for_contact
+        self.entry_id: int | None = None         # lançamento (ou contato) dono dos anexos
+        self.locked = not allowed(current_edition(), "contacts_full" if for_contact else "attachments")
+        self.lock_msg = CONTACT_LOCK_MSG if for_contact else LOCK_MSG
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(3)
-        self.label = field_label("Comprovantes", t, "Foto do recibo, boleto, nota fiscal… Ficam guardados dentro\n"
-                                                    "do Finora e vão junto no backup.")
+        if for_contact:
+            self.label = field_label("Anexos", t, "Contrato, ficha cadastral, cópia de documento… Ficam guardados\n"
+                                                  "dentro do Finora e vão junto no backup.")
+        else:
+            self.label = field_label("Comprovantes", t, "Foto do recibo, boleto, nota fiscal… Ficam guardados dentro\n"
+                                                        "do Finora e vão junto no backup.")
         if self.locked:
-            self.label.layout().insertWidget(1, lock_icon(LOCK_MSG, t))
+            self.label.layout().insertWidget(1, lock_icon(self.lock_msg, t))
         lay.addWidget(self.label)
         self.list = QListWidget(objectName="attachList")
         self.list.setIconSize(QSize(12, 12))
@@ -68,7 +75,7 @@ class AttachmentsBox(QWidget):
         self.list.clear()
         if entry_id is not None and not self.locked:
             with Session() as s:
-                items = attachments.list_for(s, entry_id)
+                items = (attachments.list_for_contact if self.for_contact else attachments.list_for)(s, entry_id)
             icon = qta.icon("fa6s.file", color=self.t["mut"])
             for a in items:
                 it = QListWidgetItem(icon, f"{a.filename}  ·  {a.size_label}")
@@ -80,9 +87,11 @@ class AttachmentsBox(QWidget):
         if self.locked:
             self.hint.setText("Disponível nas edições Plus e Pro.")
         elif entry_id is None:
-            self.hint.setText("Salve o lançamento para anexar comprovantes.")
+            self.hint.setText("Salve o contato para anexar arquivos." if self.for_contact
+                              else "Salve o lançamento para anexar comprovantes.")
         else:
-            self.hint.setText("" if self.list.count() else "Nenhum comprovante anexado.")
+            self.hint.setText("" if self.list.count() else
+                              "Nenhum arquivo anexado." if self.for_contact else "Nenhum comprovante anexado.")
         self.hint.setVisible(bool(self.hint.text()))
         self._buttons()
 
@@ -100,7 +109,7 @@ class AttachmentsBox(QWidget):
     # ----- ações -----
     def _add(self):
         if self.locked:
-            show_upgrade(self, LOCK_MSG)
+            show_upgrade(self, self.lock_msg)
             return
         start = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation)
         path, _ = QFileDialog.getOpenFileName(self, "Anexar comprovante", start, FILTER)
@@ -110,7 +119,7 @@ class AttachmentsBox(QWidget):
     def add_file(self, path: str):
         try:
             with Session() as s:
-                attachments.add(s, self.entry_id, path)
+                (attachments.add_to_contact if self.for_contact else attachments.add)(s, self.entry_id, path)
         except ValueError as e:
             QMessageBox.warning(self, "Anexar comprovante", str(e))
             return
@@ -148,7 +157,8 @@ class AttachmentsBox(QWidget):
         if att is None:
             return
         name = self.list.currentItem().text().split("  ·  ")[0]
-        if QMessageBox.question(self, "Remover comprovante", f"Remover \"{name}\" deste lançamento?") \
+        if QMessageBox.question(self, "Remover comprovante", f"Remover \"{name}\" deste "
+                                f"{'contato' if self.for_contact else 'lançamento'}?") \
                 != QMessageBox.Yes:
             return
         with Session() as s:

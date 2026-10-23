@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from finora.core.current import current
 from finora.models import (
-    Account, Attachment, BankLine, Budget, Category, CategoryRule, Contact, CostCenter, Currency, Entity,
+    Account, Attachment, BankLine, Budget, Category, CategoryRule, Contact, ContactBank, ContactPerson,
+    ContactReference, CostCenter, Currency, Entity,
     EntityModule, Entry, ExchangeRate, Goal, Item, Permission, Production, ProductionLine, Farm, FarmArea, FarmActivity, HerdEvent, HerdLot, Sale, SaleItem, StockLocation, StockMove, User,
     UserEntity,
 )
@@ -92,7 +93,8 @@ TABLE_MODULE = {Entry: "financial", Account: "financial", Category: "financial",
                 BankLine: "financial", Budget: "financial", Attachment: "financial", ExchangeRate: "admin",
                 CategoryRule: "financial", Goal: "financial", Currency: "admin", EntityModule: "admin",
                 Item: "stock", StockLocation: "stock", StockMove: "stock", Sale: "sales", SaleItem: "sales", Production: "production", ProductionLine: "production", Farm: "rural", FarmArea: "rural", FarmActivity: "rural", HerdLot: "livestock", HerdEvent: "livestock",
-                Contact: "contacts", Entity: "admin", User: "admin", Permission: "admin", UserEntity: "admin"}
+                Contact: "contacts", ContactBank: "contacts", ContactReference: "contacts",
+                ContactPerson: "contacts", Entity: "admin", User: "admin", Permission: "admin", UserEntity: "admin"}
 
 
 class AccessDenied(ValueError):

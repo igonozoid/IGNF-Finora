@@ -1,4 +1,5 @@
-"""Comprovantes anexados aos lançamentos (foto do recibo, boleto em PDF, nota fiscal…)."""
+"""Arquivos anexados: comprovantes dos lançamentos (foto do recibo, boleto, nota fiscal…) e documentos dos contatos
+(contrato, ficha cadastral, cópia do RG…)."""
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -6,7 +7,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from finora.models import Attachment, Entry
+from finora.models import Attachment, Contact, Entry
 
 MAX_SIZE = 10 * 1024 * 1024         # 10 MB por arquivo
 MAX_PER_ENTRY = 10
@@ -28,8 +29,15 @@ class AttachmentView:
 
 
 def list_for(s: Session, entry_id: int) -> list[AttachmentView]:
-    q = (select(Attachment.id, Attachment.filename, Attachment.size, Attachment.added)
-         .where(Attachment.entry_id == entry_id).order_by(Attachment.id))
+    return _list(s, Attachment.entry_id == entry_id)
+
+
+def list_for_contact(s: Session, contact_id: int) -> list[AttachmentView]:
+    return _list(s, Attachment.contact_id == contact_id)
+
+
+def _list(s: Session, where) -> list[AttachmentView]:
+    q = select(Attachment.id, Attachment.filename, Attachment.size, Attachment.added).where(where).order_by(Attachment.id)
     return [AttachmentView(*row) for row in s.execute(q)]
 
 
@@ -46,6 +54,17 @@ def add(s: Session, entry_id: int, path: str | Path, today: date | None = None) 
     e = s.get(Entry, entry_id)
     if e is None:
         raise ValueError("Salve o lançamento antes de anexar.")
+    return _add(s, e.entity_id, path, today, entry_id=entry_id)
+
+
+def add_to_contact(s: Session, contact_id: int, path: str | Path, today: date | None = None) -> int:
+    c = s.get(Contact, contact_id)
+    if c is None:
+        raise ValueError("Salve o contato antes de anexar.")
+    return _add(s, c.entity_id, path, today, contact_id=contact_id)
+
+
+def _add(s: Session, entity_id: int, path, today: date | None, **owner) -> int:
     path = Path(path)
     if path.suffix.lower() not in TYPES:
         raise ValueError("Esse tipo de arquivo não pode ser anexado. Use PDF, foto (JPG/PNG) ou documento.")
@@ -59,10 +78,12 @@ def add(s: Session, entry_id: int, path: str | Path, today: date | None = None) 
                          "Diminua a foto ou salve o PDF com qualidade menor.")
     if size == 0:
         raise ValueError("O arquivo está vazio.")
-    used = s.scalar(select(func.count(Attachment.id)).where(Attachment.entry_id == entry_id))
+    (col, value), = owner.items()
+    used = s.scalar(select(func.count(Attachment.id)).where(getattr(Attachment, col) == value))
     if used >= MAX_PER_ENTRY:
-        raise ValueError(f"Cada lançamento aceita até {MAX_PER_ENTRY} anexos.")
-    a = Attachment(entity_id=e.entity_id, entry_id=entry_id, filename=path.name[:200], size=size,
+        raise ValueError(f"Cada {'lançamento' if col == 'entry_id' else 'contato'} aceita até {MAX_PER_ENTRY} "
+                         "anexos.")
+    a = Attachment(entity_id=entity_id, **owner, filename=path.name[:200], size=size,
                    added=today or date.today(), data=path.read_bytes())
     s.add(a)
     s.commit()

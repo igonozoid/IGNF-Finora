@@ -1,7 +1,8 @@
 """Tela de Contatos: lista com filtros por papel e busca + cadastro lateral (mockup "Contatos")."""
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
+    QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter, QDialog, QFileDialog, QFrame, QGridLayout,
+    QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 import qtawesome as qta
@@ -13,6 +14,8 @@ from finora.services import contacts, doc_lookup
 from finora.services.contacts import ContactView
 from finora.services.setup import Profile
 from finora.ui import theme
+from finora.ui.admin_page import logo_pixmap, scaled_png
+from finora.ui.attachments_box import AttachmentsBox
 from finora.ui.widgets import button, field_label, lock_icon, shared_checkbox, show_upgrade, upgrade_box
 
 PANEL_W = 320
@@ -161,16 +164,18 @@ class ContactForm(QFrame):
         lay.addWidget(self.sub)
 
         # Abas: Dados · Endereço · Bancário · Crédito · Observações (como no mockup)
-        tabs = QHBoxLayout()
+        # em duas linhas: o painel é estreito
+        tabs = QGridLayout()
         tabs.setSpacing(0)
         self.tab_group = QButtonGroup(self, exclusive=True)
         self.pages = QStackedWidget(objectName="formPages")
-        for i, label in enumerate(("Dados", "Endereço", "Bancário", "Crédito", "Referências", "Observações")):
+        for i, label in enumerate(("Dados", "Endereço", "Bancário", "Crédito", "Referências", "Anexos",
+                                   "Observações")):
             b = QPushButton(label, objectName="tabItem", checkable=True, checked=(i == 0))
             b.setCursor(Qt.PointingHandCursor)
             self.tab_group.addButton(b, i)
-            tabs.addWidget(b)
-        tabs.addStretch(1)
+            tabs.addWidget(b, i // 4, i % 4)
+        tabs.setColumnStretch(4, 1)
         tab_line = QFrame(objectName="tabLine")
         tab_line.setLayout(tabs)
         lay.addWidget(tab_line)
@@ -290,6 +295,7 @@ class ContactForm(QFrame):
         self.pages.addWidget(banco)
         self.pages.addWidget(self._credit_page(t))
         self.pages.addWidget(self._refs_page(t))
+        self.pages.addWidget(self._files_page(t))
 
         obs = QWidget()
         ol = QVBoxLayout(obs)
@@ -394,6 +400,70 @@ class ContactForm(QFrame):
         rl.addStretch(1)
         return page
 
+    def _files_page(self, t: dict) -> QWidget:
+        page = QWidget()
+        fl = QVBoxLayout(page)
+        fl.setContentsMargins(0, 0, 0, 0)
+        fl.setSpacing(theme.SP_M)
+        fl.addWidget(field_label("Foto", t, "Opcional. Aparece no cadastro."))
+        row = QHBoxLayout()
+        self.photo_view = QLabel(alignment=Qt.AlignCenter, objectName="logoBox")
+        self.photo_view.setFixedSize(64, 64)
+        col = QVBoxLayout()
+        self.photo_pick = button("Escolher foto…", "link", t, "fa6s.image")
+        self.photo_clear = button("Remover foto", "link")
+        col.addWidget(self.photo_pick, 0, Qt.AlignLeft)
+        col.addWidget(self.photo_clear, 0, Qt.AlignLeft)
+        col.addStretch(1)
+        row.addWidget(self.photo_view)
+        row.addLayout(col, 1)
+        fl.addLayout(row)
+        self.photo_pick.clicked.connect(self._pick_photo)
+        self.photo_clear.clicked.connect(lambda: self._set_photo(None))
+        self.files = AttachmentsBox(t, for_contact=True)
+        self.files.changed.connect(self.sub.setText)
+        fl.addWidget(self.files)
+        fl.addStretch(1)
+        return page
+
+    def _pick_photo(self):
+        if not self.full:
+            show_upgrade(self, FULL_MSG)
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "Foto do contato", "", "Imagens (*.png *.jpg *.jpeg *.bmp)")
+        if path:
+            try:
+                self._set_photo(scaled_png(path, 256))
+            except ValueError as e:
+                self._error(str(e))
+
+    def _set_photo(self, png: bytes | None):
+        """Foto escolhida (ou removida): grava na hora, como os anexos."""
+        if self.current is None:
+            return
+        try:
+            with Session() as s:
+                contacts.set_photo(s, self.current.id, png)
+        except ValueError as e:
+            self._error(str(e))
+            return
+        self._show_photo(png)
+
+    def _show_photo(self, png: bytes | None):
+        pix = logo_pixmap(png, 64)
+        self.photo_view.setPixmap(pix) if pix else self.photo_view.clear()
+        self.photo_view.setText("" if pix else "Sem foto")
+        self.photo_clear.setVisible(pix is not None)
+
+    def _fill_files(self, c: ContactView | None):
+        png = None
+        if c is not None and self.full:
+            with Session() as s:
+                png = contacts.get_photo(s, c.id)
+        self._show_photo(png)
+        self.photo_pick.setEnabled(c is not None)
+        self.files.set_entry(c.id if c else None)
+
     def _lists_data(self) -> dict | None:
         """None na edição Free: as listas ficam como estão."""
         if not self.full:
@@ -446,6 +516,7 @@ class ContactForm(QFrame):
                 lists = contacts.get_lists(s, c.id)
         for w in (self.banks, self.references, self.people):
             w.set_rows(lists.get(w.key, []))
+        self._fill_files(c)
         self.tab_group.button(0).setChecked(True)
         self.pages.setCurrentIndex(0)
         self.shared.setChecked(bool(c and c.shared))

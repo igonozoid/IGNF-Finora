@@ -125,6 +125,8 @@ Aba **Crédito** (edições pagas): **limite de crédito** (quanto o cliente pod
 Também nas edições pagas: na aba Bancário, **outras contas** do contato; na aba **Referências**, as referências
 **comerciais** (quem já vendeu a prazo para ele) e **bancárias**, e, para empresa, as **pessoas de contato**
 (nome, cargo, ramal, e-mail e telefone). Use **Adicionar** e **Remover**; linha sem nome é ignorada ao salvar.
+Na aba **Anexos**: uma **foto** do contato e arquivos como contrato, ficha cadastral ou cópia de documento (até
+10 por contato, 10 MB cada). Ficam dentro do Finora e vão junto no backup; foto e anexos são gravados na hora.
 
 **A revisar**: contatos criados sozinhos (por exemplo, pela importação do MCC a partir de um nome solto)
 ganham a marca e aparecem no filtro **A revisar**. Confira os dados e salve: a marca sai.

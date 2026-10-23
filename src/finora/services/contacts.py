@@ -7,7 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from finora.core import documents, money
-from finora.models import Contact, ContactBank, ContactPerson, ContactReference, Entry
+from finora.models import Attachment, Contact, ContactBank, ContactPerson, ContactReference, Entry
 from finora.services import scope
 
 # papel -> (coluna no modelo, rótulo, explicação)
@@ -302,8 +302,25 @@ def delete(s: Session, contact_id: int) -> None:
         raise ValueError(f"Esse contato aparece em {used} {'lançamento' if used == 1 else 'lançamentos'} "
                          "(contando os da lixeira) e por isso não pode ser excluído.")
     _save_lists(s, contact_id, {k: [] for k in LISTS})
+    for a in s.scalars(select(Attachment).where(Attachment.contact_id == contact_id)):
+        s.delete(a)
     s.delete(s.get(Contact, contact_id))
     s.commit()
+
+
+PHOTO_MAX = 500_000
+
+
+def set_photo(s: Session, contact_id: int, png: bytes | None) -> None:
+    """Foto do contato (PNG já reduzido pela tela). None tira a foto."""
+    if png and len(png) > PHOTO_MAX:
+        raise ValueError("A foto ficou grande demais. Use uma imagem menor.")
+    s.get(Contact, contact_id).photo = png or None
+    s.commit()
+
+
+def get_photo(s: Session, contact_id: int) -> bytes | None:
+    return s.get(Contact, contact_id).photo
 
 
 def get_or_create(s: Session, entity_id: int, name: str | None, kind: str | None = None) -> int | None:
@@ -373,7 +390,7 @@ def merge(s: Session, keep_id: int, drop_id: int) -> MergeResult:
     for model in (CategoryRule, StockMove, Sale, HerdEvent):
         others += s.execute(sql_update(model).where(model.contact_id == drop_id).values(contact_id=keep_id)
                             .execution_options(synchronize_session=False)).rowcount
-    for model, *_f in LISTS.values():                       # contas, referências e pessoas de contato
+    for model in [m for m, _f in LISTS.values()] + [Attachment]:     # contas, referências, pessoas e anexos
         s.execute(sql_update(model).where(model.contact_id == drop_id).values(contact_id=keep_id)
                   .execution_options(synchronize_session=False))
     s.expire_all()                                         # nada carregado antes fica com o contato antigo
@@ -381,7 +398,7 @@ def merge(s: Session, keep_id: int, drop_id: int) -> MergeResult:
         m.target = str(keep_id)                            # reimportar o MCC continua achando o contato
     for k, (col, *_r) in ROLES.items():
         setattr(keep, col, getattr(keep, col) or getattr(drop, col))
-    fill = {k: getattr(drop, k) for k in (*DETAILS, *CREDIT) if not getattr(keep, k) and getattr(drop, k)}
+    fill = {k: getattr(drop, k) for k in (*DETAILS, *CREDIT, "photo") if not getattr(keep, k) and getattr(drop, k)}
     if drop.notes and keep.notes and drop.notes not in keep.notes:
         fill["notes"] = f"{keep.notes}\n{drop.notes}"[:DETAILS["notes"]]
     document = keep.document or drop.document

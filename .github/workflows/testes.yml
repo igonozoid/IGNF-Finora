@@ -58,6 +58,7 @@ jobs:
           --health-interval=5s --health-timeout=5s --health-retries=20
     env:
       PYTHONUTF8: "1"
+      QT_QPA_PLATFORM: offscreen               # alguns testes de regra desenham com o Qt (ex.: ícone do atalho)
       FINORA_DATA_DIR: ${{ github.workspace }}/.dados-ci
     steps:
       - uses: actions/checkout@v4

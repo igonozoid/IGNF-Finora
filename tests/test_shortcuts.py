@@ -1,6 +1,9 @@
+import os
 import sys
 
 import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")      # o ícone é desenhado com o Qt, sem precisar de tela
 
 from finora.core import shortcuts
 

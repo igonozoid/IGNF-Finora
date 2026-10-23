@@ -162,6 +162,8 @@ Endereço · Bancos · Crédito · Referências · Observações · Anexos.
 | 5.3 | Agricultura: **Ativos** (máquinas/implementos) e custo por ativo nas atividades | M |
 | 5.4 | Moedas: casas decimais e ativa/inativa | P |
 | 5.5 | Produto: **perfil tributário** (só se a NF-e entrar no roadmap) | — |
+| 5.6 | **Agenda** (D4): tarefas com recorrência, contato e lançamento ligados, calendário com as datas dos contatos, aviso nos lembretes | M — feito |
+| 5.7 | **RH** (D4): perfil do funcionário, histórico de salário, férias, 13º e benefícios, folha do mês e custo com encargos | M — feito |
 
 ---
 
@@ -202,13 +204,20 @@ IgnControl). Assinatura digital e instalador Windows (pendentes no ROADMAP).
 
 As fases 4 e 5 não bloqueiam o piloto: ele pode começar ao fim da Fase 3.
 
-## Decisões em aberto
+## Decisões
 
-1. **Permissões granulares** do MCC (item 1.16): separar Financeiro em 4 módulos ou manter como está?
-2. **Depósito/retirada** como `kind="adjust"` (proposto) ou como receita/despesa numa categoria "Ajuste de saldo"?
-3. **Edição** dos recursos novos: o importador do MCC e os relatórios novos ficam em Plus/Pro ou na Free?
-4. **RH e agenda** continuam fora? (O MCC não tem; só entram se o BPO pedir.)
-5. **Credencial embutida no MCC**: avisar o fornecedor antes do desligamento?
+1. **D1 — Permissões granulares** do MCC (item 1.16): **uma permissão Financeiro** (não separa em 4 módulos).
+2. **D2 — Movimentação de dinheiro**: depósito/retirada ficam fora da DRE (`deposit`/`withdrawal`). Em 23/10/2026:
+   aplicação, resgate, saque e depósito que o MCC lançava como receita/despesa **viram movimentação** no Finora,
+   e não lançamento de receita/despesa como no MCC. Ferramenta em Configurações › Trazer dados do MCC ›
+   *Aplicações, resgates e saques…* (`services/moves.py`): par despesa + receita de mesmo valor em contas
+   diferentes vira transferência; um lado só vira retirada ou depósito (o usuário confere). Reimportar não desfaz.
+   Empréstimo e aporte não entram (não são dinheiro entre as próprias contas).
+3. **D3 — Edição** dos recursos novos: o que vem do MCC (importador, relatórios) é **Plus/Pro**; o contato completo
+   (crédito, listas, anexos) também.
+4. **D4 — RH e agenda**: **entram** (23/10/2026), como módulos opcionais por entidade, iguais aos do IgnControl.
+5. **D5 — Credencial embutida no MCC**: avisar o fornecedor antes do desligamento? **Em aberto.**
+6. **D6 — Pago sem data** no MCC entra com a data do vencimento.
 
 ## Riscos
 

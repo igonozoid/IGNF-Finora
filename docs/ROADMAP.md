@@ -79,8 +79,8 @@ Ordem de implementação:
 - [x] Do IgnControl: previsão de caixa dia a dia (pior saldo projetado) e relatório analítico
 - [x] App de licenças: repositório privado `igonozoid/IGNF-Finora-Licencas` (pasta `../IGNF-Finora-Licencas`)
 
-Do IgnControl **não** trazemos: RH, agenda de tarefas e cofre de senhas. Estoque, vendas e rural viraram módulos
-opcionais (Fase G).
+Do IgnControl **não** trazemos o cofre de senhas. Estoque, vendas e rural viraram módulos opcionais (Fase G);
+**Agenda** e **RH** também, por decisão de 23/10/2026 (D4 do `docs/PLANO-MCC.md`).
 
 ## Fase E — Multiusuário, multiempresa e rede local (Plus/Pro)
 

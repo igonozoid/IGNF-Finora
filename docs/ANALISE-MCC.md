@@ -149,7 +149,8 @@ Base: `mcc-desktop/mcc/core/db.py` × `finora/models/entities.py`.
 | Rural | **safra** (plantio, previsão, produtividade esperada × real) e **ativos/máquinas** | Média |
 | API REST (Sanctum) com permissão por módulo | base para mobile/nuvem | Fase futura |
 | Acesso externo (Cloudflare Tunnel + Access, sócios só leitura) | | Fase futura (versão nuvem) |
-| RH, agenda/tarefas, cofre de senhas | decisão do ROADMAP: **fora** | reavaliar só sob demanda |
+| RH, agenda/tarefas | **entraram** como módulos opcionais (D4, 23/10/2026) | feito |
+| Cofre de senhas | decisão do ROADMAP: **fora** | reavaliar só sob demanda |
 
 ## 6. O que o Finora já tem além dos outros dois
 

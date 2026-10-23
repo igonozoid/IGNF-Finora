@@ -113,6 +113,10 @@ class Contact(Base):
     bank_account: Mapped[str | None] = mapped_column(String(30))
     bank_holder: Mapped[str | None] = mapped_column(String(120))          # titular da conta
     notes: Mapped[str | None] = mapped_column(String(1000))
+    # Datas que voltam todo ano e aparecem nos lembretes
+    birthday: Mapped[date | None]                                           # aniversário (ou fundação, PJ)
+    important_date: Mapped[date | None]
+    important_label: Mapped[str | None] = mapped_column(String(60))         # ex.: renovação do contrato
     # Crédito (como no cadastro de clientes do IgnControl; edições pagas)
     credit_limit: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))     # quanto pode ficar devendo
     credit_checked_on: Mapped[date | None]                                  # última consulta (SPC, Serasa…)

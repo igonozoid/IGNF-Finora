@@ -225,6 +225,27 @@ class ContactForm(QFrame):
         self._detail(dl, "phone", "Telefone / WhatsApp", "(11) 98888-1234")
         self._detail(dl, "email", "E-mail", "nome@exemplo.com")
         self._detail(dl, "contact_person", "Pessoa de contato", "Com quem falar (ex.: Ana, financeiro)")
+        self.date_edits: dict[str, QLineEdit] = {}
+        drow = QHBoxLayout()
+        drow.setSpacing(theme.SP_M)
+        for key, label, help_text in (
+                ("birthday", "Aniversário", "Aparece nos lembretes no dia (ou alguns dias antes, conforme\n"
+                                            "Configurações › Lembretes)."),
+                ("important_date", "Data importante", "Volta todo ano nos lembretes (ex.: renovação do contrato).")):
+            col = QVBoxLayout()
+            col.setSpacing(3)
+            edit = QLineEdit(placeholderText="dd/mm/aaaa", maxLength=10)
+            edit.setFont(theme.mono_font())
+            edit.returnPressed.connect(self._save)
+            lbl = field_label(label, t, help_text)
+            col.addWidget(lbl)
+            col.addWidget(edit)
+            drow.addLayout(col, 1)
+            self.date_edits[key] = edit
+            if key == "birthday":
+                self.birthday_lbl = lbl
+        dl.addLayout(drow)
+        self._detail(dl, "important_label", "O que é a data importante", "Ex.: renovação do contrato")
 
         dl.addWidget(field_label("Papéis", t, "Um mesmo contato pode ter vários papéis.\n"
                                                "Os lançamentos marcam o papel sozinhos: despesa = Eu pago, "
@@ -503,12 +524,16 @@ class ContactForm(QFrame):
     def _details_data(self) -> dict:
         data = {k: e.text() for k, e in self.details.items()}
         data["notes"] = self.notes.toPlainText()
+        data |= {k: e.text() for k, e in self.date_edits.items()}
         return data
 
     def _fill_details(self, c: ContactView | None):
         for k, e in self.details.items():
             e.setText(c.get(k) if c else "")
         self.notes.setPlainText(c.get("notes") if c else "")
+        for k, e in self.date_edits.items():
+            d = c.details.get(k) if c else None
+            e.setText(d.strftime("%d/%m/%Y") if d else "")
         self._fill_credit(c)
         lists = {}
         if c is not None and self.full:
@@ -530,6 +555,7 @@ class ContactForm(QFrame):
         self.doc2_box.itemAt(0).widget().label.setText("RG" if pf else "Inscrição estadual")
         self.doc.setPlaceholderText("000.000.000-00" if pf else "00.000.000/0000-00")
         self.mother_box.setVisible(pf)
+        self.birthday_lbl.label.setText("Aniversário" if pf else "Fundação")
         self.people.setVisible(not pf)
 
     def _format_doc(self):

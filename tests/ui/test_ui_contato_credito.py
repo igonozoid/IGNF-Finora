@@ -97,3 +97,20 @@ def test_anexos_e_foto_do_contato(plus, window, tmp_path, dialogs):
 def test_anexos_do_contato_na_free(window):
     form = window.page("contacts").form
     assert form.files.locked
+
+
+def test_aniversario_no_cadastro(window):
+    eid = window.profile.id
+    window.go_to("contacts")
+    page = window.page("contacts")
+    page.select_contact(_contact(eid, "Empresa X").id)
+    form = page.form
+    form.date_edits["birthday"].setText("15/03/1985")
+    form.save_btn.click()
+    assert not form.error.isVisible()
+    from datetime import date
+    assert _contact(eid, "Empresa X").details["birthday"] == date(1985, 3, 15)
+    assert form.date_edits["birthday"].text() == "15/03/1985"
+    form.date_edits["birthday"].setText("99/99")
+    form.save_btn.click()
+    assert "Data inválida" in form.error.text()

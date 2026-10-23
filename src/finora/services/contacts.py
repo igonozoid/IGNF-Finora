@@ -20,7 +20,9 @@ PERSON_TYPES = {"PF": "Pessoa física", "PJ": "Pessoa jurídica"}
 # Dados extras (todos opcionais): campo -> tamanho máximo
 DETAILS = {"phone": 30, "email": 120, "document2": 30, "contact_person": 80, "zip_code": 9, "address": 200,
            "district": 80, "city": 80, "state": 2, "pix_key": 120, "bank_name": 60, "bank_branch": 20,
-           "bank_account": 30, "bank_holder": 120, "notes": 1000}
+           "bank_account": 30, "bank_holder": 120, "notes": 1000, "important_label": 60}
+# Datas que voltam todo ano e aparecem nos lembretes (dia e mês; o ano dá a idade)
+DATES = ("birthday", "important_date")
 # Crédito (edições pagas): classificação e frequência de compra, como no cadastro de clientes do IgnControl
 RATINGS = {"otimo": "Ótimo", "bom": "Bom", "regular": "Regular", "ruim": "Ruim"}
 FREQUENCIES = {"semanal": "Semanal", "quinzenal": "Quinzenal", "mensal": "Mensal", "eventual": "Eventual"}
@@ -85,7 +87,7 @@ def list_contacts(s: Session, entity_id: int, search: str = "", role: str | None
             conds += [Contact.document.like(f"%{d}%"), Contact.phone.like(f"%{d}%")]
         q = q.where(or_(*conds))
     return [ContactView(c.id, c.name, c.person_type, c.document, _roles(c), n, last,
-                        {k: getattr(c, k) for k in DETAILS}, bool(c.shared), bool(c.needs_review),
+                        {k: getattr(c, k) for k in (*DETAILS, *DATES)}, bool(c.shared), bool(c.needs_review),
                         {k: getattr(c, k) for k in CREDIT})
             for c, n, last in s.execute(q)]
 
@@ -126,6 +128,12 @@ def clean_details(details: dict | None) -> dict:
     """Valida e normaliza os dados extras. Vazio vira None."""
     out = {}
     for key, value in (details or {}).items():
+        if key in DATES:
+            value = _date(value) if isinstance(value, str) else value
+            if key == "birthday" and value and value > date.today():
+                raise ValueError("O aniversário não pode ser no futuro.")
+            out[key] = value
+            continue
         if key not in DETAILS:
             raise ValueError(f"Campo desconhecido: {key}")
         v = (value or "").strip()
@@ -398,7 +406,8 @@ def merge(s: Session, keep_id: int, drop_id: int) -> MergeResult:
         m.target = str(keep_id)                            # reimportar o MCC continua achando o contato
     for k, (col, *_r) in ROLES.items():
         setattr(keep, col, getattr(keep, col) or getattr(drop, col))
-    fill = {k: getattr(drop, k) for k in (*DETAILS, *CREDIT, "photo") if not getattr(keep, k) and getattr(drop, k)}
+    fill = {k: getattr(drop, k) for k in (*DETAILS, *DATES, *CREDIT, "photo")
+            if not getattr(keep, k) and getattr(drop, k)}
     if drop.notes and keep.notes and drop.notes not in keep.notes:
         fill["notes"] = f"{keep.notes}\n{drop.notes}"[:DETAILS["notes"]]
     document = keep.document or drop.document

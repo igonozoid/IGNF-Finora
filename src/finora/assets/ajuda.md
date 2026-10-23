@@ -114,6 +114,9 @@ Quem você paga e quem te paga, com CPF/CNPJ. Os contatos digitados num lançame
 O CPF/CNPJ é usado no **recibo** e no relatório de **Imposto de Renda**. Nas edições pagas, o CNPJ preenche
 nome e endereço sozinho.
 
+**Aniversário** (ou fundação, para empresa) e uma **data importante** (ex.: renovação do contrato) aparecem
+todo ano nos **lembretes** (Configurações › Lembretes).
+
 No cadastro: **RG** (pessoa física) ou **inscrição estadual** (empresa), **pessoa de contato** (com quem falar;
 entra na busca), endereço com **bairro** (o CEP preenche) e, na aba Bancário, chave Pix, **banco, agência, conta
 e titular** em campos separados.
@@ -303,6 +306,7 @@ Finora), **lembretes de vencimento**, **backup**, onde ficam os dados (este comp
 licença e **Sobre**.
 
 **Lembretes**: o Finora avisa no canto da tela as contas atrasadas e as que vencem em breve, uma vez por dia.
+Também lembra o **aniversário** e a **data importante** dos contatos (cadastro do contato, aba Dados), todo ano.
 Marque **continuar ao lado do relógio** para ser avisado mesmo com a janela fechada.
 
 **Atalhos**: crie atalhos na Área de trabalho e no menu Iniciar e escolha abrir o Finora junto com o Windows.

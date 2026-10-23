@@ -213,6 +213,9 @@ Módulo opcional (precisa do Estoque): ligue em **Configurações › Módulos d
 - **Novo pedido**: cliente, itens (o preço vem do cadastro do item), desconto e frete.
 - **Salvar orçamento** não mexe em nada. **Confirmar** baixa o estoque e, na venda, cria as **contas a receber**:
   à vista (marque **Já recebido**) ou em parcelas, a partir do 1º vencimento.
+- **Crédito do cliente** (edições pagas): na venda a prazo, se o cliente tem **pendência** ou passa do **limite de
+  crédito** (aba Crédito do contato), aparece um aviso em vermelho e o Finora pergunta antes de confirmar. O mesmo
+  aviso aparece no lançamento **a receber**.
 - **Doação** e **Bonificação**: só baixam o estoque (sem receita).
 - **Cancelar** um pedido confirmado devolve os itens ao estoque e manda as parcelas para a lixeira (se nenhuma
   foi recebida).

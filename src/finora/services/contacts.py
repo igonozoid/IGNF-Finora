@@ -2,6 +2,7 @@
 import re
 from dataclasses import dataclass, field
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -314,6 +315,42 @@ def delete(s: Session, contact_id: int) -> None:
         s.delete(a)
     s.delete(s.get(Contact, contact_id))
     s.commit()
+
+
+def open_receivable(s: Session, contact_id: int, exclude_entry_id: int | None = None) -> Decimal:
+    """Quanto o contato deve: receitas em aberto (fora da lixeira), em todas as entidades."""
+    q = select(func.coalesce(func.sum(Entry.base_amount), 0)).where(
+        Entry.contact_id == contact_id, Entry.kind == "income", Entry.status == "pending")
+    if exclude_entry_id is not None:
+        q = q.where(Entry.id != exclude_entry_id)
+    return Decimal(s.scalar(q)).quantize(Decimal("0.01"))
+
+
+def credit_warnings(s: Session, entity_id: int, name: str | None, amount: Decimal = Decimal(0),
+                    currency: str = "BRL", exclude_entry_id: int | None = None) -> list[str]:
+    """Avisos para vender a prazo ou lançar a receber (Fase 4.5): pendência de crédito e limite estourado.
+    `amount` é o que está sendo lançado agora; `exclude_entry_id`, o lançamento em edição (já está no aberto)."""
+    name = (name or "").strip()
+    if not name:
+        return []
+    c = s.scalars(select(Contact).where(scope.contacts(entity_id), func.lower(Contact.name) == name.lower())
+                  .order_by((Contact.entity_id == entity_id).desc())).first()
+    if c is None:
+        return []
+    out = []
+    if c.credit_pending:
+        out.append(f"{c.name} tem pendência de crédito" + (f" ({c.credit_pending_where})."
+                                                             if c.credit_pending_where else "."))
+    if c.credit_limit is not None:
+        owed = open_receivable(s, c.id, exclude_entry_id)
+        total = owed + Decimal(amount or 0)
+        if total > c.credit_limit:
+            def fmt(v):
+                return money.fmt(v, currency)
+            detail = (f"{fmt(owed)} em aberto + {fmt(amount)} agora = {fmt(total)}" if amount
+                      else f"{fmt(owed)} em aberto")
+            out.append(f"{c.name} passa do limite de crédito: {detail}; limite {fmt(c.credit_limit)}.")
+    return out
 
 
 PHOTO_MAX = 500_000

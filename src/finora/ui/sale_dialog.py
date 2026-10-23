@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 
 from finora.core import money
 from finora.core.db import Session
+from finora.core.licensing import allowed, current_edition
 from finora.services import accounts, contacts, export, sales, stock
 from finora.services.sales import SaleData, SaleLine
 from finora.ui import theme
@@ -192,6 +193,10 @@ class SaleDialog(QDialog):
         bottom.addLayout(tot, 2)
         lay.addLayout(bottom)
 
+        self.credit_note = QLabel(wordWrap=True)            # pendência ou limite de crédito do cliente (4.5)
+        self.credit_note.setProperty("tone", "neg")
+        self.credit_note.hide()
+        lay.addWidget(self.credit_note)
         self.error = QLabel(wordWrap=True)
         self.error.setProperty("role", "error")
         self.error.hide()
@@ -224,6 +229,7 @@ class SaleDialog(QDialog):
             w.textChanged.connect(self._totals)
         self.parts.valueChanged.connect(self._totals)
         self.paid_now.toggled.connect(self._totals)
+        self.contact.currentTextChanged.connect(self._totals)
         self._load()
         self._picked()
         self._kind_changed()
@@ -346,6 +352,18 @@ class SaleDialog(QDialog):
             self.parts_lbl.setText(f"{n}x de {money.fmt(total / n, self.currency)} (aprox.)")
         else:
             self.parts_lbl.setText("")
+        self._credit_check(total if is_sale and not self.paid_now.isChecked() else None)
+
+    def _credit_check(self, amount: Decimal | None) -> list[str]:
+        """Venda a prazo: avisa se o cliente tem pendência ou passa do limite de crédito. None = nada a receber."""
+        notes = []
+        if amount is not None and not self.readonly and allowed(current_edition(), "contacts_full"):
+            with Session() as s:
+                notes = contacts.credit_warnings(s, self.entity_id, self.contact.currentText(), amount,
+                                                 self.currency)
+        self.credit_note.setText("\n".join(notes))
+        self.credit_note.setVisible(bool(notes))
+        return notes
 
     # ----- gravar -----
     def _err(self, text: str):
@@ -366,6 +384,10 @@ class SaleDialog(QDialog):
                         category_id=self.category.currentData() if is_sale else None, notes=self.notes.text())
 
     def save(self, confirm: bool):
+        if confirm and self.credit_note.text() and QMessageBox.question(
+                self, "Crédito do cliente", self.credit_note.text() + "\n\nConfirmar a venda mesmo assim?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
         try:
             with Session() as s:
                 self.sale_id = sales.save(s, self.entity_id, self._data(), self.sale_id)

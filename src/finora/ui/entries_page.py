@@ -387,6 +387,10 @@ class EntryForm(QFrame):
                                        help_text="Quem você paga ou quem te paga (opcional).\n"
                                                  "Digite um nome novo para cadastrar.")
         lay.addLayout(self.contact_box)
+        self.credit_note = QLabel(wordWrap=True)           # pendência ou limite de crédito do cliente (4.5)
+        self.credit_note.setProperty("tone", "neg")
+        self.credit_note.hide()
+        lay.addWidget(self.credit_note)
         self.doc = QLineEdit(maxLength=40, placeholderText="Opcional")
         self.doc_box = self._field("Nº do documento", self.doc,
                                    help_text="Número do boleto, da nota fiscal ou do recibo, se tiver.")
@@ -492,6 +496,10 @@ class EntryForm(QFrame):
         self.account.currentIndexChanged.connect(self._currency_mode)
         self.dest.currentIndexChanged.connect(self._currency_mode)
         self.paid.toggled.connect(self.paid_date.setEnabled)
+        self.contact.currentTextChanged.connect(self._credit_check)
+        self.amount.editingFinished.connect(self._credit_check)
+        self.paid.toggled.connect(self._credit_check)
+        self.kind_group.idToggled.connect(lambda _i, on: on and self._credit_check())
         self.save_btn.clicked.connect(self._save)
         self.cancel_btn.clicked.connect(self.closed.emit)
         self.delete_btn.clicked.connect(self._delete)
@@ -783,6 +791,20 @@ class EntryForm(QFrame):
         self.delete_btn.show()
         self._error(None)
         self.desc.setFocus()
+
+    def _credit_check(self, *_a):
+        """Receita a receber: avisa (sem impedir) se o cliente tem pendência ou passa do limite de crédito."""
+        notes = []
+        if self._kind() == "income" and not self.paid.isChecked() and allowed(current_edition(), "contacts_full"):
+            try:
+                value = money.parse(self.amount.text())
+            except ValueError:
+                value = Decimal(0)
+            with Session() as s:
+                notes = contacts.credit_warnings(s, self.profile.id, self.contact.currentText(), value,
+                                                 self.profile.currency, self.editing.id if self.editing else None)
+        self.credit_note.setText("\n".join(notes))
+        self.credit_note.setVisible(bool(notes))
 
     # ----- salvar/excluir -----
     def _error(self, msg: str | None):

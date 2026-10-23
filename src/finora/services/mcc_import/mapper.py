@@ -306,7 +306,8 @@ class _Importer:
                             applies_income=inc, projection=projection if inc else None)
             else:
                 ccid = cost_centers.create(self.s, self.r.entities[c["empresa_id"]], c["nome"], budget,
-                                           applies_expense=exp, applies_income=inc, projection=projection)
+                                           applies_expense=exp, applies_income=inc, projection=projection,
+                                           needs_review=True)
                 self.link("centros", c["id"], ccid)
             self.s.commit()
             self.r.cost_centers[c["id"]] = ccid
@@ -387,7 +388,7 @@ class _Importer:
                 from finora.services import categories
                 eid = self.r.entities[empresa_id]
                 cid = categories.create(self.s, eid, name=item.strip()[:80] or "Sem descrição",
-                                        parent_id=self._group(eid, tipo))
+                                        parent_id=self._group(eid, tipo), needs_review=True)
                 self.link("itens", src, cid)
                 self.s.commit()
             self.r.categories[key] = cid

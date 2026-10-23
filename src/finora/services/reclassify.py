@@ -176,6 +176,7 @@ def reclassify(s: Session, entity_id: int, moves: dict[int, int | str]) -> Outco
         if twin is None:
             c.parent_id, c.code = g.id, categories._next_code(s, entity_id, g)
             c.dre_group, c.kind = g.dre_group, g.kind
+            c.needs_review = False                         # reclassificar = conferir
             s.flush()
             moved += 1
             lines.append(f"\"{c.name}\" -> {g.name}")

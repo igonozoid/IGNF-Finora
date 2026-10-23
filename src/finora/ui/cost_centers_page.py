@@ -76,6 +76,9 @@ class CostCentersPage(QWidget):
         # esquerda: barra + tabela
         self.title = QLabel(objectName="sectionTitle")
         self.show_inactive = QCheckBox("Mostrar inativos")
+        self.only_review = QCheckBox("Só a revisar")
+        self.only_review.setToolTip("Centros criados pela importação do MCC, para você conferir.\n"
+                                    "Salvar o centro tira a marca.")
         self.new_btn = button("Novo centro", "secondary", t, "fa6s.plus", "fg")
         bar = QHBoxLayout()
         bar.setSpacing(theme.SP_M)
@@ -84,6 +87,7 @@ class CostCentersPage(QWidget):
                                 "centro de custo.\nOrçado = quanto você quer gastar nele por mês.\n"
                                 "Recebido = receitas do mês com esse centro (a dica mostra a projeção).", t))
         bar.addStretch(1)
+        bar.addWidget(self.only_review)
         bar.addWidget(self.show_inactive)
         bar.addWidget(self.new_btn)
 
@@ -190,6 +194,7 @@ class CostCentersPage(QWidget):
 
         self._open = False
         self.show_inactive.toggled.connect(self.refresh)
+        self.only_review.toggled.connect(self.refresh)
         self.new_btn.clicked.connect(lambda: self._new(open_panel=True))
         self.cancel_btn.clicked.connect(self._cancel)
         self.save_btn.clicked.connect(self._save)
@@ -215,7 +220,11 @@ class CostCentersPage(QWidget):
         self.title.setText(f"{MONTHS[m - 1].capitalize()} de {y}")
         with Session() as s:
             self.items = cost_centers.list_centers(s, self.profile.id, y, m,
-                                                   include_inactive=self.show_inactive.isChecked())
+                                                   include_inactive=self.show_inactive.isChecked(),
+                                                   only_review=self.only_review.isChecked())
+            n_review = cost_centers.review_count(s, self.profile.id)
+        self.only_review.setText(f"Só a revisar ({n_review})")
+        self.only_review.setVisible(bool(n_review) or self.only_review.isChecked())
         cur, t = self.profile.currency, self.t
         self.table.setRowCount(len(self.items))
         for r, c in enumerate(self.items):
@@ -229,8 +238,11 @@ class CostCentersPage(QWidget):
                     it.setForeground(QColor(t[tone]))
                 return it
 
-            self.table.setItem(r, C_NAME, item(c.name + ("" if c.is_active else " (inativo)"), L,
-                                               None if c.is_active else "mut", mono=False))
+            name = item(c.name + ("" if c.is_active else " (inativo)") + ("  · a revisar" if c.needs_review else ""),
+                        L, "acc" if c.needs_review else None if c.is_active else "mut", mono=False)
+            if c.needs_review:
+                name.setToolTip("Criado pela importação do MCC. Confira e salve para tirar a marca.")
+            self.table.setItem(r, C_NAME, name)
             self.table.setItem(r, C_BUDGET, item(money.fmt(c.budget, cur) if c.budget else "—",
                                                  tone=None if c.budget else "mut"))
             spent = item(money.fmt(-c.spent, cur) if c.spent else "—", tone=None if c.spent else "mut")

@@ -100,7 +100,7 @@ class NewCategoryDialog(QDialog):
         try:
             with Session() as s:
                 self.new_id = categories.create(s, self.entity_id, name=self.name.text(),
-                                                parent_id=self.group.currentData())
+                                                parent_id=self.group.currentData(), needs_review=True)
         except (ValueError, PermissionError) as e:
             self._err(str(e))
             return None

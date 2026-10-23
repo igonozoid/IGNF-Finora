@@ -69,6 +69,8 @@ class Category(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Compartilhada com todas as entidades (vale para o grupo e as subcategorias dele)
     shared: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Criada sozinha (no lançamento ou na importação do MCC): confira e salve para tirar a marca
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
 
 class CostCenter(Base):
     __tablename__ = "cost_centers"
@@ -83,6 +85,7 @@ class CostCenter(Base):
     applies_expense: Mapped[bool] = mapped_column(Boolean, default=True)
     applies_income: Mapped[bool] = mapped_column(Boolean, default=True)
     projection: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False)      # criado pela importação: conferir
 
 class Contact(Base):
     __tablename__ = "contacts"

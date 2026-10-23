@@ -41,6 +41,9 @@ class CategoriesPage(QWidget):
 
         # Barra superior
         self.show_inactive = QCheckBox("Mostrar inativas")
+        self.only_review = QCheckBox("Só a revisar")
+        self.only_review.setToolTip("Categorias criadas dentro do lançamento ou pela importação do MCC, para você\n"
+                                    "conferir o nome e o grupo. Salvar (ou reclassificar) tira a marca.")
         self.new_group_btn = button("Grupo", "secondary", t, "fa6s.plus", "fg")
         self.new_group_btn.setToolTip("Novo grupo de categorias (ex.: Pets)")
         self.new_child_btn = button("Subcategoria", "secondary", t, "fa6s.plus", "fg")
@@ -80,7 +83,11 @@ class CategoriesPage(QWidget):
         left.setSpacing(10)
         left.addLayout(bar)
         left.addWidget(self.tree, 1)
-        left.addWidget(self.show_inactive)
+        checks = QHBoxLayout()
+        checks.addWidget(self.show_inactive)
+        checks.addWidget(self.only_review)
+        checks.addStretch(1)
+        left.addLayout(checks)
 
         root = QHBoxLayout(self)
         root.setContentsMargins(14, theme.SP_L, 14, theme.SP_L)
@@ -89,6 +96,7 @@ class CategoriesPage(QWidget):
         root.addWidget(self._build_panel())
 
         self.show_inactive.toggled.connect(self.refresh)
+        self.only_review.toggled.connect(self.refresh)
         self.tree.currentItemChanged.connect(self._selected)
         self.new_group_btn.clicked.connect(self._new_group)
         self.new_child_btn.clicked.connect(self._new_child)
@@ -263,7 +271,10 @@ class CategoriesPage(QWidget):
                      if not self.tree.topLevelItem(i).isExpanded()}
         self._fill_dre_box()                      # o modelo da DRE da entidade pode ter mudado
         with Session() as s:
-            roots = categories.tree(s, self.profile.id, self.show_inactive.isChecked())
+            roots = categories.tree(s, self.profile.id, self.show_inactive.isChecked(), self.only_review.isChecked())
+            n_review = categories.review_count(s, self.profile.id)
+        self.only_review.setText(f"Só a revisar ({n_review})")
+        self.only_review.setVisible(bool(n_review) or self.only_review.isChecked())
 
         self.tree.blockSignals(True)
         self.tree.clear()
@@ -301,7 +312,8 @@ class CategoriesPage(QWidget):
     def _item(self, c: categories.CategoryView, mono: QFont, muted: QBrush) -> QTreeWidgetItem:
         self._by_id[c.id] = c
         it = QTreeWidgetItem([c.name + ("" if c.is_active else "  (inativa)")
-                              + ("  · compartilhada" if c.shared else ""), c.code,
+                              + ("  · compartilhada" if c.shared else "") + ("  · a revisar" if c.needs_review else ""),
+                              c.code,
                               c.dre_label if c.parent_id is None else ""])
         it.setData(0, Qt.UserRole, c.id)
         it.setFont(COL_CODE, mono)
@@ -309,6 +321,9 @@ class CategoriesPage(QWidget):
         if not c.is_active:
             for col in range(3):
                 it.setForeground(col, muted)
+        if c.needs_review:
+            it.setForeground(COL_NAME, QBrush(QColor(self.t["acc"])))
+            it.setToolTip(COL_NAME, "Criada no lançamento ou na importação. Confira e salve para tirar a marca.")
         return it
 
     def _paint_icons(self):

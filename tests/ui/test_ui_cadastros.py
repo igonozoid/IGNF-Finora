@@ -325,10 +325,16 @@ def test_regras_automaticas_preenchem_o_lancamento_novo(window, monkeypatch):
 
 
 def test_filtro_a_revisar_so_aparece_quando_ha(window):
+    from sqlalchemy import update
     from finora.models import Contact
     window.go_to("contacts")
     page = window.page("contacts")
     review = next(b for b in page.filter_group.buttons() if b.property("role_key") == "review")
+    assert not review.isHidden()                       # os contatos digitados nos lançamentos do exemplo (4.6)
+    with db.Session() as s:
+        s.execute(update(Contact).values(needs_review=False))
+        s.commit()
+    page.refresh()
     assert review.isHidden()
     with db.Session() as s:
         cid = contacts.create(s, window.profile.id, name="Posto Beira Rio")

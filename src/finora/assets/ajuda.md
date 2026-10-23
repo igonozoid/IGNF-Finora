@@ -99,6 +99,9 @@ aparece como **grupo novo** e é criada ao aplicar. Se o destino já tem uma sub
 viram uma só (lançamentos, regras e orçamento passam juntos). Com lançamentos num **período fechado**, reabra o
 período antes: a DRE do passado mudaria. Fica registrado no histórico de alterações.
 
+**A revisar**: subcategoria criada dentro do lançamento ou trazida do MCC ganha a marca. Marque **Só a revisar**
+embaixo da árvore para ver só essas; salvar (ou reclassificar) tira a marca.
+
 ## Centros de custo {#cost_centers}
 
 Um segundo jeito de agrupar, além da categoria: Casa, Carro, Viagem, Obra… Útil para saber quanto custou um
@@ -107,6 +110,7 @@ projeto ao todo. Edições pagas.
 Cada centro diz se **vale para despesas**, **para receitas** ou para os dois (no MCC: centro de custo e centro de
 lucro); no lançamento aparecem só os que valem para o tipo dele. Quem vale para despesas pode ter um **orçamento**
 por mês; quem vale para receitas, uma **projeção** por mês (a coluna Recebido mostra quanto já entrou).
+Centros trazidos do MCC ficam **a revisar** (filtro **Só a revisar**); salvar o centro tira a marca.
 
 ## Contatos {#contacts}
 
@@ -131,8 +135,9 @@ Também nas edições pagas: na aba Bancário, **outras contas** do contato; na 
 Na aba **Anexos**: uma **foto** do contato e arquivos como contrato, ficha cadastral ou cópia de documento (até
 10 por contato, 10 MB cada). Ficam dentro do Finora e vão junto no backup; foto e anexos são gravados na hora.
 
-**A revisar**: contatos criados sozinhos (por exemplo, pela importação do MCC a partir de um nome solto)
-ganham a marca e aparecem no filtro **A revisar**. Confira os dados e salve: a marca sai.
+**A revisar**: contatos criados sozinhos (um nome novo digitado no lançamento, na venda ou no estoque, ou um
+nome solto da importação do MCC) ganham a marca e aparecem no filtro **A revisar**. Confira os dados e salve: a
+marca sai.
 
 **Mesclar**: o mesmo fornecedor cadastrado duas vezes ("Enel" e "ENEL S.A.")? Abra o que vai ficar e clique em
 **Mesclar…**. Os prováveis repetidos vêm primeiro na lista. Os lançamentos (até os da lixeira), regras, estoque e

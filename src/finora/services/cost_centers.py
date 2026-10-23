@@ -30,6 +30,7 @@ class CostCenterView:
     applies_expense: bool = True
     applies_income: bool = True
     projection: Decimal | None = None   # projeção mensal de receita
+    needs_review: bool = False          # criado pela importação: conferir
 
     @property
     def applies_label(self) -> str:
@@ -73,7 +74,7 @@ def _sums(s: Session, entity_id: int, year: int, month: int) -> dict[int, tuple[
 
 
 def list_centers(s: Session, entity_id: int, year: int, month: int,
-                 include_inactive: bool = True) -> list[CostCenterView]:
+                 include_inactive: bool = True, only_review: bool = False) -> list[CostCenterView]:
     sums = _sums(s, entity_id, year, month)
     used = dict(s.execute(select(Entry.cost_center_id, func.count(Entry.id))
                           .where(Entry.entity_id == entity_id, Entry.cost_center_id.is_not(None))
@@ -81,14 +82,21 @@ def list_centers(s: Session, entity_id: int, year: int, month: int,
     q = select(CostCenter).where(scope.cost_centers(entity_id))
     if not include_inactive:
         q = q.where(CostCenter.is_active)
+    if only_review:
+        q = q.where(CostCenter.needs_review)
     out = []
     for c in s.scalars(q.order_by(CostCenter.is_active.desc(), func.lower(CostCenter.name))):
         spent, received, count = sums.get(c.id, (ZERO, ZERO, 0))
         out.append(CostCenterView(c.id, c.name, Decimal(c.budget) if c.budget is not None else None, c.is_active,
                                   spent, received, count, used.get(c.id, 0), bool(c.shared),
                                   bool(c.applies_expense), bool(c.applies_income),
-                                  Decimal(c.projection) if c.projection is not None else None))
+                                  Decimal(c.projection) if c.projection is not None else None,
+                                  bool(c.needs_review)))
     return out
+
+
+def review_count(s: Session, entity_id: int) -> int:
+    return s.scalar(select(func.count(CostCenter.id)).where(scope.cost_centers(entity_id), CostCenter.needs_review))
 
 
 def choices(s: Session, entity_id: int, keep_id: int | None = None, kind: str | None = None) -> list[tuple[int, str]]:
@@ -128,11 +136,12 @@ def _check(s: Session, entity_id: int, name: str, budget: Decimal | None, exclud
 
 
 def create(s: Session, entity_id: int, name: str, budget: Decimal | None = None, shared: bool = False, *,
-           applies_expense: bool = True, applies_income: bool = True, projection: Decimal | None = None) -> int:
+           applies_expense: bool = True, applies_income: bool = True, projection: Decimal | None = None,
+           needs_review: bool = False) -> int:
     name, budget = _check(s, entity_id, name, budget, None, applies_expense, applies_income, projection)
     c = CostCenter(entity_id=entity_id, name=name, budget=budget if applies_expense else None, is_active=True,
                    shared=bool(shared), applies_expense=bool(applies_expense), applies_income=bool(applies_income),
-                   projection=(projection or None) if applies_income else None)
+                   projection=(projection or None) if applies_income else None, needs_review=bool(needs_review))
     s.add(c)
     s.commit()
     return c.id
@@ -156,6 +165,7 @@ def update(s: Session, cc_id: int, name: str, budget: Decimal | None, is_active:
     c.applies_expense, c.applies_income = exp, inc
     c.projection = (proj or None) if inc else None
     c.is_active = is_active
+    c.needs_review = False                 # salvar no cadastro = conferido
     s.commit()
 
 

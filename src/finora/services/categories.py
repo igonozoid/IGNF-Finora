@@ -21,6 +21,7 @@ class CategoryView:
     children: list["CategoryView"] = field(default_factory=list)
     shared: bool = False             # grupo compartilhado com todas as entidades
     own: bool = True                 # criada nesta entidade (False = veio compartilhada de outra)
+    needs_review: bool = False       # criada sozinha (lançamento/importação): conferir
 
     @property
     def dre_label(self) -> str:
@@ -44,13 +45,14 @@ def model_groups(s: Session, entity_id: int) -> dict[str, str]:
     return dre.groups_for(getattr(e, "dre_model", None))
 
 
-def tree(s: Session, entity_id: int, include_inactive: bool = False) -> list[CategoryView]:
-    """Grupos na ordem das linhas da DRE; dentro de cada grupo, pelo código."""
+def tree(s: Session, entity_id: int, include_inactive: bool = False, only_review: bool = False) -> list[CategoryView]:
+    """Grupos na ordem das linhas da DRE; dentro de cada grupo, pelo código. `only_review`: só as marcadas
+    "a revisar" (com o grupo delas)."""
     q = select(Category).where(scope.categories(entity_id))
     if not include_inactive:
         q = q.where(Category.is_active)
     rows = [CategoryView(c.id, c.parent_id, c.code, c.name, c.kind, c.dre_group, c.is_active, shared=bool(c.shared),
-                         own=c.entity_id == entity_id) for c in s.scalars(q)]
+                         own=c.entity_id == entity_id, needs_review=bool(c.needs_review)) for c in s.scalars(q)]
     by_id = {r.id: r for r in rows}
     roots = []
     for r in rows:
@@ -62,7 +64,15 @@ def tree(s: Session, entity_id: int, include_inactive: bool = False) -> list[Cat
     roots.sort(key=lambda r: (order.index(r.dre_group) if r.dre_group in order else len(order), _code_key(r.code)))
     for r in roots:
         r.children.sort(key=lambda c: _code_key(c.code))
+        if only_review:
+            r.children = [c for c in r.children if c.needs_review]
+    if only_review:
+        roots = [r for r in roots if r.needs_review or r.children]
     return roots
+
+
+def review_count(s: Session, entity_id: int) -> int:
+    return s.scalar(select(func.count(Category.id)).where(scope.categories(entity_id), Category.needs_review))
 
 
 def choices(s: Session, entity_id: int, kind: str) -> list[tuple[int, str]]:
@@ -123,7 +133,8 @@ def convert_model(s: Session, entity_id: int, model: str) -> int:
 
 
 def create(s: Session, entity_id: int, *, name: str, parent_id: int | None = None,
-           dre_group: str | None = None, shared: bool = False) -> int:
+           dre_group: str | None = None, shared: bool = False, needs_review: bool = False) -> int:
+    """`needs_review`: criada fora da tela de Categorias (no lançamento ou na importação)."""
     """Subcategoria herda tipo e linha da DRE do grupo; grupo novo precisa de `dre_group`."""
     parent = s.get(Category, parent_id) if parent_id else None
     if parent is not None and parent.parent_id is not None:
@@ -136,7 +147,8 @@ def create(s: Session, entity_id: int, *, name: str, parent_id: int | None = Non
             raise ValueError("Escolha em qual linha da DRE esta categoria aparece.")
         kind = kind_for(dre_group)
     c = Category(entity_id=entity_id, parent_id=parent_id, code=_next_code(s, entity_id, parent), name=name,
-                 kind=kind, dre_group=dre_group, is_active=True, shared=bool(shared) and parent is None)
+                 kind=kind, dre_group=dre_group, is_active=True, shared=bool(shared) and parent is None,
+                 needs_review=bool(needs_review))
     s.add(c)
     s.commit()
     return c.id
@@ -148,6 +160,7 @@ def update(s: Session, category_id: int, *, name: str, dre_group: str | None = N
     `shared` (só grupos): compartilhar o grupo, com as subcategorias, com todas as entidades."""
     c = s.get(Category, category_id)
     c.name = _check_name(s, c.entity_id, name, c.parent_id, exclude_id=c.id)
+    c.needs_review = False                 # salvar no cadastro = conferida
     if shared is not None and c.parent_id is None:
         c.shared = shared
     if c.parent_id is None and dre_group and dre_group != c.dre_group:

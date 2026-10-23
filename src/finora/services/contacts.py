@@ -377,7 +377,7 @@ def get_or_create(s: Session, entity_id: int, name: str | None, kind: str | None
     c = s.scalars(select(Contact).where(scope.contacts(entity_id), func.lower(Contact.name) == name.lower())
                   .order_by((Contact.entity_id == entity_id).desc())).first()     # o da entidade antes do compartilhado
     if c is None:
-        c = Contact(entity_id=entity_id, person_type="PF", name=name)
+        c = Contact(entity_id=entity_id, person_type="PF", name=name, needs_review=True)   # nome solto: conferir
         s.add(c)
     role = {"expense": "supplier", "income": "customer"}.get(kind)
     if role:

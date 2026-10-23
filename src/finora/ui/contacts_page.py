@@ -3,11 +3,11 @@ from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter, QDialog, QFileDialog, QFrame, QGridLayout,
     QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
-    QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QPlainTextEdit, QPushButton, QScrollArea, QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 import qtawesome as qta
 
-from finora.core import documents, money
+from finora.core import documents, money, settings
 from finora.core.db import Session
 from finora.core.licensing import allowed, current_edition
 from finora.services import contacts, doc_lookup
@@ -836,11 +836,17 @@ class ContactsPage(QWidget):
         self.form_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.form_scroll.setWidget(self.form)
 
+        # A divisa entre a lista e o cadastro se arrasta; a largura escolhida fica guardada.
+        self.splitter = QSplitter(Qt.Horizontal, childrenCollapsible=False, handleWidth=theme.SP_L)
+        self.splitter.addWidget(self.left)
+        self.splitter.addWidget(self.form_scroll)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 0)
+        self.splitter.splitterMoved.connect(self._panel_moved)
+        self._panel_w = max(settings.get_panel_width("contacts") or PANEL_W, self._panel_min())
         root = QHBoxLayout(self)
         root.setContentsMargins(14, theme.SP_L, 14, theme.SP_L)
-        root.setSpacing(theme.SP_L)
-        root.addWidget(self.left, 1)
-        root.addWidget(self.form_scroll)
+        root.addWidget(self.splitter)
 
         self.filter_group.idClicked.connect(self._filter)
         self.search.textChanged.connect(lambda: self.refresh())
@@ -856,12 +862,26 @@ class ContactsPage(QWidget):
     def _narrow(self) -> bool:
         return self.width() < STACK_BELOW
 
+    def _panel_min(self) -> int:
+        """O cadastro nunca fica mais estreito que o próprio conteúdo (abas, botões), senão corta."""
+        bar = self.form_scroll.verticalScrollBar().sizeHint().width()
+        return max(PANEL_W, self.form.minimumSizeHint().width() + bar + 2)
+
+    def _panel_moved(self, *_a):
+        if not self._narrow() and self.left.isVisible():
+            self._panel_w = self.splitter.sizes()[1]
+            settings.set_panel_width("contacts", self._panel_w)
+
     def _arrange(self):
         narrow = self._narrow()
         show_form = not narrow or self._editing
         self.form_scroll.setVisible(show_form)
         self.left.setVisible(not (narrow and self._editing))
-        self.form_scroll.setFixedWidth(max(PANEL_W, self.width() - 28) if narrow else PANEL_W)
+        self.form_scroll.setMinimumWidth(0 if narrow else self._panel_min())
+        if not narrow:
+            total = self.splitter.width() or self.width()
+            panel = min(max(self._panel_w, self._panel_min()), max(self._panel_min(), total - 300))
+            self.splitter.setSizes([max(1, total - panel), panel])
 
     def resizeEvent(self, e):
         super().resizeEvent(e)

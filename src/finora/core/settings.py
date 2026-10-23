@@ -202,6 +202,19 @@ def set_entries_notes_column(on: bool) -> None:
     _s().setValue("entries/notes_column", on)
 
 
+def get_panel_width(page: str) -> int | None:
+    """Largura do painel lateral arrastada pelo usuário (ex.: cadastro de Contatos). None = a padrão."""
+    v = _s().value(f"panels/{page}")
+    try:
+        return int(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def set_panel_width(page: str, width: int) -> None:
+    _s().setValue(f"panels/{page}", int(width))
+
+
 def get_report_charts() -> bool:
     """Mostrar o gráfico nos relatórios que têm (e levá-lo para a impressão/PDF)."""
     return _s().value("reports/charts", True, type=bool)

@@ -179,6 +179,41 @@ class Task(Base):
     entry_id: Mapped[int | None] = mapped_column(ForeignKey("entries.id", ondelete="SET NULL"))
     created_by: Mapped[str | None] = mapped_column(String(80))
 
+class EmployeeProfile(Base):
+    """RH (módulo "hr", decisão D4): dados de RH de um contato "Trabalha para mim" (1 por contato). Como no
+    IgnControl: doméstico/rural (controle manual) ou escritório (folha com a contabilidade)."""
+    __tablename__ = "employee_profiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"), unique=True)
+    job_title: Mapped[str | None] = mapped_column(String(80))               # função
+    staff_category: Mapped[str] = mapped_column(String(15), default="domestic_rural")   # domestic_rural | office
+    employment_type: Mapped[str | None] = mapped_column(String(30))         # CLT, diarista, estagiário…
+    union_name: Mapped[str | None] = mapped_column(String(120))             # sindicato
+    workplace: Mapped[str | None] = mapped_column(String(120))              # local de trabalho
+    inss_rate: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))        # INSS patronal (0.08 = 8%)
+    monthly_hours: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
+    initial_salary: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    admission_date: Mapped[date | None]
+    termination_date: Mapped[date | None]
+    notes: Mapped[str | None] = mapped_column(Text)
+
+class EmployeeRecord(Base):
+    """Histórico de RH do funcionário: reajuste de salário, férias, 13º ou benefício mensal (`kind`)."""
+    __tablename__ = "employee_records"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), index=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(10))       # salary | vacation | thirteenth | benefit
+    day: Mapped[date | None]                            # vigência (salário), início do gozo (férias), pagamento
+    end_day: Mapped[date | None]                        # fim do gozo (férias)
+    period: Mapped[str | None] = mapped_column(String(30))   # período aquisitivo das férias, ano do 13º
+    name: Mapped[str | None] = mapped_column(String(80))     # nome do benefício (Unimed, seguro…)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))   # salário nominal, valor pago, valor/mês
+    net_amount: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))   # salário líquido realmente pago
+    active: Mapped[bool] = mapped_column(Boolean, default=True)          # benefício em vigor
+    notes: Mapped[str | None] = mapped_column(String(300))
+
 class Entry(Base):
     __tablename__ = "entries"
     id: Mapped[int] = mapped_column(primary_key=True)

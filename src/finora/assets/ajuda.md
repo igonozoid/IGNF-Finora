@@ -225,6 +225,23 @@ Módulo opcional: ligue em **Configurações › Módulos desta entidade**. Para
   **datas importantes** dos contatos. Abaixo da lista aparecem os dos próximos 30 dias.
 - Os **lembretes** (Configurações › Lembretes) avisam as tarefas atrasadas e as que vencem nos próximos dias.
 
+## RH {#hr}
+
+Módulo opcional: ligue em **Configurações › Módulos desta entidade**. O funcionário é um contato com o papel
+**Trabalha para mim**: ele aparece aqui sozinho, ou use **Novo funcionário** (pode ser um contato que já existe).
+
+- **Perfil**: função, categoria (**doméstico/rural**, controle feito aqui, ou **escritório**, folha com a
+  contabilidade), vínculo (CLT, diarista…), sindicato, local de trabalho, **INSS patronal** em %, horas por mês,
+  salário inicial, **admissão** e **saída** (com a saída, ele vai para **Desligados**).
+- **Histórico**: escolha o tipo e clique em **Adicionar**: **salário** (reajuste: vigência, nominal da carteira e
+  líquido pago), **férias** (período aquisitivo, gozo e valor), **13º** (ano, pagamento e valor) e **benefício**
+  mensal (Unimed, seguro…; desmarque **Em vigor** quando acabar). Dois cliques numa linha para editar.
+- **Salário atual** = o último reajuste (o líquido, se informado) ou o salário inicial. A lista soma salários e
+  benefícios em vigor na **folha do mês**.
+- **Custo mensal estimado**: salário atual + INSS patronal, FGTS (8%) e as provisões de 13º (1/12) e de 1/3 de
+  férias (1/36), com INSS e FGTS sobre elas. É uma estimativa para planejar, não substitui a folha da
+  contabilidade.
+
 ## Vendas {#sales}
 
 Módulo opcional (precisa do Estoque): ligue em **Configurações › Módulos desta entidade**.

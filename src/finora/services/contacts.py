@@ -438,6 +438,8 @@ def merge(s: Session, keep_id: int, drop_id: int) -> MergeResult:
     for model in [m for m, _f in LISTS.values()] + [Attachment]:     # contas, referências, pessoas e anexos
         s.execute(sql_update(model).where(model.contact_id == drop_id).values(contact_id=keep_id)
                   .execution_options(synchronize_session=False))
+    from finora.services import hr
+    hr.merge_into(s, keep_id, drop_id)                     # histórico de RH (e o perfil, se faltar)
     s.expire_all()                                         # nada carregado antes fica com o contato antigo
     for m in s.scalars(select(ImportMap).where(ImportMap.kind == "pessoas", ImportMap.target == str(drop_id))):
         m.target = str(keep_id)                            # reimportar o MCC continua achando o contato

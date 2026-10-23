@@ -40,6 +40,9 @@ CATALOG = {m.key: m for m in (
     Module("agenda", "Agenda", "fa6s.calendar-days",
            "Tarefas com data e recorrência (ex.: pagar o IPVA todo ano, ligar para um cliente), ligadas a um contato "
            "ou lançamento, com os aniversários e datas importantes dos contatos. Avisa nos lembretes.", ready=True),
+    Module("hr", "RH", "fa6s.id-badge",
+           "Funcionários (os contatos \"Trabalha para mim\"): função, admissão, salário e reajustes, férias, 13º, "
+           "benefícios, total da folha e custo com encargos.", ready=True),
 )}
 
 

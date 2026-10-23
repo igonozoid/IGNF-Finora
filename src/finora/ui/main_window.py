@@ -33,6 +33,7 @@ from finora.ui.reports_page import ReportsPage
 from finora.ui.settings_page import SettingsPage
 from finora.ui.livestock_page import LivestockPage
 from finora.ui.agenda_page import AgendaPage
+from finora.ui.hr_page import HrPage
 from finora.ui.production_page import ProductionPage
 from finora.ui.rural_page import RuralPage
 from finora.ui.sales_page import SalesPage
@@ -65,6 +66,8 @@ NAV = [
      "Aqui você acompanha o rebanho por lote: nascimentos, compras, vendas, sanidade, pesagens e custos."),
     ("agenda", "fa6s.calendar-days", "Agenda", "Tarefas, recorrências e datas dos contatos",
      "Aqui você anota o que precisa ser feito e quando, e vê os aniversários e datas importantes dos contatos."),
+    ("hr", "fa6s.id-badge", "RH", "Funcionários, salários, férias, 13º e benefícios",
+     "Aqui você acompanha quem trabalha para você: salário e reajustes, férias, 13º, benefícios e o custo da folha."),
     ("reconcile", "fa6s.scale-balanced", "Conciliação", "Extrato do banco x seus lançamentos",
      "Aqui você importa o extrato do banco e confere se tudo foi lançado."),
     ("reports", "fa6s.file-lines", "Relatórios", "DRE, fluxo de caixa, extratos, orçamento e atrasados",
@@ -408,7 +411,7 @@ class MainWindow(QMainWindow):
                  "reconcile": ReconcilePage, "reports": ReportsPage, "admin": AdminPage, "settings": SettingsPage,
                  "stock": StockPage, "sales": SalesPage,
                  "production": ProductionPage, "rural": RuralPage,
-                 "livestock": LivestockPage, "agenda": AgendaPage}
+                 "livestock": LivestockPage, "agenda": AgendaPage, "hr": HrPage}
         for old in self.pages:
             self.stack.removeWidget(old)
             old.deleteLater()

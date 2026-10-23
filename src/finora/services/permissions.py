@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from finora.core.current import current
 from finora.models import (
     Account, Attachment, BankLine, Budget, Category, CategoryRule, Contact, ContactBank, ContactPerson,
-    ContactReference, CostCenter, Task, Currency, Entity,
+    ContactReference, CostCenter, EmployeeProfile, EmployeeRecord, Task, Currency, Entity,
     EntityModule, Entry, ExchangeRate, Goal, Item, Permission, Production, ProductionLine, Farm, FarmArea, FarmActivity, HerdEvent, HerdLot, Sale, SaleItem, StockLocation, StockMove, User,
     UserEntity,
 )
@@ -24,13 +24,14 @@ MODULES = {
     "rural": ("Agricultura", "fa6s.seedling", "Propriedades, áreas, atividades e colheitas."),
     "livestock": ("Pecuária", "fa6s.cow", "Lotes de animais, nascimentos, compras, vendas, sanidade e pesagens."),
     "agenda": ("Agenda", "fa6s.calendar-days", "Tarefas, recorrências e datas dos contatos."),
+    "hr": ("RH", "fa6s.id-badge", "Funcionários, salários, férias, 13º e benefícios."),
     "reports": ("Relatórios", "fa6s.file-lines", "DRE, fluxo de caixa, extratos, orçamento e os demais."),
     "audit": ("Auditoria", "fa6s.clock-rotate-left", "Ver o histórico de alterações."),
     "admin": ("Administração", "fa6s.shield-halved",
               "Usuários, entidades, permissões, backup, moedas, fechamento de período e licença."),
 }
 LEVELS = {"none": "Nenhum", "read": "Leitura", "full": "Total"}
-DEFAULTS = {"financial": "full", "contacts": "full", "stock": "full", "sales": "full", "production": "full", "rural": "full", "livestock": "full", "agenda": "full",
+DEFAULTS = {"financial": "full", "contacts": "full", "stock": "full", "sales": "full", "production": "full", "rural": "full", "livestock": "full", "agenda": "full", "hr": "full",
             "reports": "read",
             "audit": "none", "admin": "none"}
 _ORDER = ["none", "read", "full"]
@@ -38,7 +39,7 @@ _ORDER = ["none", "read", "full"]
 # telas do menu -> módulo que elas exigem
 PAGE_MODULE = {"dashboard": "financial", "entries": "financial", "accounts": "financial", "categories": "financial",
                "cost_centers": "financial", "reconcile": "financial", "contacts": "contacts", "stock": "stock", "sales": "sales", "production": "production", "rural": "rural", "livestock": "livestock",
-               "agenda": "agenda",
+               "agenda": "agenda", "hr": "hr",
                "reports": "reports",
                "admin": "admin", "settings": None}
 
@@ -95,7 +96,8 @@ def entities_for(s: Session, user_id: int | None) -> list[int]:
 TABLE_MODULE = {Entry: "financial", Account: "financial", Category: "financial", CostCenter: "financial",
                 BankLine: "financial", Budget: "financial", Attachment: "financial", ExchangeRate: "admin",
                 CategoryRule: "financial", Goal: "financial", Currency: "admin", EntityModule: "admin",
-                Item: "stock", StockLocation: "stock", StockMove: "stock", Sale: "sales", SaleItem: "sales", Production: "production", ProductionLine: "production", Task: "agenda", Farm: "rural", FarmArea: "rural", FarmActivity: "rural", HerdLot: "livestock", HerdEvent: "livestock",
+                Item: "stock", StockLocation: "stock", StockMove: "stock", Sale: "sales", SaleItem: "sales", Production: "production", ProductionLine: "production", Task: "agenda", EmployeeProfile: "hr",
+                EmployeeRecord: "hr", Farm: "rural", FarmArea: "rural", FarmActivity: "rural", HerdLot: "livestock", HerdEvent: "livestock",
                 Contact: "contacts", ContactBank: "contacts", ContactReference: "contacts",
                 ContactPerson: "contacts", Entity: "admin", User: "admin", Permission: "admin", UserEntity: "admin"}
 

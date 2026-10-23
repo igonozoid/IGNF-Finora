@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
-    QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
+    QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 import qtawesome as qta
 
@@ -71,6 +71,66 @@ class ContactRow(QWidget):
             lay.addWidget(n)
 
 
+class RowsTable(QWidget):
+    """Lista editável do contato (outras contas, referências, pessoas de contato): uma linha por item."""
+
+    def __init__(self, key: str, t: dict, title: str, help_text: str):
+        super().__init__()
+        self.key = key
+        self.fields = contacts.LISTS[key][1]
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        head = QHBoxLayout()
+        head.addWidget(field_label(title, t, help_text), 1)
+        self.add_btn = button("Adicionar", "link", t, "fa6s.plus", "acc")
+        self.del_btn = button("Remover", "link", t, "fa6s.trash-can", "mut")
+        head.addWidget(self.add_btn)
+        head.addWidget(self.del_btn)
+        lay.addLayout(head)
+        self.table = QTableWidget(0, len(self.fields))
+        self.table.setHorizontalHeaderLabels([label for _f, label, _n in self.fields])
+        self.table.verticalHeader().hide()
+        self.table.verticalHeader().setDefaultSectionSize(26)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setMinimumHeight(110)
+        lay.addWidget(self.table)
+        self.add_btn.clicked.connect(self.add_row)
+        self.del_btn.clicked.connect(lambda: self.table.removeRow(self.table.currentRow()))
+
+    def add_row(self, row: dict | None = None):
+        r = self.table.rowCount()
+        self.table.insertRow(r)
+        for col, (f, _label, _n) in enumerate(self.fields):
+            value = (row or {}).get(f) or ""
+            if f == "kind":
+                box = QComboBox()
+                for k, v in contacts.REFERENCE_KINDS.items():
+                    box.addItem(v, k)
+                box.setCurrentIndex(max(0, box.findData(value)))
+                self.table.setCellWidget(r, col, box)
+            else:
+                self.table.setItem(r, col, QTableWidgetItem(value))
+        if row is None:
+            self.table.setCurrentCell(r, 0)
+            self.table.editItem(self.table.item(r, 0))
+
+    def set_rows(self, rows: list[dict]):
+        self.table.setRowCount(0)
+        for row in rows:
+            self.add_row(row)
+
+    def rows(self) -> list[dict]:
+        out = []
+        for r in range(self.table.rowCount()):
+            row = {}
+            for col, (f, _label, _n) in enumerate(self.fields):
+                w = self.table.cellWidget(r, col)
+                row[f] = w.currentData() if w is not None else (self.table.item(r, col) or QTableWidgetItem()).text()
+            out.append(row)
+        return out
+
+
 class _busy:
     """Cursor de espera durante a consulta na internet."""
 
@@ -89,6 +149,7 @@ class ContactForm(QFrame):
         super().__init__(objectName="card")
         self.profile, self.t = profile, t
         self.current: ContactView | None = None
+        self.full = bool(allowed(current_edition(), "contacts_full"))     # crédito, listas e anexos
         lay = QVBoxLayout(self)
         lay.setContentsMargins(14, 14, 14, 14)
         lay.setSpacing(theme.SP_M)
@@ -104,7 +165,7 @@ class ContactForm(QFrame):
         tabs.setSpacing(0)
         self.tab_group = QButtonGroup(self, exclusive=True)
         self.pages = QStackedWidget(objectName="formPages")
-        for i, label in enumerate(("Dados", "Endereço", "Bancário", "Crédito", "Observações")):
+        for i, label in enumerate(("Dados", "Endereço", "Bancário", "Crédito", "Referências", "Observações")):
             b = QPushButton(label, objectName="tabItem", checkable=True, checked=(i == 0))
             b.setCursor(Qt.PointingHandCursor)
             self.tab_group.addButton(b, i)
@@ -220,9 +281,15 @@ class ContactForm(QFrame):
         hint = QLabel("Útil para pagar o contato ou para conferir um recebimento.", wordWrap=True)
         hint.setProperty("role", "field")
         bl.addWidget(hint)
+        self.banks = RowsTable("banks", t, "Outras contas", "Mais contas do contato, além da de cima.")
+        self.banks.setEnabled(self.full)
+        if not self.full:
+            self.banks.setToolTip(FULL_MSG)
+        bl.addWidget(self.banks)
         bl.addStretch(1)
         self.pages.addWidget(banco)
         self.pages.addWidget(self._credit_page(t))
+        self.pages.addWidget(self._refs_page(t))
 
         obs = QWidget()
         ol = QVBoxLayout(obs)
@@ -267,7 +334,6 @@ class ContactForm(QFrame):
         cl = QVBoxLayout(page)
         cl.setContentsMargins(0, 0, 0, 0)
         cl.setSpacing(theme.SP_M)
-        self.full = bool(allowed(current_edition(), "contacts_full"))
         if not self.full:
             cl.addWidget(upgrade_box(FULL_MSG, t, self, compact=True))
         self.credit_limit = QLineEdit(placeholderText="Ex.: 5.000,00")
@@ -312,6 +378,28 @@ class ContactForm(QFrame):
             w.setEnabled(self.full)
         return page
 
+    def _refs_page(self, t: dict) -> QWidget:
+        page = QWidget()
+        rl = QVBoxLayout(page)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(theme.SP_M)
+        if not self.full:
+            rl.addWidget(upgrade_box(FULL_MSG, t, self, compact=True))
+        self.references = RowsTable("references", t, "Referências",
+                                    "Comercial: quem já vendeu a prazo para ele.\nBancária: banco onde ele tem conta.")
+        self.people = RowsTable("people", t, "Pessoas de contato", "Com quem falar na empresa: nome, cargo, ramal.")
+        for w in (self.references, self.people):
+            w.setEnabled(self.full)
+            rl.addWidget(w)
+        rl.addStretch(1)
+        return page
+
+    def _lists_data(self) -> dict | None:
+        """None na edição Free: as listas ficam como estão."""
+        if not self.full:
+            return None
+        return {w.key: w.rows() for w in (self.banks, self.references, self.people)}
+
     def _credit_data(self) -> dict | None:
         """None na edição Free: o crédito fica como está."""
         if not self.full:
@@ -352,6 +440,12 @@ class ContactForm(QFrame):
             e.setText(c.get(k) if c else "")
         self.notes.setPlainText(c.get("notes") if c else "")
         self._fill_credit(c)
+        lists = {}
+        if c is not None and self.full:
+            with Session() as s:
+                lists = contacts.get_lists(s, c.id)
+        for w in (self.banks, self.references, self.people):
+            w.set_rows(lists.get(w.key, []))
         self.tab_group.button(0).setChecked(True)
         self.pages.setCurrentIndex(0)
         self.shared.setChecked(bool(c and c.shared))
@@ -365,6 +459,7 @@ class ContactForm(QFrame):
         self.doc2_box.itemAt(0).widget().label.setText("RG" if pf else "Inscrição estadual")
         self.doc.setPlaceholderText("000.000.000-00" if pf else "00.000.000/0000-00")
         self.mother_box.setVisible(pf)
+        self.people.setVisible(not pf)
 
     def _format_doc(self):
         if documents.is_valid(self.doc.text(), self._ptype()):
@@ -477,7 +572,8 @@ class ContactForm(QFrame):
     def _save(self):
         data = dict(name=self.name.text(), person_type=self._ptype(), document=self.doc.text(),
                     roles={k for k, b in self.role_btns.items() if b.isChecked()}, details=self._details_data(),
-                    shared=self.shared.isChecked(), credit=self._credit_data())
+                    shared=self.shared.isChecked(), credit=self._credit_data(),
+                    lists=self._lists_data())
         try:
             with Session() as s:
                 if self.current is None:

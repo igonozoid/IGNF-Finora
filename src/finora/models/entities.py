@@ -122,6 +122,38 @@ class Contact(Base):
     rating: Mapped[str | None] = mapped_column(String(10))                  # otimo | bom | regular | ruim
     purchase_frequency: Mapped[str | None] = mapped_column(String(10))      # semanal | quinzenal | mensal…
 
+class ContactBank(Base):
+    """Outras contas bancárias do contato (a principal fica no próprio contato)."""
+    __tablename__ = "contact_banks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"), index=True)
+    bank_name: Mapped[str] = mapped_column(String(60))
+    bank_branch: Mapped[str | None] = mapped_column(String(20))
+    bank_account: Mapped[str | None] = mapped_column(String(30))
+    holder: Mapped[str | None] = mapped_column(String(120))
+    pix_key: Mapped[str | None] = mapped_column(String(120))
+
+class ContactReference(Base):
+    """Referência comercial (quem já vendeu a prazo para ele) ou bancária (banco onde tem conta)."""
+    __tablename__ = "contact_references"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(10))            # comercial | bancaria
+    name: Mapped[str] = mapped_column(String(120))
+    phone: Mapped[str | None] = mapped_column(String(30))
+    notes: Mapped[str | None] = mapped_column(String(200))   # desde quando, agência, gerente…
+
+class ContactPerson(Base):
+    """Pessoa de contato numa empresa (só PJ)."""
+    __tablename__ = "contact_people"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    job: Mapped[str | None] = mapped_column(String(60))      # cargo
+    extension: Mapped[str | None] = mapped_column(String(10))   # ramal
+    email: Mapped[str | None] = mapped_column(String(120))
+    phone: Mapped[str | None] = mapped_column(String(30))
+
 class Entry(Base):
     __tablename__ = "entries"
     id: Mapped[int] = mapped_column(primary_key=True)

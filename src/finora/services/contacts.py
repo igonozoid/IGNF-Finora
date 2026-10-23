@@ -7,7 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from finora.core import documents, money
-from finora.models import Contact, Entry
+from finora.models import Contact, ContactBank, ContactPerson, ContactReference, Entry
 from finora.services import scope
 
 # papel -> (coluna no modelo, rótulo, explicação)
@@ -193,6 +193,64 @@ def clean_credit(credit: dict | None, person_type: str = "PF", today: date | Non
     return out
 
 
+# ---------- listas do contato (Fase 4.2; edições pagas) ----------
+REFERENCE_KINDS = {"comercial": "Comercial", "bancaria": "Bancária"}
+# lista -> (modelo, [(campo, rótulo, tamanho)]); o 1º campo é obrigatório (linha sem ele é ignorada)
+LISTS = {
+    "banks": (ContactBank, [("bank_name", "Banco", 60), ("bank_branch", "Agência", 20),
+                            ("bank_account", "Conta", 30), ("holder", "Titular", 120), ("pix_key", "Chave Pix", 120)]),
+    "references": (ContactReference, [("name", "Nome", 120), ("kind", "Tipo", 10), ("phone", "Telefone", 30),
+                                      ("notes", "Observação", 200)]),
+    "people": (ContactPerson, [("name", "Nome", 80), ("job", "Cargo", 60), ("extension", "Ramal", 10),
+                               ("email", "E-mail", 120), ("phone", "Telefone", 30)]),
+}
+
+
+def get_lists(s: Session, contact_id: int) -> dict[str, list[dict]]:
+    out = {}
+    for key, (model, fields) in LISTS.items():
+        rows = s.scalars(select(model).where(model.contact_id == contact_id).order_by(model.id))
+        out[key] = [{f: getattr(r, f) for f, _l, _n in fields} for r in rows]
+    return out
+
+
+def clean_lists(lists: dict | None, person_type: str = "PF") -> dict[str, list[dict]]:
+    """Valida as listas. Linha sem o 1º campo (banco ou nome) é ignorada; pessoas de contato só em PJ."""
+    out = {}
+    for key, rows in (lists or {}).items():
+        if key not in LISTS:
+            raise ValueError(f"Lista desconhecida: {key}")
+        fields = LISTS[key][1]
+        clean = []
+        for row in rows:
+            r = {f: (row.get(f) or "").strip() or None for f, _l, _n in fields}
+            if not r[fields[0][0]]:
+                continue
+            for f, label, size in fields:
+                if r[f] and len(r[f]) > size:
+                    raise ValueError(f"Texto longo demais em \"{label}\".")
+            if key == "references":
+                r["kind"] = r["kind"] or "comercial"
+                if r["kind"] not in REFERENCE_KINDS:
+                    raise ValueError("Tipo de referência inválido: use comercial ou bancária.")
+            if key == "people" and r["email"] and not _EMAIL.match(r["email"]):
+                raise ValueError(f"E-mail inválido na pessoa de contato \"{r['name']}\".")
+            clean.append(r)
+        out[key] = clean
+    if person_type != "PJ" and "people" in out:
+        out["people"] = []
+    return out
+
+
+def _save_lists(s: Session, contact_id: int, lists: dict[str, list[dict]]) -> None:
+    from sqlalchemy import delete as sql_delete
+    for key, rows in lists.items():
+        model = LISTS[key][0]
+        s.execute(sql_delete(model).where(model.contact_id == contact_id))
+        for r in rows:
+            s.add(model(contact_id=contact_id, **r))
+
+
 def _apply_roles(c: Contact, roles: set[str]) -> None:
     for k, (col, *_r) in ROLES.items():
         setattr(c, col, k in roles)
@@ -200,28 +258,36 @@ def _apply_roles(c: Contact, roles: set[str]) -> None:
 
 def create(s: Session, entity_id: int, *, name: str, person_type: str = "PF", document: str | None = None,
            roles: set[str] = frozenset(), details: dict | None = None, shared: bool = False,
-           credit: dict | None = None) -> int:
+           credit: dict | None = None, lists: dict | None = None) -> int:
     name, doc = _check(s, entity_id, name, person_type, document)
     extra = clean_details(details) | clean_credit(credit, person_type)
+    rows = clean_lists(lists, person_type)
     c = Contact(entity_id=entity_id, name=name, person_type=person_type, document=doc, shared=bool(shared), **extra)
     _apply_roles(c, set(roles))
     s.add(c)
+    s.flush()
+    _save_lists(s, c.id, rows)
     s.commit()
     return c.id
 
 
 def update(s: Session, contact_id: int, *, name: str, person_type: str, document: str | None,
            roles: set[str], details: dict | None = None, shared: bool | None = None,
-           credit: dict | None = None) -> None:
-    """`credit` None = não mexe no crédito (ex.: edição Free, que não mostra a aba)."""
+           credit: dict | None = None, lists: dict | None = None) -> None:
+    """`credit`/`lists` None = não mexe (ex.: edição Free, que não mostra essas abas). Cada lista enviada
+    substitui a guardada."""
     c = s.get(Contact, contact_id)
     if shared is not None:
         c.shared = shared
     c.name, c.document = _check(s, c.entity_id, name, person_type, document, exclude_id=c.id)
     for key, value in (clean_details(details) | clean_credit(credit, person_type)).items():
         setattr(c, key, value)
+    rows = clean_lists(lists, person_type)
     if person_type != "PF":
         c.mother_name = None
+    else:
+        rows["people"] = []                # pessoas de contato só em empresa
+    _save_lists(s, c.id, rows)
     c.person_type = person_type
     c.needs_review = False                 # salvar no cadastro = conferido
     _apply_roles(c, set(roles))
@@ -235,6 +301,7 @@ def delete(s: Session, contact_id: int) -> None:
     if used:
         raise ValueError(f"Esse contato aparece em {used} {'lançamento' if used == 1 else 'lançamentos'} "
                          "(contando os da lixeira) e por isso não pode ser excluído.")
+    _save_lists(s, contact_id, {k: [] for k in LISTS})
     s.delete(s.get(Contact, contact_id))
     s.commit()
 
@@ -306,6 +373,9 @@ def merge(s: Session, keep_id: int, drop_id: int) -> MergeResult:
     for model in (CategoryRule, StockMove, Sale, HerdEvent):
         others += s.execute(sql_update(model).where(model.contact_id == drop_id).values(contact_id=keep_id)
                             .execution_options(synchronize_session=False)).rowcount
+    for model, *_f in LISTS.values():                       # contas, referências e pessoas de contato
+        s.execute(sql_update(model).where(model.contact_id == drop_id).values(contact_id=keep_id)
+                  .execution_options(synchronize_session=False))
     s.expire_all()                                         # nada carregado antes fica com o contato antigo
     for m in s.scalars(select(ImportMap).where(ImportMap.kind == "pessoas", ImportMap.target == str(drop_id))):
         m.target = str(keep_id)                            # reimportar o MCC continua achando o contato

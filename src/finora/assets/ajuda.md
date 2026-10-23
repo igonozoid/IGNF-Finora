@@ -122,6 +122,10 @@ Aba **Crédito** (edições pagas): **limite de crédito** (quanto o cliente pod
 **consulta** (SPC, Serasa…), se tem **pendência** e onde, **nome da mãe** (pessoa física), **classificação**
 (ótimo, bom, regular, ruim) e com que **frequência** compra.
 
+Também nas edições pagas: na aba Bancário, **outras contas** do contato; na aba **Referências**, as referências
+**comerciais** (quem já vendeu a prazo para ele) e **bancárias**, e, para empresa, as **pessoas de contato**
+(nome, cargo, ramal, e-mail e telefone). Use **Adicionar** e **Remover**; linha sem nome é ignorada ao salvar.
+
 **A revisar**: contatos criados sozinhos (por exemplo, pela importação do MCC a partir de um nome solto)
 ganham a marca e aparecem no filtro **A revisar**. Confira os dados e salve: a marca sai.
 

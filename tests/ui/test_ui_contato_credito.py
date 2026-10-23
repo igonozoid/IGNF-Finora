@@ -47,3 +47,28 @@ def test_free_mostra_cadeado_e_nao_salva_credito(window):
     assert not form.full and not form.credit_limit.isEnabled() and form._credit_data() is None
     form.save_btn.click()
     assert "Contato" in window.statusBar().currentMessage() or True
+
+
+def test_listas_do_contato(plus, window):
+    eid = window.profile.id
+    window.go_to("contacts")
+    page = window.page("contacts")
+    page.select_contact(_contact(eid, "Empresa X").id)
+    form = page.form
+    form.type_group.button(1).setChecked(True)                  # empresa: aparece "Pessoas de contato"
+    assert not form.people.isHidden()
+    form.banks.add_row({"bank_name": "Itaú", "bank_account": "123"})
+    form.references.add_row({"name": "Sicredi", "kind": "bancaria"})
+    form.people.add_row({"name": "Ana", "job": "Compras"})
+    form.save_btn.click()
+    assert not form.error.isVisible()
+    with db.Session() as s:
+        got = contacts.get_lists(s, _contact(eid, "Empresa X").id)
+    assert got["banks"][0]["bank_name"] == "Itaú" and got["references"][0]["kind"] == "bancaria"
+    assert got["people"][0]["job"] == "Compras"
+    assert form.references.table.rowCount() == 1                # reabriu com o que foi salvo
+
+
+def test_listas_na_free_ficam_travadas(window):
+    form = window.page("contacts").form
+    assert not form.banks.isEnabled() and form._lists_data() is None

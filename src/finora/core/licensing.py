@@ -18,11 +18,13 @@ class Edition(str, Enum):
 # Plus e Pro têm os mesmos recursos; mudam só os limites de usuários e entidades (docs/EDICOES.md).
 _PAID = {"accounts_max": None, "ofx": True, "attachments": True, "budget": True, "export": True,
          "cloud_backup": True, "doc_lookup": True, "multi_currency": True, "cost_centers": True,
-         "network": True, "audit": True, "period_lock": True, "mcc_import": True, "mcc_reports": True}
+         "network": True, "audit": True, "period_lock": True, "mcc_import": True, "mcc_reports": True,
+         "contacts_full": True}
 FEATURES = {
     Edition.FREE: {"accounts_max": 3, "ofx": False, "attachments": False, "budget": False, "export": False,
                    "cloud_backup": False, "doc_lookup": False, "multi_currency": False, "cost_centers": False,
-                   "network": False, "audit": False, "period_lock": False, "mcc_import": False, "mcc_reports": False, "users_max": 1, "entities_max": 1},
+                   "network": False, "audit": False, "period_lock": False, "mcc_import": False, "mcc_reports": False,
+                   "contacts_full": False, "users_max": 1, "entities_max": 1},
     Edition.PLUS: {**_PAID, "users_max": 3, "entities_max": 10},
     Edition.PRO:  {**_PAID, "users_max": None, "entities_max": None},
 }

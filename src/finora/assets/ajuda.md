@@ -118,6 +118,10 @@ No cadastro: **RG** (pessoa física) ou **inscrição estadual** (empresa), **pe
 entra na busca), endereço com **bairro** (o CEP preenche) e, na aba Bancário, chave Pix, **banco, agência, conta
 e titular** em campos separados.
 
+Aba **Crédito** (edições pagas): **limite de crédito** (quanto o cliente pode ficar devendo), data da última
+**consulta** (SPC, Serasa…), se tem **pendência** e onde, **nome da mãe** (pessoa física), **classificação**
+(ótimo, bom, regular, ruim) e com que **frequência** compra.
+
 **A revisar**: contatos criados sozinhos (por exemplo, pela importação do MCC a partir de um nome solto)
 ganham a marca e aparecem no filtro **A revisar**. Confira os dados e salve: a marca sai.
 

@@ -113,6 +113,14 @@ class Contact(Base):
     bank_account: Mapped[str | None] = mapped_column(String(30))
     bank_holder: Mapped[str | None] = mapped_column(String(120))          # titular da conta
     notes: Mapped[str | None] = mapped_column(String(1000))
+    # Crédito (como no cadastro de clientes do IgnControl; edições pagas)
+    credit_limit: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))     # quanto pode ficar devendo
+    credit_checked_on: Mapped[date | None]                                  # última consulta (SPC, Serasa…)
+    credit_pending: Mapped[bool] = mapped_column(Boolean, default=False)
+    credit_pending_where: Mapped[str | None] = mapped_column(String(80))    # onde está a pendência
+    mother_name: Mapped[str | None] = mapped_column(String(150))            # só pessoa física
+    rating: Mapped[str | None] = mapped_column(String(10))                  # otimo | bom | regular | ruim
+    purchase_frequency: Mapped[str | None] = mapped_column(String(10))      # semanal | quinzenal | mensal…
 
 class Entry(Base):
     __tablename__ = "entries"

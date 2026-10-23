@@ -6,7 +6,7 @@ from datetime import date
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from finora.core import documents
+from finora.core import documents, money
 from finora.models import Contact, Entry
 from finora.services import scope
 
@@ -21,6 +21,11 @@ PERSON_TYPES = {"PF": "Pessoa física", "PJ": "Pessoa jurídica"}
 DETAILS = {"phone": 30, "email": 120, "document2": 30, "contact_person": 80, "zip_code": 9, "address": 200,
            "district": 80, "city": 80, "state": 2, "pix_key": 120, "bank_name": 60, "bank_branch": 20,
            "bank_account": 30, "bank_holder": 120, "notes": 1000}
+# Crédito (edições pagas): classificação e frequência de compra, como no cadastro de clientes do IgnControl
+RATINGS = {"otimo": "Ótimo", "bom": "Bom", "regular": "Regular", "ruim": "Ruim"}
+FREQUENCIES = {"semanal": "Semanal", "quinzenal": "Quinzenal", "mensal": "Mensal", "eventual": "Eventual"}
+CREDIT = ("credit_limit", "credit_checked_on", "credit_pending", "credit_pending_where", "mother_name", "rating",
+          "purchase_frequency")
 UFS = {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI",
        "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"}
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -38,6 +43,7 @@ class ContactView:
     details: dict = field(default_factory=dict, compare=False)     # telefone, e-mail, endereço, banco…
     shared: bool = False             # compartilhado com todas as entidades
     needs_review: bool = False       # criado sozinho (importação): conferir
+    credit: dict = field(default_factory=dict, compare=False)      # limite, consulta, pendência… (CREDIT)
 
     def get(self, key: str) -> str:
         return self.details.get(key) or ""
@@ -79,7 +85,8 @@ def list_contacts(s: Session, entity_id: int, search: str = "", role: str | None
             conds += [Contact.document.like(f"%{d}%"), Contact.phone.like(f"%{d}%")]
         q = q.where(or_(*conds))
     return [ContactView(c.id, c.name, c.person_type, c.document, _roles(c), n, last,
-                        {k: getattr(c, k) for k in DETAILS}, bool(c.shared), bool(c.needs_review))
+                        {k: getattr(c, k) for k in DETAILS}, bool(c.shared), bool(c.needs_review),
+                        {k: getattr(c, k) for k in CREDIT})
             for c, n, last in s.execute(q)]
 
 
@@ -139,15 +146,63 @@ def clean_details(details: dict | None) -> dict:
     return out
 
 
+def _date(text: str) -> date | None:
+    text = (text or "").strip()
+    if not text:
+        return None
+    try:
+        d, m, y = (int(p) for p in text.split("/"))
+        return date(y, m, d)
+    except ValueError:
+        raise ValueError("Data inválida. Use dia/mês/ano, ex.: 15/03/2026.") from None
+
+
+def clean_credit(credit: dict | None, person_type: str = "PF", today: date | None = None) -> dict:
+    """Valida os dados de crédito. Aceita texto da tela (valor e data no padrão brasileiro) ou valores prontos.
+    Sem pendência, o local some; nome da mãe é só de pessoa física."""
+    out = {}
+    for key, value in (credit or {}).items():
+        if key not in CREDIT:
+            raise ValueError(f"Campo desconhecido: {key}")
+        if key == "credit_limit":
+            if isinstance(value, str):
+                try:
+                    value = money.parse(value) if value.strip() else None
+                except ValueError:
+                    raise ValueError("Limite de crédito inválido. Ex.: 5.000,00") from None
+            if value is not None and value < 0:
+                raise ValueError("O limite de crédito não pode ser negativo.")
+        elif key == "credit_checked_on":
+            value = _date(value) if isinstance(value, str) else value
+            if value and value > (today or date.today()):
+                raise ValueError("A data da consulta de crédito não pode ser no futuro.")
+        elif key == "credit_pending":
+            value = bool(value)
+        else:
+            value = (value or "").strip() or None
+            choices = {"rating": RATINGS, "purchase_frequency": FREQUENCIES}.get(key)
+            if value and choices is not None and value not in choices:
+                raise ValueError("Opção inválida.")
+            if value and len(value) > {"credit_pending_where": 80, "mother_name": 150}.get(key, 10):
+                raise ValueError("Texto longo demais em um dos campos.")
+        out[key] = value
+    if "credit_pending" in out and not out["credit_pending"]:
+        out["credit_pending_where"] = None
+    if person_type != "PF" and "mother_name" in out:
+        out["mother_name"] = None
+    return out
+
+
 def _apply_roles(c: Contact, roles: set[str]) -> None:
     for k, (col, *_r) in ROLES.items():
         setattr(c, col, k in roles)
 
 
 def create(s: Session, entity_id: int, *, name: str, person_type: str = "PF", document: str | None = None,
-           roles: set[str] = frozenset(), details: dict | None = None, shared: bool = False) -> int:
+           roles: set[str] = frozenset(), details: dict | None = None, shared: bool = False,
+           credit: dict | None = None) -> int:
     name, doc = _check(s, entity_id, name, person_type, document)
-    extra = clean_details(details)
+    extra = clean_details(details) | clean_credit(credit, person_type)
     c = Contact(entity_id=entity_id, name=name, person_type=person_type, document=doc, shared=bool(shared), **extra)
     _apply_roles(c, set(roles))
     s.add(c)
@@ -156,13 +211,17 @@ def create(s: Session, entity_id: int, *, name: str, person_type: str = "PF", do
 
 
 def update(s: Session, contact_id: int, *, name: str, person_type: str, document: str | None,
-           roles: set[str], details: dict | None = None, shared: bool | None = None) -> None:
+           roles: set[str], details: dict | None = None, shared: bool | None = None,
+           credit: dict | None = None) -> None:
+    """`credit` None = não mexe no crédito (ex.: edição Free, que não mostra a aba)."""
     c = s.get(Contact, contact_id)
     if shared is not None:
         c.shared = shared
     c.name, c.document = _check(s, c.entity_id, name, person_type, document, exclude_id=c.id)
-    for key, value in clean_details(details).items():
+    for key, value in (clean_details(details) | clean_credit(credit, person_type)).items():
         setattr(c, key, value)
+    if person_type != "PF":
+        c.mother_name = None
     c.person_type = person_type
     c.needs_review = False                 # salvar no cadastro = conferido
     _apply_roles(c, set(roles))
@@ -252,7 +311,7 @@ def merge(s: Session, keep_id: int, drop_id: int) -> MergeResult:
         m.target = str(keep_id)                            # reimportar o MCC continua achando o contato
     for k, (col, *_r) in ROLES.items():
         setattr(keep, col, getattr(keep, col) or getattr(drop, col))
-    fill = {k: getattr(drop, k) for k in DETAILS if not getattr(keep, k) and getattr(drop, k)}
+    fill = {k: getattr(drop, k) for k in (*DETAILS, *CREDIT) if not getattr(keep, k) and getattr(drop, k)}
     if drop.notes and keep.notes and drop.notes not in keep.notes:
         fill["notes"] = f"{keep.notes}\n{drop.notes}"[:DETAILS["notes"]]
     document = keep.document or drop.document

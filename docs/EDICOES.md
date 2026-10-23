@@ -28,6 +28,7 @@ recursos pagos em `core/licensing.py` (`allowed()`), que aparecem com cadeado e 
 | Backup automático em pasta de nuvem (OneDrive, Google Drive, Dropbox) | | ✓ | ✓ |
 | Centros de custo | | ✓ | ✓ |
 | Autopreencher pelo CNPJ e endereço pelo CEP | | ✓ | ✓ |
+| Contato completo: crédito (limite e aviso), bancos, referências, pessoas de contato e anexos | | ✓ | ✓ |
 | Fechamento de período | | ✓ | ✓ |
 | Conciliação com o extrato do banco | | ✓ | ✓ |
 

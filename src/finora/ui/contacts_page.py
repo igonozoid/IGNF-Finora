@@ -1,24 +1,26 @@
 """Tela de Contatos: lista com filtros por papel e busca + cadastro lateral (mockup "Contatos")."""
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QComboBox, QCompleter, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
+    QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 import qtawesome as qta
 
-from finora.core import documents
+from finora.core import documents, money
 from finora.core.db import Session
 from finora.core.licensing import allowed, current_edition
 from finora.services import contacts, doc_lookup
 from finora.services.contacts import ContactView
 from finora.services.setup import Profile
 from finora.ui import theme
-from finora.ui.widgets import button, field_label, lock_icon, shared_checkbox, show_upgrade
+from finora.ui.widgets import button, field_label, lock_icon, shared_checkbox, show_upgrade, upgrade_box
 
 PANEL_W = 320
 STACK_BELOW = 760   # abaixo dessa largura, o cadastro ocupa o lugar da lista
 FILTERS = [("all", "Todos")] + [(k, label) for k, (_c, label, _h) in contacts.ROLES.items()] + \
     [("review", "A revisar")]
+FULL_MSG = ("Crédito, contas bancárias, referências, pessoas de contato e anexos do contato são das edições Plus "
+            "e Pro.")
 LOOKUP_MSG = ("Autopreencher pelo CNPJ (dados públicos da Receita Federal) e o endereço pelo CEP é um recurso das "
               "edições Plus e Pro.")
 
@@ -97,12 +99,12 @@ class ContactForm(QFrame):
         lay.addWidget(self.title)
         lay.addWidget(self.sub)
 
-        # Abas: Dados · Endereço · Bancário · Observações (como no mockup)
+        # Abas: Dados · Endereço · Bancário · Crédito · Observações (como no mockup)
         tabs = QHBoxLayout()
         tabs.setSpacing(0)
         self.tab_group = QButtonGroup(self, exclusive=True)
         self.pages = QStackedWidget(objectName="formPages")
-        for i, label in enumerate(("Dados", "Endereço", "Bancário", "Observações")):
+        for i, label in enumerate(("Dados", "Endereço", "Bancário", "Crédito", "Observações")):
             b = QPushButton(label, objectName="tabItem", checkable=True, checked=(i == 0))
             b.setCursor(Qt.PointingHandCursor)
             self.tab_group.addButton(b, i)
@@ -220,6 +222,7 @@ class ContactForm(QFrame):
         bl.addWidget(hint)
         bl.addStretch(1)
         self.pages.addWidget(banco)
+        self.pages.addWidget(self._credit_page(t))
 
         obs = QWidget()
         ol = QVBoxLayout(obs)
@@ -259,6 +262,77 @@ class ContactForm(QFrame):
         for e in (self.name, self.doc):
             e.returnPressed.connect(self._save)
 
+    def _credit_page(self, t: dict) -> QWidget:
+        page = QWidget()
+        cl = QVBoxLayout(page)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(theme.SP_M)
+        self.full = bool(allowed(current_edition(), "contacts_full"))
+        if not self.full:
+            cl.addWidget(upgrade_box(FULL_MSG, t, self, compact=True))
+        self.credit_limit = QLineEdit(placeholderText="Ex.: 5.000,00")
+        self.credit_limit.setFont(theme.mono_font())
+        cl.addWidget(field_label("Limite de crédito", t, "Quanto o cliente pode ficar devendo (a receber em aberto).\n"
+                                                        "Passou do limite, Vendas e o lançamento a receber avisam."))
+        cl.addWidget(self.credit_limit)
+        self.credit_checked_on = QLineEdit(placeholderText="dd/mm/aaaa", maxLength=10)
+        self.credit_checked_on.setFont(theme.mono_font())
+        cl.addWidget(field_label("Crédito consultado em", t, "Data da última consulta (SPC, Serasa, banco…)"))
+        cl.addWidget(self.credit_checked_on)
+        self.credit_pending = QCheckBox("Tem pendência (nome sujo, protesto, cheque devolvido…)")
+        cl.addWidget(self.credit_pending)
+        self.credit_pending_where = QLineEdit(maxLength=80, placeholderText="Onde: SPC, Serasa, cartório…")
+        cl.addWidget(self.credit_pending_where)
+        self.credit_pending.toggled.connect(self.credit_pending_where.setEnabled)
+        self.mother_box = QWidget()
+        mb = QVBoxLayout(self.mother_box)
+        mb.setContentsMargins(0, 0, 0, 0)
+        mb.setSpacing(3)
+        self.mother_name = QLineEdit(maxLength=150)
+        mb.addWidget(field_label("Nome da mãe", t, "Ajuda a confirmar a pessoa numa consulta de crédito."))
+        mb.addWidget(self.mother_name)
+        cl.addWidget(self.mother_box)
+        row = QHBoxLayout()
+        row.setSpacing(theme.SP_M)
+        self.rating, self.frequency = QComboBox(), QComboBox()
+        for box, choices, label in ((self.rating, contacts.RATINGS, "Classificação"),
+                                    (self.frequency, contacts.FREQUENCIES, "Compra com frequência")):
+            box.addItem("—", None)
+            for k, v in choices.items():
+                box.addItem(v, k)
+            col = QVBoxLayout()
+            col.setSpacing(3)
+            col.addWidget(field_label(label, t))
+            col.addWidget(box)
+            row.addLayout(col, 1)
+        cl.addLayout(row)
+        cl.addStretch(1)
+        for w in (self.credit_limit, self.credit_checked_on, self.credit_pending, self.credit_pending_where,
+                  self.mother_name, self.rating, self.frequency):
+            w.setEnabled(self.full)
+        return page
+
+    def _credit_data(self) -> dict | None:
+        """None na edição Free: o crédito fica como está."""
+        if not self.full:
+            return None
+        return {"credit_limit": self.credit_limit.text(), "credit_checked_on": self.credit_checked_on.text(),
+                "credit_pending": self.credit_pending.isChecked(),
+                "credit_pending_where": self.credit_pending_where.text(), "mother_name": self.mother_name.text(),
+                "rating": self.rating.currentData(), "purchase_frequency": self.frequency.currentData()}
+
+    def _fill_credit(self, c: ContactView | None):
+        cr = c.credit if c else {}
+        limit, checked = cr.get("credit_limit"), cr.get("credit_checked_on")
+        self.credit_limit.setText(money.fmt(limit, self.profile.currency) if limit is not None else "")
+        self.credit_checked_on.setText(checked.strftime("%d/%m/%Y") if checked else "")
+        self.credit_pending.setChecked(bool(cr.get("credit_pending")))
+        self.credit_pending_where.setText(cr.get("credit_pending_where") or "")
+        self.credit_pending_where.setEnabled(self.full and self.credit_pending.isChecked())
+        self.mother_name.setText(cr.get("mother_name") or "")
+        self.rating.setCurrentIndex(max(0, self.rating.findData(cr.get("rating"))))
+        self.frequency.setCurrentIndex(max(0, self.frequency.findData(cr.get("purchase_frequency"))))
+
     def _detail(self, layout, key: str, label: str, placeholder: str, mono: bool = False):
         edit = QLineEdit(maxLength=contacts.DETAILS[key], placeholderText=placeholder)
         if mono:
@@ -277,6 +351,7 @@ class ContactForm(QFrame):
         for k, e in self.details.items():
             e.setText(c.get(k) if c else "")
         self.notes.setPlainText(c.get("notes") if c else "")
+        self._fill_credit(c)
         self.tab_group.button(0).setChecked(True)
         self.pages.setCurrentIndex(0)
         self.shared.setChecked(bool(c and c.shared))
@@ -289,6 +364,7 @@ class ContactForm(QFrame):
         self.doc_lbl.label.setText("CPF" if pf else "CNPJ")
         self.doc2_box.itemAt(0).widget().label.setText("RG" if pf else "Inscrição estadual")
         self.doc.setPlaceholderText("000.000.000-00" if pf else "00.000.000/0000-00")
+        self.mother_box.setVisible(pf)
 
     def _format_doc(self):
         if documents.is_valid(self.doc.text(), self._ptype()):
@@ -401,7 +477,7 @@ class ContactForm(QFrame):
     def _save(self):
         data = dict(name=self.name.text(), person_type=self._ptype(), document=self.doc.text(),
                     roles={k for k, b in self.role_btns.items() if b.isChecked()}, details=self._details_data(),
-                    shared=self.shared.isChecked())
+                    shared=self.shared.isChecked(), credit=self._credit_data())
         try:
             with Session() as s:
                 if self.current is None:

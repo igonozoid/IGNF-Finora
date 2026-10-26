@@ -469,10 +469,12 @@ class BudgetView(TableReport):
 # ---------- analítico ----------
 class AnalyticalView(TableReport):
     TITLE = "Analítico"
-    COLUMNS = [("DATA", 70, False), ("DESCRIÇÃO", None, False), ("CATEGORIA", 150, False),
+    # Documento e Situação como no analítico do MCC (colunas DOCUMENTO e MOVSIT)
+    COLUMNS = [("DATA", 70, False), ("DOCUMENTO", 90, False), ("DESCRIÇÃO", None, False), ("CATEGORIA", 150, False),
                ("CENTRO DE CUSTO", 120, False), ("CONTATO", 130, False), ("CONTA", 110, False),
-               ("OBSERVAÇÕES", 160, False), ("VALOR", 120, True)]
+               ("OBSERVAÇÕES", 160, False), ("SITUAÇÃO", 80, False), ("VALOR", 120, True)]
     KINDS = {"all": "Receitas e despesas", "income": "Só receitas", "expense": "Só despesas"}
+    STATUS = {"paid": ("Recebido", "Pago"), "pending": ("Em aberto", "Em aberto"), "card": ("No cartão", "No cartão")}
 
     def __init__(self, profile: Profile, t: dict):
         super().__init__(profile, t)
@@ -501,7 +503,8 @@ class AnalyticalView(TableReport):
             self.bar.addWidget(w)
         self._sync_grouping()
         self.finish_bar("Cada receita e despesa do período (pela data da compra/vencimento), pagas ou não,\n"
-                        "com categoria, centro de custo, contato, conta e observações. Valores na moeda principal.\n"
+                        "com documento, categoria, centro de custo, contato, conta, observações e situação\n"
+                        "(pago, recebido ou em aberto). Valores na moeda principal.\n"
                         "Agrupar (Plus/Pro): até dois níveis entre categoria, contato, conta, centro, mês, situação\n"
                         "e tipo, na ordem escolhida, com o total de cada grupo; Totalizado mostra só os totais.\n"
                         "Dois cliques abrem o lançamento.")
@@ -538,21 +541,23 @@ class AnalyticalView(TableReport):
         return text
 
     def _entry_row(self, e, many_years: bool) -> dict:
-        return {"cells": [e.competence_date.strftime("%d/%m/%y" if many_years else "%d/%m"),
+        status = self.STATUS.get(e.status, (e.status, e.status))[0 if e.kind == "income" else 1]
+        return {"cells": [e.competence_date.strftime("%d/%m/%y" if many_years else "%d/%m"), e.document_no or "",
                           e.description + (f" ({e.installment})" if e.installment else ""),
                           e.category or "Sem categoria", e.cost_center or "", e.contact or "", e.account,
-                          " ".join((e.notes or "").split()),
+                          " ".join((e.notes or "").split()), status,
                           e.base_amount if e.kind == "income" else -e.base_amount],
-                "tones": {7: "pos" if e.kind == "income" else None, 2: None if e.category else "mut", 6: "mut"},
+                "tones": {9: "pos" if e.kind == "income" else None, 3: None if e.category else "mut", 7: "mut",
+                          8: "mut" if e.status != "pending" else None},
                 "target": ("entry", e.id)}
 
     def _group_rows(self, groups, many_years: bool, detail: bool) -> list[dict]:
         rows = []
         for g in groups:
             label = ("      " if g.level == 2 else "") + f"{g.label} ({g.count})"
-            rows.append({"cells": ["", label, "", "", "", "", "", g.result], "bold": g.level == 1,
+            rows.append({"cells": ["", "", label, "", "", "", "", "", "", g.result], "bold": g.level == 1,
                          "indent": g.level == 2,
-                         "tones": {7: "pos" if g.result > 0 else "neg" if g.result < 0 else None}})
+                         "tones": {9: "pos" if g.result > 0 else "neg" if g.result < 0 else None}})
             rows += self._group_rows(g.children, many_years, detail)
             if detail:
                 rows += [self._entry_row(e, many_years) for e in g.entries]

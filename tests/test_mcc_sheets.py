@@ -189,3 +189,32 @@ def test_marcador_de_parcela():
     assert m({"OBSERVACAO": "Referente a 04/23 05/23 e 06/23"}) is None
     assert m({"OBSERVACAO": "Vence em 20/08/2026"}) is None              # data
     assert m({"OBSERVACAO": "3/2"}) is None
+
+
+def test_mesma_pessoa_em_dois_cadastros_vira_um_contato_completo(session, plus, tmp_path):
+    """No MCC a mesma pessoa aparece como cliente (só o nome) e fornecedor (completo), e às vezes com o nome escrito
+    de outro jeito mas o mesmo CNPJ: um contato só, com os dados de quem tem."""
+    head = ["Relatório de Clientes;", ";", " ;", "DOCUMENTO;NOME;ENDEREÇO;BAIRRO;CIDADE;ESTADO;CEP;TELEFONE;E-MAIL;"]
+    (tmp_path / "clientes.csv").write_bytes("\r\n".join(head + [
+        ";OFICINA DO ZÉ;;;;;;;;",
+        "11.222.333/0001-81;IMOBILIÁRIA SOL LTDA;Rua A, 1;Centro;Itajubá;MG;37.500-000;;;", ""]).encode("cp1252"))
+    (tmp_path / "fornecedores.csv").write_bytes("\r\n".join(["Relatório de Fornecedores;"] + head[1:] + [
+        "52.998.224/7-25;OFICINA DO ZÉ;Rua B, 2;Centro;Itajubá;MG;37.500-000;35 3622-1111;ze@exemplo.test;",
+        "11.222.333/0001-81;IMOBILIÁRIA SOL LTDA.;Rua A, 1;Centro;Itajubá;MG;37.500-000;;;", ""]).encode("cp1252"))
+    (tmp_path / "analitico-extra.csv").write_bytes("\r\n".join([
+        "Relatório de Movimentos;", "Período de 01/01/2000 a 31/12/2030;", " ;",
+        "DATA;DOCUMENTO;DESCRIÇÃO;NOME;VALOR;MOVSIT;VENCIMENTO;OBSERVAÇÃO;CONTA;CENTRO DE CUSTO;TIPO;",
+        "01/03/2026;;ALUGUEL;IMOBILIÁRIA SOL LTDA.;R$ 900,00;P;10/03/2026;;Banco Azul;;Desp;", ""]).encode("cp1252"))
+    keep = [p for p in _all() if p.name not in ("clientes.csv", "fornecedores.csv")]
+    r, _rep = _import(session, tmp_path, keep + [tmp_path / n for n in
+                                                 ("clientes.csv", "fornecedores.csv", "analitico-extra.csv")])
+    ze = session.scalars(select(Contact).where(Contact.name == "OFICINA DO ZÉ")).all()
+    assert len(ze) == 1
+    assert (ze[0].address, ze[0].phone, ze[0].email, ze[0].is_customer, ze[0].is_supplier) == \
+        ("Rua B, 2", "35 3622-1111", "ze@exemplo.test", True, True)
+    sol = session.scalars(select(Contact).where(Contact.document == "11222333000181")).all()
+    assert len(sol) == 1 and sol[0].is_customer and sol[0].is_supplier
+    aluguel = _entry(session, "ALUGUEL", date(2026, 3, 10))
+    assert aluguel.contact_id == sol[0].id                         # o nome com ponto acha o mesmo contato
+    assert "IMOBILIÁRIA SOL LTDA." not in r.contacts_created_from_text
+    assert not any("documento" in w for w in r.warnings)

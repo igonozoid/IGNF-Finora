@@ -43,7 +43,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from finora.core import settings
+from finora.core import documents, settings
 from finora.models import Account, Category, Contact, CostCenter, Entity, Entry, ImportMap, Permission, User, UserEntity
 from finora.services import accounts, contacts, cost_centers, entity_admin, period_lock, scope, trash, users
 from finora.services.mcc_import import reader
@@ -153,6 +153,7 @@ class _Importer:
         self.groups: dict[tuple[int, str], int] = {}
         self.no_account: dict[int, int] = {}
         self.names: dict[int, dict[str, int]] = {}         # entidade -> nome normalizado -> contato
+        self.aliases: dict[tuple[int, str], int] = {}      # nome de cada pessoa do MCC -> contato (mesmo juntado)
 
     def warn(self, text: str):
         self.r.warnings.append(text)
@@ -329,6 +330,20 @@ class _Importer:
                 self.warn(f"{who}: {key} \"{value}\" não foi aceito ({exc}).")
         return out
 
+    def _join(self, c: Contact, p: dict, role: str) -> None:
+        """Outro registro do MCC da mesma pessoa (cliente e fornecedor, ou o nome escrito de outro jeito com o mesmo
+        documento): o contato ganha o papel e os dados que estavam vazios — o registro completo pode vir depois do
+        que só tem o nome."""
+        setattr(c, contacts.ROLES[role][0], True)
+        for key, value in self._details(p, p["nome"]).items():
+            if not getattr(c, key):
+                setattr(c, key, value)
+        doc = documents.digits(p.get("documento") or "")
+        ptype = "PJ" if p["pessoa"] == "J" else "PF"
+        if doc and not c.document and documents.is_valid(doc, ptype) and self.s.scalar(
+                select(Contact.id).where(scope.contacts(c.entity_id), Contact.document == doc)) is None:
+            c.document, c.person_type = doc, ptype
+
     def contact_rows(self):
         by_name: dict[tuple[int, str], int] = {}
         for p in reader.rows(self.con, "pessoas"):
@@ -340,13 +355,19 @@ class _Importer:
             old = self.linked("pessoas", p["id"], Contact)
             if old is not None:                            # já veio: fica como você deixou no Finora
                 by_name.setdefault(key, old)
+                self.aliases[key] = old
                 self.r.contacts[p["id"]] = old
                 continue
-            if key in by_name:                             # mesmo nome como cliente e fornecedor: um contato só
-                c = self.s.get(Contact, by_name[key])
-                setattr(c, contacts.ROLES[role][0], True)
+            doc = documents.digits(p.get("documento") or "")
+            same = by_name.get(key) or (doc and self.s.scalar(
+                select(Contact.id).where(scope.contacts(eid), Contact.document == doc)))
+            if same:                                       # mesmo nome (cliente e fornecedor) ou mesmo documento
+                c = self.s.get(Contact, same)
+                self._join(c, p, role)
                 self.link("pessoas", p["id"], c.id)
                 self.s.commit()
+                by_name.setdefault(key, c.id)
+                self.aliases[key] = c.id
                 self.r.contacts[p["id"]] = c.id
                 continue
             ptype = "PJ" if p["pessoa"] == "J" else "PF"
@@ -362,6 +383,7 @@ class _Importer:
                 cid = contacts.create(self.s, eid, name=p["nome"], person_type=ptype, roles={role},
                                       details=details, shared=shared)
             by_name[key] = cid
+            self.aliases[key] = cid
             self.link("pessoas", p["id"], cid)
             self.s.commit()
             self.r.contacts[p["id"]] = cid
@@ -413,6 +435,8 @@ class _Importer:
                 index.setdefault(normalize(c.name), c.id)
             self.names[eid] = index
         target = normalize(name)
+        if (eid, target) in self.aliases:                  # o nome do cadastro do MCC, mesmo se foi juntado
+            return self.aliases[(eid, target)]
         if target in self.names[eid]:
             return self.names[eid][target]
         clean = " ".join(name.split())[:150]

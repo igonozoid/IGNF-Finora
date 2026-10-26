@@ -1,4 +1,4 @@
-# Piloto: do MCC para o Finora (versão 0.7.3)
+# Piloto: do MCC para o Finora (versão 0.7.4)
 
 Roteiro das issues #62 (instalar), #63 (importação inicial e conferência assinada), #64 (um mês em paralelo),
 #66 (ajustes do piloto) e #67 (desligar o MCC).
@@ -10,14 +10,14 @@ O banco fica no **Finora Servidor** (MariaDB em `10.0.0.99:3306`); o Finora vai 
       `.db` com tudo o que está no servidor). Guarde fora do computador.
 - [ ] Combine com a equipe o dia: no dia da importação ninguém lança nada no MCC depois da exportação.
 
-## 2. Instalar o Finora 0.7.3 em cada PC (#62)
+## 2. Instalar o Finora 0.7.4 em cada PC (#62)
 
-**Atualize todos os PCs no mesmo dia, depois do backup do passo 1.** O primeiro Finora 0.7.3 que abrir o servidor
+**Atualize todos os PCs no mesmo dia, depois do backup do passo 1.** O primeiro Finora 0.7.4 que abrir o servidor
 atualiza o banco do servidor (no servidor não há cópia automática antes, por isso o backup manual). Um PC que ficar
 na versão antiga não abre mais o banco atualizado: atualize-o também.
 
 1. Feche o Finora, se estiver aberto (inclusive o ícone ao lado do relógio: botão direito › Sair).
-2. Baixe `IGNF-Finora-0.7.3-windows.zip` em <https://github.com/igonozoid/IGNF-Finora/releases/tag/v0.7.3>.
+2. Baixe `IGNF-Finora-0.7.4-windows.zip` em <https://github.com/igonozoid/IGNF-Finora/releases/tag/v0.7.4>.
 3. Descompacte em `C:\IGNF-Finora` (não use "Arquivos de Programas"). Se já houver um Finora ali, descompacte
    **por cima**: a pasta `data` fica intacta. Quem já tem a 0.5.x pode também usar o aviso de versão nova do app.
 4. Abra o `IGNF-Finora.exe`. Na primeira vez em cada PC: aceite os termos.

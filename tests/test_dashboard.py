@@ -77,3 +77,20 @@ def test_top_expenses_por_grupo(ctx):
     add("Outro mês", "9999", date(2026, 11, 1), "Alimentação › Supermercado")
     assert dashboard.top_expenses(ctx["s"], ctx["eid"], 2026, 10) == [
         ("Moradia", D("1700.00")), ("Alimentação", D("600.00")), ("Sem categoria", D("50.00"))]
+
+
+def test_kpis_com_dre_de_empresa(ctx):
+    """Entidade com a DRE de empresa (ex.: PJ importada do MCC) não tem "= Sobra do mês": o resultado do mês é o
+    "= Lucro líquido" (antes, o painel quebrava ao abrir)."""
+    from finora.models import Entity
+    from finora.services import reports
+    s, add = ctx["s"], ctx["add"]
+    add("Salário", "5000", date(2026, 10, 5), "Receitas › Salário", kind="income", paid=True)
+    add("Aluguel", "1500", date(2026, 10, 10), "Moradia › Aluguel ou financiamento")
+    categories.convert_model(s, ctx["eid"], "business")
+    s.get(Entity, ctx["eid"]).dre_model = "business"
+    s.commit()
+    k = dashboard.kpis(s, ctx["eid"], TODAY)
+    rep = reports.dre(s, ctx["eid"], [(2026, 10)])
+    assert rep.result_key == "liquido"
+    assert k.result == rep.row("liquido").total == D("3500.00")

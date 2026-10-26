@@ -86,6 +86,12 @@ class DreReport:
     def row(self, key: str) -> DreRow:
         return next(r for r in self.rows if r.key == key)
 
+    @property
+    def result_key(self) -> str:
+        """O resultado do período antes de investimentos/retiradas: "= Sobra do mês" (pessoal) ou "= Lucro
+        líquido" (empresa)."""
+        return "liquido" if self.model == "business" else "sobra"
+
     def share(self, row: DreRow) -> Decimal | None:
         """Análise vertical: quanto a linha representa das receitas do período (%)."""
         base = self.row(self.base_key).total

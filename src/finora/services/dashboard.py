@@ -46,8 +46,10 @@ def _not_investment():
 
 
 def month_result(s: Session, entity_id: int, year: int, month: int) -> Decimal:
-    """Sobra do mês: a mesma linha "= Sobra do mês" da DRE pessoal (competência), para nunca divergir."""
-    return reports.dre(s, entity_id, [(year, month)]).row("sobra").total
+    """Resultado do mês: a mesma linha da DRE da entidade (competência), para nunca divergir — "= Sobra do mês" na
+    pessoal, "= Lucro líquido" na de empresa."""
+    rep = reports.dre(s, entity_id, [(year, month)])
+    return rep.row(rep.result_key).total
 
 
 def kpis(s: Session, entity_id: int, today: date | None = None) -> Kpis:

@@ -81,6 +81,13 @@ FILES = {
         "CENTRO DE CUSTO;TOTAL PAGO;TOTAL RECEBIDO;TOTAL A PAGAR;TOTAL A RECEBER;SALDO REALIZADO;SALDO PREVISTO;",
         "ADMINISTRATIVO;R$ 1.200,00;R$ 0,00;R$ 0,00;R$ 0,00;-R$ 1.200,00;R$ 0,00;",
     ],
+    # a 2ª VENDA DE MEL vem sem centro no analítico (como no MCC real); este relatório diz que é da LAVOURA
+    "centros-receitas.csv": [
+        "Relatório de Receitas por Centro de Custo;", PERIODO, " ;",
+        "CENTRO DE CUSTO;DESCRIÇÃO DO MOVIMENTO;TOTAL;",
+        "LAVOURA;VENDA DE MEL;R$ 2.500,00;",
+        ";;R$ 2.500,00;",
+    ],
     "anotacoes.csv": ["Minha planilha;", "A;B;C;", "1;2;3;"],
 }
 

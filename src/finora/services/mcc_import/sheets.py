@@ -165,6 +165,7 @@ class Bundle:
     paid_dates_missing: int = 0
     transfers: int = 0
     series: int = 0                            # séries de parcelas reagrupadas
+    centers_filled: int = 0                    # centro em branco no analítico, achado no relatório de centros
     left_out: list[str] = field(default_factory=list)       # movimentações de um lado só (fora)
     balances: list[BalanceCheck] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -315,6 +316,51 @@ def _people(b: Bundle) -> list[dict]:
     return [dict(r, _tipo=tipo) for (tipo, _k), (_s, r) in best.items()]
 
 
+def fill_centers(b: Bundle, entries: list[dict]) -> dict[int, str]:
+    """O analítico do MCC sai com o centro em branco em alguns lançamentos (na IGNF, todas as receitas de
+    ASSESSORIA e RECEITAS GERAIS), mas o relatório de despesas/receitas por centro traz o total de cada item em
+    cada centro. Para cada item com lançamentos sem centro, o que falta em cada centro é o total do relatório menos
+    o que o analítico já pôs nele; se só um centro tem falta e ela é igual à soma dos sem centro, eles são desse
+    centro. Devolve índice do lançamento -> centro."""
+    totals: dict[tuple[str, str, str], Decimal] = {}         # (tipo, item, centro) -> total do relatório
+    names: dict[str, str] = {}
+    given = set()
+    for s in b.of("centros"):
+        title = _key(s.title)
+        tipo = "R" if "RECEITAS" in title else "D" if "DESPESAS" in title else None
+        if tipo is None or "DESCRICAO DO MOVIMENTO" not in s.header:
+            continue                                         # o de fluxo não diz o item
+        given.add(tipo)
+        for r in s.rows:
+            k = (tipo, _key(r["DESCRICAO DO MOVIMENTO"]), _key(r["CENTRO DE CUSTO"]))
+            totals[k] = totals.get(k, ZERO) + _money(r.get("TOTAL"))
+            names[_key(r["CENTRO DE CUSTO"])] = r["CENTRO DE CUSTO"]
+    blank: dict[tuple[str, str], list[int]] = {}
+    for idx, r in enumerate(entries):
+        tipo = "R" if _key(r["TIPO"]).startswith("REC") else "D"
+        item = _key(r["DESCRICAO"])
+        if r.get("CENTRO DE CUSTO"):
+            k = (tipo, item, _key(r["CENTRO DE CUSTO"]))
+            if k in totals:
+                totals[k] -= _money(r["VALOR"])
+        elif tipo in given:
+            blank.setdefault((tipo, item), []).append(idx)
+    out, left = {}, 0
+    for (tipo, item), idxs in blank.items():
+        missing = {cc: v for (t, i, cc), v in totals.items() if (t, i) == (tipo, item) and v}
+        amount = sum((_money(entries[i]["VALOR"]) for i in idxs), ZERO)
+        if len(missing) == 1 and next(iter(missing.values())) == amount:
+            for i in idxs:
+                out[i] = names[next(iter(missing))]
+        else:
+            left += len(idxs)
+    b.centers_filled = len(out)
+    if left:
+        b.warnings.append(f"{left} lançamento(s) sem centro de custo no analítico que o relatório por centro não "
+                          "resolveu: entram sem centro.")
+    return out
+
+
 def build_db(b: Bundle, dest: str | Path, *, company: str, person_type: str = "PJ", document: str = "") -> Path:
     """Monta `dest` (SQLite no formato do clone do MCC) a partir das planilhas. Preenche os avisos e a conferência
     dos saldos com o rodapé dos extratos em `b`."""
@@ -353,10 +399,12 @@ def build_db(b: Bundle, dest: str | Path, *, company: str, person_type: str = "P
             acc_id[name] = i
 
         # centros: os usados nos lançamentos; vale para despesa/receita conforme o uso
+        filled = fill_centers(b, entries)
+        center = {idx: r.get("CENTRO DE CUSTO") or filled.get(idx) for idx, r in enumerate(entries)}
         used: dict[str, set] = {}
-        for r in entries:
-            if r.get("CENTRO DE CUSTO"):
-                used.setdefault(r["CENTRO DE CUSTO"], set()).add("R" if _key(r["TIPO"]).startswith("REC") else "D")
+        for idx, r in enumerate(entries):
+            if center[idx]:
+                used.setdefault(center[idx], set()).add("R" if _key(r["TIPO"]).startswith("REC") else "D")
         cc_id = {}
         for name, kinds in sorted(used.items()):
             i = ids.of("centro", name)
@@ -417,7 +465,7 @@ def build_db(b: Bundle, dest: str | Path, *, company: str, person_type: str = "P
                                 r.get("CONTA")), eid, tipo, _iso(r["DATA"]), r.get("DOCUMENTO") or None, r["DESCRICAO"].strip(),
                          r.get("NOME") or None, float(value), "V" if paid else "P", due.isoformat(),
                          pay.isoformat() if pay else None, r.get("OBSERVACAO") or None, acc_id.get(r.get("CONTA")),
-                         cc_id.get(r.get("CENTRO DE CUSTO")), f"{_iso(r['DATA'])} 00:00:00", grupo,
+                         cc_id.get(center[idx]), f"{_iso(r['DATA'])} 00:00:00", grupo,
                          part[1] if part else None, part[2] if part else None))
         for i, (tipo, desc) in enumerate(sorted(items), start=1):
             con.execute("INSERT INTO itens (id, empresa_id, tipo, descricao) VALUES (?, ?, ?, ?)", (i, eid, tipo, desc))

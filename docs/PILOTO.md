@@ -39,6 +39,10 @@ Para a conta controle (empresa), período **01/01/2000 a 31/12/2030**, situaçã
 | Saldo de contas | `contas.csv` |
 | Extrato de cada conta bancária e Extrato do caixa interno | `extrato-<conta>.csv` |
 | Clientes e Fornecedores | `clientes.csv`, `fornecedores.csv` |
+| Despesas por Centro de Custo e Receitas por Centro de Custo | `centros-despesas.csv`, `centros-receitas.csv` |
+
+Os dois por centro de custo são necessários: o analítico do MCC sai com o centro em branco em parte dos lançamentos
+(na IGNF, todas as receitas de ASSESSORIA e RECEITAS GERAIS), e o Finora acha o centro certo por eles.
 
 Anote na tela do MCC o **saldo de cada conta** e os totais **a pagar** e **a receber** do dia.
 

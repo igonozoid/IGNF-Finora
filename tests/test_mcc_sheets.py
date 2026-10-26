@@ -23,7 +23,8 @@ def test_perfis_e_formato():
     assert {n: s.kind for n, s in by.items()} == {
         "analitico-despesas.csv": "analitico", "analitico-receitas.csv": "analitico", "contas.csv": "contas",
         "extrato-banco-azul.csv": "extrato", "extrato-caixa.csv": "extrato", "clientes.csv": "cadastro",
-        "fornecedores.csv": "cadastro", "centros-fluxo.csv": "centros", "anotacoes.csv": ""}
+        "fornecedores.csv": "cadastro", "centros-fluxo.csv": "centros", "centros-receitas.csv": "centros",
+        "anotacoes.csv": ""}
     desp = by["analitico-despesas.csv"]
     assert len(desp.rows) == 11                                         # rodapé de totais fora
     assert desp.rows[1]["OBSERVACAO"] == "Honorários R$400\nFuncionários R$50"   # quebra de linha juntada
@@ -64,6 +65,38 @@ def test_monta_o_banco_do_mcc(tmp_path):
     assert con.execute("SELECT nome, pessoa, documento FROM empresas").fetchone()[:] == \
         ("Sítio Exemplo", "J", "11222333000181")
     con.close()
+
+
+def _centers(path):
+    con = sqlite3.connect(path)
+    out = {(d, v): c for d, v, c in con.execute(
+        "SELECT l.descricao, l.vencimento, c.nome FROM lancamentos l LEFT JOIN centros c ON c.id = l.centro_id")}
+    con.close()
+    return out
+
+
+def test_centro_em_branco_vem_do_relatorio_por_centro(tmp_path):
+    b = sheets.load(_all())
+    cc = _centers(sheets.build_db(b, tmp_path / "mcc.db", company="Sítio Exemplo"))
+    assert cc[("VENDA DE MEL", "2026-03-30")] == "LAVOURA"             # em branco no analítico
+    assert cc[("TARIFA", "2026-01-25")] is None                         # despesa: sem o relatório de despesas
+    assert b.centers_filled == 1
+    assert not any("sem centro" in w for w in b.warnings)
+    b = sheets.load([p for p in _all() if p.name != "centros-receitas.csv"])
+    cc = _centers(sheets.build_db(b, tmp_path / "sem.db", company="Sítio Exemplo"))
+    assert cc[("VENDA DE MEL", "2026-03-30")] is None and b.centers_filled == 0
+
+
+def test_centro_que_nao_fecha_fica_em_branco(tmp_path):
+    (tmp_path / "centros-receitas.csv").write_bytes("\r\n".join([
+        "Relatório de Receitas por Centro de Custo;", "Período de 01/01/2000 a 31/12/2030;", " ;",
+        "CENTRO DE CUSTO;DESCRIÇÃO DO MOVIMENTO;TOTAL;",
+        "LAVOURA;VENDA DE MEL;R$ 2.400,00;",                             # falta 400, não os 500 sem centro
+        ""]).encode("cp1252"))
+    b = sheets.load([p for p in _all() if p.name != "centros-receitas.csv"] + [tmp_path / "centros-receitas.csv"])
+    cc = _centers(sheets.build_db(b, tmp_path / "mcc.db", company="Sítio Exemplo"))
+    assert cc[("VENDA DE MEL", "2026-03-30")] is None and b.centers_filled == 0
+    assert any("1 lançamento(s) sem centro" in w for w in b.warnings)
 
 
 def test_saldo_que_nao_bate_vira_aviso(tmp_path):

@@ -241,6 +241,9 @@ class MccImportDialog(QDialog):
         notes = [f"Planilhas: {bundle.entries} lançamento(s); {bundle.paid_dates_found} data(s) de pagamento "
                  f"achada(s) nos extratos; {bundle.transfers} transferência(s); {bundle.series} série(s) de "
                  "parcelas reagrupada(s)."]
+        if bundle.centers_filled:
+            notes.append(f"{bundle.centers_filled} lançamento(s) sem centro no analítico: o centro veio do "
+                         "relatório por centro de custo.")
         for c in bundle.balances:
             notes.append(f"Saldo de {c.account}: MCC {money.fmt(c.expected)} · montado {money.fmt(c.rebuilt)}"
                          + ("" if c.ok else " — NÃO BATE"))
